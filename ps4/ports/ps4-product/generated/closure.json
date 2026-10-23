@@ -1,0 +1,4743 @@
+[
+ {
+  "name": "oot3d_renderer_texture_decode",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_texture_decode.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_renderer_fragment_lighting",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_fragment_lighting.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "renderer_3ds_tev_program",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_tev_program.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "ImGui",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui_demo.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui_draw.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui_tables.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui_widgets.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends/imgui_impl_opengl3.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends/imgui_impl_sdl2.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/usr/include/SDL2"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "stb",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb/stb_impl.c",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "C",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "monocypher",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/monocypher.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional/monocypher-ed25519.c",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "C",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG -std=gnu11"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "prism",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/main.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/ast.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/lexer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/processor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/utils/gv.cpp",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/utils/invoke.c",
+    "group": 1
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src"
+    ],
+    "flags": [
+     "-Wno-narrowing -O3 -std=gnu++20"
+    ]
+   },
+   {
+    "language": "C",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG -std=gnu11"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "renderer_extension_core",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/cache_file.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/gtao_shader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/spirv_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/pipeline_preparation_job.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/extension_resource_allocation.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/extension_resource_binding.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/extension_resource_graph.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/extension_scene_publication.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer/extension_schedule.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "renderer_3ds_pica_core",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_composition_schedule.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_display_composition.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_extension_schedule.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_geometry_provider_authorization.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_gl_shader_dialect.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_scene_capabilities.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_semantic_scene_view.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_vertex_surface.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_surface_lighting.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_surface_emission.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_pbr_shading.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_pbr_seams.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_pbr_seam_shader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/room_shadow_shell.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/virtual_shadow_map.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/point_shadow_map.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_shadow_geometry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/renderer3ds/pica_gi_geometry.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "three_ds_recomp_runtime",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/FastMouseStateManager.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/interpreter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/debug/GfxDebugger.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/type/DisplayList.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/type/Light.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/type/Matrix.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/type/Texture.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/type/Vertex.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/factory/DisplayListFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/factory/LightFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/factory/MatrixFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/factory/TextureFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/resource/factory/VertexFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/backends/gfx_opengl.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/backends/gfx_opengl_pica.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/backends/gfx_sdl2.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/backends/oot3d_vulkan_diagnostics.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/backends/vulkan_scanout_probe.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/ambient_occlusion_composite.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/ambient_occlusion_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/azahar_pbr_materials.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/azahar_texture_pack.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/azahar_texture_pack_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/brixelizer_gi_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/brixelizer_scene.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/builtin_pass_shaders.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/cacao_normal_input.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/cacao_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/contact_shadow_shader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/contact_shadows.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/d3d12_ngx_evaluate_probe.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/d3d12_ngx_frame_bridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/d3d12_ngx_provider.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/diffuse_gi_adapter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/diffuse_gi_adapter_shader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/directional_shadows.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/display_effect_plan.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/display_effect_resources.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/dlss_module_loader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/effect_geometry_provider_plan.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/effect_graph.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/effect_graph_pass_barriers.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/effect_graph_physical_plan.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/effect_transient_configuration_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/fidelityfx_sssr_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/gpu_profile_plan.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_capabilities.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_preset_library.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_antialiasing_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_display_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_lighting_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_persistence.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_reflection_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_shadows_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_toon_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/graphics_settings_window.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_async_placement_builder.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_blade_geometry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_collision_resolver.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_draw_memo.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_geometry_registry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_gpu_instance_compactor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_gpu_selection.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_interaction_bridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_interaction_field.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_motion.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_overlay_mask.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_persistent_placement_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_placement_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_primitive_topology.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_render_telemetry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_scene_bridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_settings_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_shader_sources.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_shading_environment.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_shadow_grid_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_shadow_refinement.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_static_placement_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_surface_extractor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_texture_rule_editor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_texture_source_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_texture_twins.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_visibility.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_wind.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_world_placement_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/hiz_depth_pyramid.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/hiz_depth_pyramid_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/hiz_reflection.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/hiz_reflection_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/immerse_module_loader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/interactive_grass_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/linear_scene_color.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/linear_scene_color_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/motion_vector_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/motion_vectors.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/mxao_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/mxao_settings_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/native_scene_view.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/native_ui_overlay.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/native_ui_overlay_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/normal_space_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_directional_shadow_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_effect_graph_transient_image_arena.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_interop_context.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_ngx_vulkan_requirements.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_pica_display_copy_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_pica_memory_fill_clear_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_pica_pipeline_bridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_pica_render_target_init_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_pica_render_target_owner.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_pica_scanout_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_pica_texture_image_owner.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_pica_texture_upload_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_storage_clear_binding.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_swapchain.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/nri_upscaler_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pbr_material_editor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pbr_material_editor_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/perspective_fov_policy.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_ambient_occlusion_guide.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_aot_shader_pack.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_directional_shadow_caster.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_directional_shadow_lighting.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_directional_shadow_semantics.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_display_transfer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_dynamic_rendering_scope.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_extension_schedule.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_geometry_registry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_grass_texture_coordinates.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_nri_texture_upload.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_nri_vertex_input.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_pipeline_manifest.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_reactive_mask.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_reflection_material.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_rigid_motion.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_scanout_effects.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_scene_domain_guide.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_scene_frame.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_scene_publication_adapter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_scene_semantics.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_shader_instrumentation.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_shader_pipeline_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_shadow2d.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_toon_shader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_toon_telemetry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_uber_effect_program.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/pica_variant_request_record.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/presentation_settings_transaction.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/reflection_debug.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/reflection_ibl.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/reflection_ibl_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/reflection_material_editor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/reflection_material_profile.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/reflection_material_resolve_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/reflection_provider.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/renderer_presentation_controller.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/renderer_validation_telemetry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/resource_state_tracker.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/sample_view.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/scene_composite.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/scene_composite_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/scene_surface_registry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/scene_view_bridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/scene_view_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/screen_space_gi_provider.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/smaa_1x.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/smaa_1x_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/smaa_lookup_data.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/spatial_aa.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/temporal_aa.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/temporal_aa_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/temporal_history_manager.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/temporal_jitter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/texture_assignment_model.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/texture_catalog_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/texture_catalog_selection.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/texture_catalog_viewer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/texture_preview_artifact.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/toon_outline_shader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/upscaler_contract.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/upscaler_guide_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/upscaler_guides.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/upscaler_orientation.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/upscaler_orientation_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/visual_clock.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/vulkan_adapter_policy.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/world_debug_line_pass.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/world_debug_lines.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/controller/controldeck/ControlDeck.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/controller/controldevice/controller/Controller.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/controller/controldevice/controller/mapping/ControllerDefaultMappings.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/audiobridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/consolevariablebridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/controllerbridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/crashhandlerbridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/eventsbridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/gfxbridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/gfxdebuggerbridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/resourcebridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/bridge/windowbridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/AudioDmaRegistry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/os.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/os_cache.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/os_eeprom.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/os_mesg.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/os_pi.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/os_time.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/os_vi.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/libultra/os_vm.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/log/luslog.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/window/gui/GfxDebuggerWindow.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/legacy_compat/window/gui/InputEditorWindow.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/Context.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/audio/Audio.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/audio/AudioPlayer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/audio/NullAudioPlayer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/audio/SoundMatrixDecoder.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldeck/ControlDeck.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldeck/ControlPort.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/ControlDevice.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/Controller.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/ControllerButton.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/ControllerGyro.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/ControllerLED.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/ControllerRumble.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/ControllerStick.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/ControllerAxisDirectionMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/ControllerButtonMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/ControllerDefaultMappings.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/ControllerGyroMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/ControllerInputMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/ControllerLEDMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/ControllerMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/ControllerRumbleMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/factories/AxisDirectionMappingFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/factories/ButtonMappingFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/factories/GyroMappingFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/factories/LEDMappingFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/factories/RumbleMappingFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/keyboard/KeyboardKeyToAnyMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/keyboard/KeyboardKeyToAxisDirectionMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/keyboard/KeyboardKeyToButtonMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/mouse/MouseButtonToAnyMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/mouse/MouseButtonToAxisDirectionMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/mouse/MouseButtonToButtonMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/mouse/MouseWheelToAnyMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/mouse/MouseWheelToAxisDirectionMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/mouse/MouseWheelToButtonMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/mouse/WheelHandler.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLAxisDirectionToAnyMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLAxisDirectionToAxisDirectionMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLAxisDirectionToButtonMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLButtonToAnyMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLButtonToAxisDirectionMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLButtonToButtonMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLGyroMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLLEDMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/controldevice/controller/mapping/sdl/SDLRumbleMapping.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/physicaldevice/ConnectedPhysicalDeviceManager.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/physicaldevice/GlobalSDLDeviceSettings.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/controller/physicaldevice/SDLAddRemoveDeviceEventHandler.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/config/Config.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/config/ConfigPersistence.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/config/ConsoleVariable.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/debug/Console.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/debug/CrashHandler.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/FileDropMgr.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/MouseStateManager.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/Window.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/ConsoleWindow.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/EventDebuggerWindow.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/GameOverlay.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/Gui.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/GuiElement.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/GuiMenuBar.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/GuiWindow.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/StatsWindow.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/resource/Font.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/resource/FontFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/resource/GuiTexture.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/window/gui/resource/GuiTextureFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/StrHash64.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/StringHelper.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/Utils.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/binarytools/BinaryReader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/binarytools/BinaryWriter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/binarytools/MemoryStream.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/binarytools/Stream.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/glob.c",
+    "group": 1
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/utils/stox.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/events/EventSystem.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/Resource.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/ResourceFactoryBinary.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/ResourceFactoryXML.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/ResourceLoader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/ResourceManager.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/type/Blob.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/type/Json.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/type/Shader.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/factory/BlobFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/factory/JsonFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/factory/ShaderFactory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/archive/Archive.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/archive/ArchiveManager.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/archive/FolderArchive.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/archive/O2rArchive.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/ship/resource/archive/OtrArchive.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "ENABLE_OPENGL",
+     "F3DEX_GBI_2",
+     "NDEBUG",
+     "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE"
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/three_ds_recomp_runtime/src",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/usr/include/SDL2"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-Wall",
+     "-Wextra",
+     "-Wno-error",
+     "-Wno-unused-variable",
+     "-Wno-unused-parameter",
+     "-Wno-unused-function",
+     "-Wno-parentheses",
+     "-Wno-narrowing",
+     "-Wno-missing-field-initializers",
+     "-w"
+    ]
+   },
+   {
+    "language": "C",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "ENABLE_OPENGL",
+     "F3DEX_GBI_2",
+     "NDEBUG",
+     "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE"
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/three_ds_recomp_runtime/src",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/usr/include/SDL2"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG -std=gnu11",
+     "-Wall",
+     "-Wextra",
+     "-Wno-error",
+     "-Wno-unused-variable",
+     "-Wno-unused-parameter",
+     "-Wno-unused-function",
+     "-Wno-parentheses",
+     "-Wno-narrowing",
+     "-Wno-missing-field-initializers",
+     "-Wno-implicit-function-declaration",
+     "-Wno-int-conversion",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_application_host",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host/oot3d_demo_host_context.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host/oot3d_demo_host_io.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host/oot3d_demo_host_screenshot.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host/oot3d_demo_host_window_timing.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/usr/include/SDL2"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_audio",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_cseq.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_audio.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_audio_profiles.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_audio_mixer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_audio_dsp.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_audio_resampler.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_audio_service.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_a32_runtime",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp/a32_core.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp/a32_core_alu.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp/a32_core_memory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp/a32_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_binary64.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp/recomp/a32_direct_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_ops.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_transport.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_typed_gameplay",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_actor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_animation.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_camera.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_camera_animation.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_cutscene.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_math.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_player.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_quake.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_skel_anime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay/oot3d_gameplay_time.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_a32_process",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_process.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_registry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_owner_call_adapter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_mass_aot.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_actor_lifecycle.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_actor_update_records.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_audio_request_callback.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_dyna_interaction_reset.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_game_state.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_pause_ui_alpha.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_player_lock_on.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_record_initializer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_typed_gameplay_bridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_true_aot_blocks.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "OOT3D_NATIVE_DIRECT_AOT_PLUGIN=1",
+     "OOT3D_NATIVE_GENERATED_WHOLE_AOT=1",
+     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1"
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_a32_process_image",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_process_image.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_pica_frontend",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_draw_state.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_lighting_gen.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_raw_draw_record.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_shader_gen.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica/video_core/shader/generator/glsl_shader_decompiler.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_pica_transfer",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_pica_submission",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_a32_memory_view.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_pica_composition",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_composition.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_lighting.cpp",
+    "group": 1
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_fire_emitters.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_light_selection.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_static_emitters.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_room_shadow_shell.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_interior_sun_prebuild.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   },
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_pica_vulkan_plan",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_pica_semantic_trace",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_semantic_trace.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_pica_vulkan_bridge",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_savestate.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend/oot3d_native_vertex_binaries.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "three_ds_recomp_input",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input/three_ds_input.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input/three_ds_motion_composition.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_ui_contract",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_backend.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_frontend_actions.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_frontend_menu_content.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_frontend_resources.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_gameplay_hud_composite_split.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_gameplay_hud_inline_semantics.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_gameplay_hud_workflow.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_hud_content.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_inventory_content.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_localized_menu_resources.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_name_entry_tables.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_native_actions.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_native_queries.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_native_workflow_closure.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_atlas_regions.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_component_lifecycle.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_content.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_gear_semantics.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_geometry_updates.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_items_semantics.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_native_geometry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_page_pipeline.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_render_lifecycle.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_pause_shared_texture_consumers.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_persistent_content.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract/oot3d_ui/ui_state_adapter.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG -std=gnu++20",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_ui_topscreen",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_native_font_coverage.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_config.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_controls.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_gameplay_actions.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_dpad_presentation.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_items_hint.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_camera.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_camera_guest.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_item_guest.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_item_dispatch.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_mod_profile.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_mod_profile_items.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_mod_profile_hud.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_mod_profile_quest.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_mod_profile_pause.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_ocarina.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen/oot3d_top_screen_texture_overrides.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_ui_n64",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64/oot3d_n64_gameplay_hud.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64/oot3d_n64_integrated_ui_runtime.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_ui_n64_renderer",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64/oot3d_n64_ui_renderer.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_ui_legacy_adapters",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64/oot3d_legacy_ui_adapters.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/usr/include/SDL2"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_top_screen_runtime_consumer",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_gameplay_action_consumer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_items_hint_consumer.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_control_config",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_control_config.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_a32_input",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_input.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_ui_lifecycle_bridge",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_ui_lifecycle_bridge.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_ui_texture_provider",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_ui_texture_provider.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_top_screen_texture_runtime",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_texture_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_a32_ctr_host",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_system.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_hid.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_dsp.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_fs.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_state.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_memory_adapter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_audio/audio_core/codec.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_audio/audio_core/interpolate.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_audio/audio_core/hle/filter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_audio/audio_core/hle/mixers.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_audio/audio_core/hle/source.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_audio",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "triaevum_title_aot_stub",
+  "type": "SHARED_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/triaevum_title_aot_stub.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "triaevum_title_aot_stub_EXPORTS"
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG -fPIC",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "libzstd_static",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/debug.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/entropy_common.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/error_private.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/fse_decompress.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/pool.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/threading.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/xxhash.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/zstd_common.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/fse_compress.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/hist.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/huf_compress.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_compress.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_compress_literals.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_compress_sequences.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_compress_superblock.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_double_fast.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_fast.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_lazy.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_ldm.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_opt.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstdmt_compress.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/huf_decompress.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/zstd_ddict.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/zstd_decompress.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/zstd_decompress_block.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/huf_decompress_amd64.S",
+    "group": 1
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/dictBuilder/cover.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/dictBuilder/divsufsort.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/dictBuilder/fastcover.c",
+    "group": 0
+   },
+   {
+    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/dictBuilder/zdict.c",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "C",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "XXH_NAMESPACE=ZSTD_",
+     "ZSTD_LEGACY_SUPPORT=0"
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-build/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/build/cmake/lib"
+    ],
+    "flags": [
+     " -Wall -Wextra -Wundef -Wshadow -Wcast-align -Wcast-qual -Wstrict-prototypes -Wa,--noexecstack -O2 -DNDEBUG -std=gnu2x -fPIC"
+    ]
+   },
+   {
+    "language": "ASM",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "XXH_NAMESPACE=ZSTD_",
+     "ZSTD_LEGACY_SUPPORT=0"
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-build/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/build/cmake/lib"
+    ],
+    "flags": [
+     "-O3 -DNDEBUG -fPIC"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_a32_savestate",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_savestate.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_savestate_library.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/build/cmake/../../lib"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_game_runtime",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_scene_view.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_timing_probe.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_scenario_bootstrap.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_presentation_pacer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_temporal_event_ledger.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_player_temporal_bridge.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_root_motion.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_skel_anime.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_crash_diagnostics",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_crash_diagnostics.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_native_game",
+  "type": "EXECUTABLE",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_game.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/triaevum_product_info.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_game_launch_profile.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_game_language.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_window.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_window_savestate.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_candidate_dispatch.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_window_summary.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_preparation_screen.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_ocarina_text_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_pause_transaction.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_item_description_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_wide_items_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_gameplay_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_link_ext.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_object_bank_extension.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_rain_runtime.cpp",
+    "group": 1
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_rain_adapter.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_actor_interactions.cpp",
+    "group": 2
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_actor_visibility_policy.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_actor_visibility.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_pcm_diagnostics.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_controls_settings_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_game_language_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_savestate_settings.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_scene_environment_blend.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_light_gizmo.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_scene_environment_codec.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_scene_environment_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_settings_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_graphics_settings_schedule.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "OOT3D_NATIVE_A32_WINDOW_AVAILABLE=1",
+     "OOT3D_NATIVE_DIRECT_AOT_PLUGIN=1",
+     "OOT3D_REQUIRE_WHOLE_AOT_PLUGIN_V2=1",
+     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1"
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/triaevum-product",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/usr/include/SDL2"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   },
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "OOT3D_NATIVE_A32_WINDOW_AVAILABLE=1",
+     "OOT3D_NATIVE_DIRECT_AOT_PLUGIN=1",
+     "OOT3D_REQUIRE_WHOLE_AOT_PLUGIN_V2=1",
+     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1"
+    ],
+    "includes": [
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/triaevum-product",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/usr/include/SDL2"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w",
+     "-ffp-contract=off"
+    ]
+   },
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "OOT3D_NATIVE_A32_WINDOW_AVAILABLE=1",
+     "OOT3D_NATIVE_DIRECT_AOT_PLUGIN=1",
+     "OOT3D_REQUIRE_WHOLE_AOT_PLUGIN_V2=1",
+     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1"
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/triaevum-product",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
+     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/usr/include/SDL2"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG",
+     "-w"
+    ]
+   }
+  ]
+ }
+]

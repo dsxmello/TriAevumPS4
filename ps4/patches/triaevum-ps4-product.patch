@@ -1,0 +1,1160 @@
+diff --git a/runtime/three_ds_recomp/include/fast/Fast3dWindow.h b/runtime/three_ds_recomp/include/fast/Fast3dWindow.h
+index 2bec3a7..e73468c 100644
+--- a/runtime/three_ds_recomp/include/fast/Fast3dWindow.h
++++ b/runtime/three_ds_recomp/include/fast/Fast3dWindow.h
+@@ -27,6 +27,7 @@ enum WindowBackend {
+     FAST3D_SDL_OPENGL = 2,
+     FAST3D_SDL_METAL = 3,
+     FAST3D_SDL_OOT3D_VULKAN = 4,
++    FAST3D_ORBIS_VULKAN = 5, ///< PS4: VideoOut + RADV on GNM (fast/backends/gfx_orbis.h)
+ };
+ 
+ class Fast3dWindow : public Ship::Window {
+diff --git a/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
+new file mode 100644
+index 0000000..0dd0124
+--- /dev/null
++++ b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
+@@ -0,0 +1,49 @@
++#pragma once
++
++// PlayStation 4 (OpenOrbis) Fast3D backends. The window backend (VideoOut +
++// SDL joystick/audio, no SDL video) and the rendering API (RADV on GNM:
++// native PICA, Fast3D UI draws and ImGui) are implemented by the PS4 port
++// (triaevum-ps4-vk ports/ps4-product), not by this tree; these are the hooks
++// the shared window/GUI code calls under __ORBIS__.
++#if defined(__ORBIS__)
++
++struct ImDrawData;
++
++namespace Fast {
++
++class GfxWindowBackend;
++class GfxRenderingAPI;
++
++GfxWindowBackend* CreateOrbisWindowBackend();
++GfxRenderingAPI* CreateOrbisRenderingApi();
++
++// ImGui rendering owned by the rendering API (the desktop Vulkan backend
++// exposes the same five operations on its concrete class).
++class ImGuiRenderHooks {
++  public:
++    virtual ~ImGuiRenderHooks() = default;
++    virtual bool InitImGuiBackend() = 0;
++    virtual void ShutdownImGuiBackend() = 0;
++    virtual bool ImGuiBackendReady() const = 0;
++    virtual void NewImGuiFrame() = 0;
++    virtual void RenderImGuiDrawData(ImDrawData* drawData) = 0;
++};
++
++// ImGui platform side: display size, timing and gamepad navigation from the
++// DualShock. NewFrame returns true on the L3+R3 press that stands in for F1.
++void OrbisImGuiPlatformInit();
++bool OrbisImGuiPlatformNewFrame();
++
++// Process start (before main's work): system modules, boot log on
++// /data/triaevum_boot.log, chdir to /data/triaevum, the DualShock mapping.
++void OrbisProcessInit();
++
++// The game's busy threads ("main", "render", "pica plan") register: each is
++// kept on its cores of the CPU's first cluster, and the sampling profiler
++// (DolphinPS4's, /data/DolphinPS4/samples.log) follows it when
++// /data/triaevum/profile exists.
++void OrbisRegisterThread(const char* name);
++
++} // namespace Fast
++
++#endif
+diff --git a/runtime/three_ds_recomp/include/ship/audio/SDLAudioPlayer.h b/runtime/three_ds_recomp/include/ship/audio/SDLAudioPlayer.h
+index f67d3d9..7098409 100644
+--- a/runtime/three_ds_recomp/include/ship/audio/SDLAudioPlayer.h
++++ b/runtime/three_ds_recomp/include/ship/audio/SDLAudioPlayer.h
+@@ -1,4 +1,6 @@
+ #pragma once
++
++#include <vector>
+ #include "AudioPlayer.h"
+ #include <SDL2/SDL.h>
+ 
+@@ -52,5 +54,10 @@ class SDLAudioPlayer final : public AudioPlayer {
+   private:
+     SDL_AudioDeviceID mDevice = 0; ///< Handle to the opened SDL audio device.
+     int32_t mNumChannels = 2;      ///< Number of output channels (2 for stereo, 6 for 5.1).
++#if defined(__ORBIS__)
++    bool mRefilling = true;        ///< Output paused until the queue holds DesiredBuffered.
++    std::vector<int16_t> mStretched; ///< Rate-controlled copy of the submitted samples.
++    float mRateRatio = 1.0F;       ///< Smoothed stretch factor (pitch must not jump).
++#endif
+ };
+ } // namespace Ship
+diff --git a/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp b/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
+index e11cd74..2665f22 100644
+--- a/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
++++ b/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
+@@ -11,10 +11,13 @@
+ #include "fast/backends/gfx_vulkan.h"
+ #endif
+ #include "fast/resource/type/Texture.h"
+-#ifdef ENABLE_OOT3D_VULKAN
++#if defined(ENABLE_OOT3D_VULKAN) || defined(__ORBIS__)
+ #include "fast/oot3d/graphics_settings_runtime.h"
+ #include "fast/oot3d/graphics_settings_window.h"
+ #endif
++#if defined(__ORBIS__)
++#include "fast/backends/gfx_orbis.h"
++#endif
+ #include "ship/window/gui/resource/GuiTextureFactory.h"
+ #include "ship/resource/File.h"
+ 
+@@ -40,6 +43,8 @@
+ #ifdef ENABLE_OPENGL
+ #include <imgui_impl_opengl3.h>
+ #include <imgui_impl_sdl2.h>
++#elif defined(__ORBIS__)
++#include <imgui_impl_sdl2.h> // shared SDL paths compile; the PS4 never runs them
+ #endif
+ 
+ #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
+@@ -52,7 +57,7 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARA
+ 
+ namespace Fast {
+ namespace {
+-#ifdef ENABLE_OOT3D_VULKAN
++#if defined(ENABLE_OOT3D_VULKAN) || defined(__ORBIS__)
+ class Oot3dGraphicsSettingsPersistence final
+     : public Oot3d::GraphicsSettingsPersistencePort {
+   public:
+@@ -141,6 +146,9 @@ class Oot3dHostNoticeWindow final : public Ship::GuiWindow {
+     void DrawElement() override {}
+ };
+ 
++#endif
++
++#ifdef ENABLE_OOT3D_VULKAN
+ struct Oot3dMousePosition {
+     float X = 0.0F;
+     float Y = 0.0F;
+@@ -234,11 +242,26 @@ void Fast3dGui::Init(GuiWindowInitData windowImpl) {
+         AddGuiWindow(std::make_shared<Oot3dDisplayConfirmationWindow>());
+         AddGuiWindow(std::make_shared<Oot3dHostNoticeWindow>());
+     }
++#endif
++#if defined(__ORBIS__)
++    // PS4: the same consolidated settings window, opened by L3+R3.
++    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
++        Oot3d::InstallGraphicsSettingsPersistencePort(
++            std::make_shared<Oot3dGraphicsSettingsPersistence>());
++        AddGuiWindow(std::make_shared<Oot3dGraphicsSettingsWindow>());
++        AddGuiWindow(std::make_shared<Oot3dDisplayConfirmationWindow>());
++        AddGuiWindow(std::make_shared<Oot3dHostNoticeWindow>());
++    }
+ #endif
+     Gui::Init();
+ }
+ 
+ bool Fast3dGui::SupportsViewports() {
++#if defined(__ORBIS__)
++    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
++        return false; // one VideoOut surface, no platform windows
++    }
++#endif
+ #ifdef ENABLE_OOT3D_VULKAN
+     // The Vulkan backend owns one swapchain only. Letting ImGui create SDL
+     // platform windows leaves those windows without renderer swapchains and
+@@ -346,6 +369,14 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
+ }
+ 
+ void Fast3dGui::ToggleOot3dGraphicsWindow() {
++#if defined(__ORBIS__)
++    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
++        if (const auto settingsWindow = GetGuiWindow("OOT3D Graphics")) {
++            settingsWindow->ToggleVisibility();
++        }
++        return;
++    }
++#endif
+ #ifdef ENABLE_OOT3D_VULKAN
+     if (mImpl.Backend != WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
+         return;
+@@ -382,6 +413,11 @@ void Fast3dGui::DrawMenu() {
+ 
+ void Fast3dGui::ImGuiWMInit() {
+     switch (mImpl.Backend) {
++#if defined(__ORBIS__)
++        case WindowBackend::FAST3D_ORBIS_VULKAN:
++            OrbisImGuiPlatformInit();
++            break;
++#endif
+         case WindowBackend::FAST3D_SDL_OPENGL:
+             SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
+             if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
+@@ -443,6 +479,16 @@ void Fast3dGui::ImGuiWMShutdown() {
+ void Fast3dGui::ImGuiBackendInit() {
+     auto window = Ship::Context::GetRawInstance()->GetWindow();
+     mInterpreter = std::dynamic_pointer_cast<Fast3dWindow>(window)->GetInterpreterWeak();
++#if defined(__ORBIS__)
++    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
++        if (auto interpreter = mInterpreter.lock()) {
++            if (auto* hooks = dynamic_cast<ImGuiRenderHooks*>(interpreter->GetCurrentRenderingAPI())) {
++                hooks->InitImGuiBackend();
++            }
++        }
++        return;
++    }
++#endif
+     switch (mImpl.Backend) {
+ #ifdef ENABLE_OPENGL
+         case WindowBackend::FAST3D_SDL_OPENGL:
+@@ -484,6 +530,16 @@ void Fast3dGui::ImGuiBackendInit() {
+ }
+ 
+ void Fast3dGui::ImGuiBackendShutdown() {
++#if defined(__ORBIS__)
++    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
++        if (auto interpreter = mInterpreter.lock()) {
++            if (auto* hooks = dynamic_cast<ImGuiRenderHooks*>(interpreter->GetCurrentRenderingAPI())) {
++                hooks->ShutdownImGuiBackend();
++            }
++        }
++        return;
++    }
++#endif
+ #ifdef ENABLE_OOT3D_VULKAN
+     if (mImpl.Backend == WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
+         if (auto interpreter = mInterpreter.lock()) {
+@@ -532,6 +588,29 @@ std::shared_ptr<ImDrawData> CloneImGuiDrawData(const ImDrawData* source) {
+ } // namespace
+ 
+ void Fast3dGui::ImGuiBackendNewFrame() {
++#if defined(__ORBIS__)
++    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
++        auto interpreter = mInterpreter.lock();
++        auto* hooks = interpreter != nullptr
++                          ? dynamic_cast<ImGuiRenderHooks*>(interpreter->GetCurrentRenderingAPI())
++                          : nullptr;
++        if (hooks == nullptr) {
++            SPDLOG_ERROR("Fast3dGui: no PS4 ImGui render hooks (interpreter {})",
++                         interpreter != nullptr ? "without them" : "missing");
++            // ImGui::NewFrame needs a built font atlas either way.
++            if (!ImGui::GetIO().Fonts->IsBuilt()) ImGui::GetIO().Fonts->Build();
++        } else if (!mRendererRouting.Synchronous) {
++            hooks->NewImGuiFrame();
++        } else if (!hooks->ImGuiBackendReady()) {
++            // Initialization and the font upload record GPU work into the
++            // command buffer the render worker owns. Once ready, the
++            // backend's new-frame step has nothing to do: waiting for the
++            // worker every frame would serialize the game with the renderer.
++            mRendererRouting.Synchronous([hooks] { hooks->NewImGuiFrame(); });
++        }
++        return;
++    }
++#endif
+     switch (mImpl.Backend) {
+ #ifdef ENABLE_OPENGL
+         case WindowBackend::FAST3D_SDL_OPENGL:
+@@ -591,6 +670,14 @@ void Fast3dGui::SyncOot3dVulkanMousePosition() {
+ 
+ void Fast3dGui::ImGuiWMNewFrame() {
+     switch (mImpl.Backend) {
++#if defined(__ORBIS__)
++        case WindowBackend::FAST3D_ORBIS_VULKAN:
++            // L3+R3 is the controller's F1.
++            if (OrbisImGuiPlatformNewFrame()) {
++                ToggleOot3dGraphicsWindow();
++            }
++            break;
++#endif
+         case WindowBackend::FAST3D_SDL_OPENGL:
+         case WindowBackend::FAST3D_SDL_METAL:
+ #ifdef ENABLE_OOT3D_VULKAN
+@@ -621,6 +708,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
+ }
+ 
+ void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
++#if defined(__ORBIS__)
++    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
++        if (auto interpreter = mInterpreter.lock()) {
++            auto* hooks = dynamic_cast<ImGuiRenderHooks*>(interpreter->GetCurrentRenderingAPI());
++            if (hooks != nullptr && mRendererRouting.Deferred && data != nullptr) {
++                // Rendered in renderer order on the render worker, from a copy.
++                mRendererRouting.Deferred(
++                    [hooks, copy = CloneImGuiDrawData(data)] { hooks->RenderImGuiDrawData(copy.get()); });
++            } else if (hooks != nullptr) {
++                hooks->RenderImGuiDrawData(data);
++            }
++        }
++        return;
++    }
++#endif
+     switch (mImpl.Backend) {
+ #ifdef ENABLE_OPENGL
+         case WindowBackend::FAST3D_SDL_OPENGL:
+diff --git a/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp b/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp
+index d26a7c4..4044712 100644
+--- a/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp
++++ b/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp
+@@ -20,6 +20,9 @@
+ #include "fast/backends/gfx_window_manager_api.h"
+ 
+ #include "fast/Fast3dGui.h"
++#if defined(__ORBIS__)
++#include "fast/backends/gfx_orbis.h"
++#endif
+ 
+ #include <fstream>
+ #include <stdexcept>
+@@ -45,7 +48,12 @@ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastM
+         AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_METAL);
+     }
+ #endif
++#if defined(__ORBIS__)
++    // The PS4 has no SDL video/OpenGL: VideoOut + the port's Vulkan backend.
++    AddAvailableWindowBackend(WindowBackend::FAST3D_ORBIS_VULKAN);
++#else
+     AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_OPENGL);
++#endif
+ }
+ 
+ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui)
+@@ -179,6 +187,12 @@ void Fast3dWindow::InitWindowManager() {
+             mRenderingApi =
+                 new GfxRenderingAPIVulkan(static_cast<GfxWindowBackendSDL2*>(mWindowManagerApi));
+             break;
++#endif
++#if defined(__ORBIS__)
++        case WindowBackend::FAST3D_ORBIS_VULKAN:
++            mWindowManagerApi = CreateOrbisWindowBackend();
++            mRenderingApi = CreateOrbisRenderingApi();
++            break;
+ #endif
+         default:
+             SPDLOG_ERROR("Could not load the correct rendering backend");
+@@ -516,6 +530,8 @@ std::string Fast3dWindow::GetWindowBackendName() {
+             return "Metal";
+         case WindowBackend::FAST3D_SDL_OOT3D_VULKAN:
+             return "Vulkan (OOT3D)";
++        case WindowBackend::FAST3D_ORBIS_VULKAN:
++            return "Vulkan (PS4)";
+         default:
+             return "";
+     }
+diff --git a/runtime/three_ds_recomp/src/ship/Context.cpp b/runtime/three_ds_recomp/src/ship/Context.cpp
+index 970cd38..0f2e643 100644
+--- a/runtime/three_ds_recomp/src/ship/Context.cpp
++++ b/runtime/three_ds_recomp/src/ship/Context.cpp
+@@ -466,6 +466,9 @@ std::string Context::GetShortName() const {
+ }
+ 
+ std::string Context::GetAppBundlePath() {
++#if defined(__ORBIS__)
++    return "/app0"; // the PKG's read-only mount
++#endif
+ #if defined(__ANDROID__)
+     const char* externaldir = SDL_AndroidGetExternalStoragePath();
+     if (externaldir != NULL) {
+@@ -529,6 +532,9 @@ std::string Context::GetAppBundlePath() {
+ }
+ 
+ std::string Context::GetAppDirectoryPath(const std::string& appName) {
++#if defined(__ORBIS__)
++    return "/data/triaevum"; // writable user data (no getcwd on Orbis)
++#endif
+ #if defined(__ANDROID__)
+     const char* externaldir = SDL_AndroidGetExternalStoragePath();
+     if (externaldir != NULL) {
+diff --git a/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp b/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp
+index bd6311b..d4f7b83 100644
+--- a/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp
++++ b/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp
+@@ -1,4 +1,7 @@
+ #include "ship/audio/SDLAudioPlayer.h"
++
++#include <algorithm>
++#include <cmath>
+ #include <spdlog/spdlog.h>
+ 
+ namespace Ship {
+@@ -45,7 +48,12 @@ bool SDLAudioPlayer::DoInit() {
+ 
+     SPDLOG_INFO("SDL Audio initialized: {} channels, {} Hz", mNumChannels, this->GetSampleRate());
+ 
++#if defined(__ORBIS__)
++    // DoPlay starts the output once the first cushion is queued.
++    mRefilling = true;
++#else
+     SDL_PauseAudioDevice(mDevice, 0);
++#endif
+     return true;
+ }
+ 
+@@ -54,10 +62,64 @@ int SDLAudioPlayer::Buffered() {
+ }
+ 
+ void SDLAudioPlayer::DoPlay(const uint8_t* buf, size_t len) {
++#if defined(__ORBIS__)
++    // The PS4 device drains the queue in 5 ms periods while the game queues
++    // a whole frame of audio at once: with no cushion, every late frame is a
++    // gap (the queue was empty at every submission). An empty queue pauses
++    // the output until DesiredBuffered is queued again, so a gap is one
++    // short pause instead of constant crackling.
++    if (!mRefilling && Buffered() == 0) {
++        SDL_PauseAudioDevice(mDevice, 1);
++        mRefilling = true;
++    }
++#endif
++#if defined(__ORBIS__)
++    // Dynamic rate control: the game makes its audio as fast as it runs, a
++    // few percent under real time when a frame is slow. Stretching (or
++    // compressing) each submission by up to ~6% towards DesiredBuffered
++    // keeps the queue fed without gaps; the pause above remains the last
++    // resort.
++    {
++        const int32_t desired = std::max(1, GetDesiredBuffered());
++        const float error = static_cast<float>(desired - Buffered()) / static_cast<float>(desired);
++        // Smoothed over ~20 submissions: a per-chunk jump is audible.
++        mRateRatio += 0.05F * (1.0F + 0.06F * std::clamp(error, -0.5F, 1.0F) - mRateRatio);
++        const float ratio = mRateRatio;
++        const size_t channels = static_cast<size_t>(mNumChannels);
++        const size_t inputFrames = len / (sizeof(int16_t) * channels);
++        if (inputFrames > 1U) {
++            const size_t outputFrames =
++                std::max<size_t>(1U, static_cast<size_t>(static_cast<float>(inputFrames) * ratio));
++            const auto* input = reinterpret_cast<const int16_t*>(buf);
++            mStretched.resize(outputFrames * channels);
++            const float step = static_cast<float>(inputFrames - 1U) /
++                               static_cast<float>(std::max<size_t>(1U, outputFrames - 1U));
++            for (size_t frame = 0; frame < outputFrames; ++frame) {
++                const float position = static_cast<float>(frame) * step;
++                const size_t index = std::min(static_cast<size_t>(position), inputFrames - 2U);
++                const float fraction = position - static_cast<float>(index);
++                for (size_t channel = 0; channel < channels; ++channel) {
++                    const float a = input[index * channels + channel];
++                    const float b = input[(index + 1U) * channels + channel];
++                    mStretched[frame * channels + channel] =
++                        static_cast<int16_t>(std::lround(a + (b - a) * fraction));
++                }
++            }
++            buf = reinterpret_cast<const uint8_t*>(mStretched.data());
++            len = mStretched.size() * sizeof(int16_t);
++        }
++    }
++#endif
+     if (Buffered() < 6000) {
+         // Don't fill the audio buffer too much in case this happens
+         SDL_QueueAudio(mDevice, buf, len);
+     }
++#if defined(__ORBIS__)
++    if (mRefilling && Buffered() >= GetDesiredBuffered()) {
++        SDL_PauseAudioDevice(mDevice, 0);
++        mRefilling = false;
++    }
++#endif
+ }
+ 
+ 
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
+index b9bff97..eb393c6 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
+@@ -1,6 +1,9 @@
+ // CTR host services: the gsp::Gpu session.
+ #include "oot3d_native_a32_ctr_host_internal.h"
+ 
++#include <memory>
++#include <span>
++
+ namespace Oot3dNativeGame {
+ 
+ // SendSyncRequest on a client session of gsp::Gpu.
+@@ -322,7 +325,12 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
+                     // one failed allocation of 181534720 bytes). Behavior for
+                     // every well-formed request is byte-identical.
+                     constexpr uint32_t kDmaChunkBytes = 0x40000U; // 256 KiB
+-                    std::vector<uint8_t> dmaChunk(kDmaChunkBytes);
++                    // One buffer for every request: a fresh vector zeroed
++                    // all 256 KiB for each DMA, however small (on the PS4
++                    // the PGO profile's top memset).
++                    static thread_local const std::unique_ptr<uint8_t[]> dmaBuffer(
++                        new uint8_t[kDmaChunkBytes]);
++                    const std::span<uint8_t> dmaChunk(dmaBuffer.get(), kDmaChunkBytes);
+                     submitted = size != 0U;
+                     for (uint32_t offset = 0U; offset < size && submitted;
+                          offset += kDmaChunkBytes) {
+@@ -333,11 +341,10 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
+                         submitted =
+                             memory.ReadBytes(
+                                 source + offset,
+-                                std::span<uint8_t>(dmaChunk).first(slice)) &&
++                                dmaChunk.first(slice)) &&
+                             memory.WriteBytes(
+                                 destination + offset,
+-                                std::span<const uint8_t>(dmaChunk)
+-                                    .first(slice));
++                                std::span<const uint8_t>(dmaChunk.first(slice)));
+                     }
+                     if (submitted) {
+                         submitted = QueueGspInterrupt(
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
+index 170d078..20b67c4 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
+@@ -19,6 +19,14 @@
+ 
+ #include <nlohmann/json_fwd.hpp>
+ 
++#if defined(__ORBIS__)
++#define OOT3D_MEMORY_FAST_PATH inline __attribute__((always_inline))
++#define OOT3D_MEMORY_SLOW_PATH __attribute__((noinline))
++#else
++#define OOT3D_MEMORY_FAST_PATH
++#define OOT3D_MEMORY_SLOW_PATH
++#endif
++
+ namespace Oot3dNativeGame {
+ 
+ struct NativeA32MemoryRegionConfig {
+@@ -160,10 +168,13 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+ 
+     // AOT code uses these non-virtual typed paths. Fully mapped guest pages
+     // become one indexed host load; boundaries and protected pages preserve
+-    // the exact checked-memory behavior.
++    // the exact checked-memory behavior. On the PS4 the fast path is forced
++    // inline into the generated code (out of line, every guest load and
++    // store was a call returning through memory: ~17% of the game thread);
++    // the rare paths stay calls.
+     template <typename T>
+-    bool ReadFast(uint32_t address, T* value,
+-                  uint32_t* faultAddress = nullptr) const noexcept {
++    OOT3D_MEMORY_FAST_PATH bool ReadFast(uint32_t address, T* value,
++                                         uint32_t* faultAddress = nullptr) const noexcept {
+         static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>);
+         static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 ||
+                       sizeof(T) == 8);
+@@ -180,19 +191,18 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+             if (source != nullptr) {
+                 std::memcpy(value, source + offset, sizeof(T));
+                 if (mTraceWriteFingerprint) [[unlikely]] {
+-                    uint64_t checked = 0;
+-                    if (ReadSized(address, static_cast<uint8_t>(sizeof(T)),
+-                                  &checked, nullptr) &&
+-                        *value != static_cast<T>(checked)) {
+-                        ++mFastReadMismatchCount;
+-                        mLastFastReadMismatchAddress = address;
+-                        mLastFastReadMismatchValue = *value;
+-                        mLastCheckedReadMismatchValue = checked;
+-                    }
++                    CheckTracedFastRead(address, static_cast<uint8_t>(sizeof(T)),
++                                        static_cast<uint64_t>(*value));
+                 }
+                 return true;
+             }
+         }
++        return ReadFastChecked(address, value, faultAddress);
++    }
++
++    template <typename T>
++    OOT3D_MEMORY_SLOW_PATH bool ReadFastChecked(uint32_t address, T* value,
++                                                uint32_t* faultAddress) const noexcept {
+         uint64_t decoded = 0;
+         if (!ReadSized(address, static_cast<uint8_t>(sizeof(T)), &decoded,
+                        faultAddress)) {
+@@ -202,9 +212,21 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+         return true;
+     }
+ 
++    OOT3D_MEMORY_SLOW_PATH void CheckTracedFastRead(uint32_t address, uint8_t size,
++                                                    uint64_t value) const noexcept {
++        uint64_t checked = 0;
++        const uint64_t mask = size == 8U ? ~0ULL : ((1ULL << (size * 8U)) - 1U);
++        if (ReadSized(address, size, &checked, nullptr) && value != (checked & mask)) {
++            ++mFastReadMismatchCount;
++            mLastFastReadMismatchAddress = address;
++            mLastFastReadMismatchValue = value;
++            mLastCheckedReadMismatchValue = checked;
++        }
++    }
++
+     template <typename T>
+-    bool WriteFast(uint32_t address, T value,
+-                   uint32_t* faultAddress = nullptr) noexcept {
++    OOT3D_MEMORY_FAST_PATH bool WriteFast(uint32_t address, T value,
++                                          uint32_t* faultAddress = nullptr) noexcept {
+         static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>);
+         static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 ||
+                       sizeof(T) == 8);
+@@ -231,6 +253,12 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+                 return true;
+             }
+         }
++        return WriteFastChecked(address, value, faultAddress);
++    }
++
++    template <typename T>
++    OOT3D_MEMORY_SLOW_PATH bool WriteFastChecked(uint32_t address, T value,
++                                                 uint32_t* faultAddress) noexcept {
+         return WriteSized(address, static_cast<uint8_t>(sizeof(T)), value,
+                           faultAddress);
+     }
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
+index ebfd3c7..1a419df 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
+@@ -199,6 +199,9 @@ void ApplyNativeWidescreenProjectionPolicy(
+       questDrawExit()) {
+     if (runtime.ObservedExitPc != nullptr)
+       *runtime.ObservedExitPc = pc;
++    // Like the throw below, nothing after this point runs for the block.
++    if (Oot3dNativeGame::Oot3dWholeAotDeferObservableExit(pc, state))
++      return;
+ #if defined(OOT3D_NATIVE_DIRECT_AOT_PLUGIN)
+     Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
+ #else
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
+index 0d5af23..c8c0f8c 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
+@@ -3,10 +3,132 @@
+ #include "fast/renderer3ds/pica_surface_debug.h"
+ #include "oot3d_native_room_shadow_shell.h"
+ 
++#if defined(__ORBIS__)
++#include "fast/backends/gfx_orbis.h"
++
++#include <atomic>
++#include <condition_variable>
++#include <mutex>
++#include <thread>
++#endif
++
+ namespace Oot3dA32Window {
+ 
+ namespace {
+ 
++#if defined(__ORBIS__)
++// PS4: the draw plans of one drain pass are independent of each other and of
++// the guest (each reads only its own submission's snapshots, and the shader
++// source cache is a memo whose identities do not depend on which cache
++// produced them). The game thread is the PS4's bottleneck, so helpers on the
++// spare cores of its cluster build plans alongside it, each with a cache of
++// its own; the game thread then consumes them in submission order exactly as
++// before (DolphinPS4 likewise moves its GPU-side work off the CPU thread).
++class PicaPlanWorkers final {
++public:
++  static constexpr size_t kHelperCount = 2;
++  // Below this a pass is cheaper to plan than to hand out.
++  static constexpr size_t kMinimumDraws = 16;
++
++  explicit PicaPlanWorkers(
++      const Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &settings) {
++    for (auto &cache : mCaches) {
++      cache.TevMode = settings.TevMode;
++      cache.UberFragments = settings.UberFragments;
++    }
++    // Never joined: the pool lives as long as the process.
++    for (size_t helper = 0; helper < kHelperCount; ++helper) {
++      std::thread([this, helper] { HelperLoop(helper); }).detach();
++    }
++  }
++
++  // plans[i] for draws[i]. On a failure, the lowest failing index and its
++  // error.
++  bool Build(std::vector<Oot3dNativeGame::Oot3dPicaDrawSubmission> &draws,
++             std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> &plans,
++             Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &ownCache,
++             std::string &error) {
++    plans.clear();
++    plans.resize(draws.size());
++    mDraws = &draws;
++    mPlans = &plans;
++    mNext.store(0, std::memory_order_relaxed);
++    mFailedIndex = SIZE_MAX;
++    {
++      std::lock_guard lock(mMutex);
++      ++mGeneration;
++      mBusy = kHelperCount;
++    }
++    mWake.notify_all();
++    Run(ownCache);
++    {
++      std::unique_lock lock(mMutex);
++      mDone.wait(lock, [&] { return mBusy == 0; });
++    }
++    if (mFailedIndex == SIZE_MAX) {
++      return true;
++    }
++    error = mFailedError;
++    return false;
++  }
++
++private:
++  void Run(Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &cache) {
++    auto &draws = *mDraws;
++    auto &plans = *mPlans;
++    for (;;) {
++      const size_t index = mNext.fetch_add(1, std::memory_order_relaxed);
++      if (index >= draws.size()) {
++        return;
++      }
++      std::string error;
++      if (!Oot3dNativeGame::BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
++              draws[index], plans[index], &error, &cache)) {
++        std::lock_guard lock(mMutex);
++        if (index < mFailedIndex) {
++          mFailedIndex = index;
++          mFailedError = std::move(error);
++        }
++      }
++    }
++  }
++
++  void HelperLoop(size_t helper) {
++    Fast::OrbisRegisterThread("pica plan");
++    uint64_t seen = 0;
++    for (;;) {
++      {
++        std::unique_lock lock(mMutex);
++        mWake.wait(lock, [&] { return mGeneration != seen; });
++        seen = mGeneration;
++      }
++      Run(mCaches[helper]);
++      bool last = false;
++      {
++        std::lock_guard lock(mMutex);
++        last = --mBusy == 0;
++      }
++      if (last) {
++        mDone.notify_one();
++      }
++    }
++  }
++
++  std::array<Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache, kHelperCount>
++      mCaches;
++  std::mutex mMutex;
++  std::condition_variable mWake;
++  std::condition_variable mDone;
++  uint64_t mGeneration = 0;
++  size_t mBusy = 0;
++  std::vector<Oot3dNativeGame::Oot3dPicaDrawSubmission> *mDraws = nullptr;
++  std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> *mPlans = nullptr;
++  std::atomic<size_t> mNext{0};
++  size_t mFailedIndex = SIZE_MAX;
++  std::string mFailedError;
++};
++#endif
++
+ uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
+   uint64_t hash = 14695981039346656037ULL;
+   for (const uint8_t byte : bytes) {
+@@ -552,6 +674,63 @@ bool NativeA32WindowSession::RunFrame() {
+   cpuPresent.Stop();
+   ++presentationFrameCount;
+   ++runFrameCount;
++#if defined(__ORBIS__)
++  // PS4: the game thread's rate and where its time goes, every five
++  // seconds - guest frames are what the player sees advance; presentations
++  // can repeat one.
++  {
++    static auto windowStart = std::chrono::steady_clock::now();
++    static uint64_t windowGuestFrames = frameCount;
++    static uint64_t windowHostFrames = runFrameCount;
++    static NativeFramePhaseTiming windowPhases = phaseTiming;
++    static uint64_t windowStarvations = audioOutputDiagnostics.StarvationObservations;
++    static uint64_t windowShortfall = audioOutputDiagnostics.EstimatedShortfallFrames;
++    static uint64_t windowDspFrames = dspStats.FramesMixed;
++    static uint64_t windowVblanks = vblankCount;
++    const auto now = std::chrono::steady_clock::now();
++    const double seconds = std::chrono::duration<double>(now - windowStart).count();
++    if (seconds >= 5.0) {
++      const double hostFrames = static_cast<double>(runFrameCount - windowHostFrames);
++      const auto ms = [&](double current, double previous) {
++        return hostFrames > 0.0 ? (current - previous) * 1000.0 / hostFrames : 0.0;
++      };
++      std::fprintf(stderr,
++                   "[triaevum] game: %.1f guest frames/s, %.1f host frames/s | per host frame ms:"
++                   " guest %.1f (pica submit %.1f, plan %.1f, backend %.1f), dsp %.1f, audio %.1f,"
++                   " input %.1f, frame start %.1f, visual %.1f, present %.1f, pacing %.1f |"
++                   " audio: %llu starvations, %llu frames short, %d buffered |"
++                   " speed: %.1f dsp frames/s (real time 204.5), %.1f vblanks/s\n",
++                   static_cast<double>(frameCount - windowGuestFrames) / seconds,
++                   hostFrames / seconds,
++                   ms(phaseTiming.GuestSeconds, windowPhases.GuestSeconds),
++                   ms(phaseTiming.PicaSubmitSeconds, windowPhases.PicaSubmitSeconds),
++                   ms(phaseTiming.PicaPlanSeconds, windowPhases.PicaPlanSeconds),
++                   ms(phaseTiming.PicaBackendSeconds, windowPhases.PicaBackendSeconds),
++                   ms(phaseTiming.DspMixSeconds, windowPhases.DspMixSeconds),
++                   ms(phaseTiming.AudioOutputSeconds, windowPhases.AudioOutputSeconds),
++                   ms(phaseTiming.InputPollSeconds, windowPhases.InputPollSeconds),
++                   ms(phaseTiming.FrameStartSeconds, windowPhases.FrameStartSeconds),
++                   ms(phaseTiming.VisualPresentationSeconds, windowPhases.VisualPresentationSeconds),
++                   ms(phaseTiming.PresentSeconds, windowPhases.PresentSeconds),
++                   ms(phaseTiming.PacingWaitSeconds, windowPhases.PacingWaitSeconds),
++                   static_cast<unsigned long long>(audioOutputDiagnostics.StarvationObservations -
++                                                   windowStarvations),
++                   static_cast<unsigned long long>(audioOutputDiagnostics.EstimatedShortfallFrames -
++                                                   windowShortfall),
++                   audioPlayer != nullptr && audioPlayer->IsInitialized() ? audioPlayer->Buffered() : -1,
++                   static_cast<double>(dspStats.FramesMixed - windowDspFrames) / seconds,
++                   static_cast<double>(vblankCount - windowVblanks) / seconds);
++      windowStart = now;
++      windowGuestFrames = frameCount;
++      windowHostFrames = runFrameCount;
++      windowPhases = phaseTiming;
++      windowStarvations = audioOutputDiagnostics.StarvationObservations;
++      windowShortfall = audioOutputDiagnostics.EstimatedShortfallFrames;
++      windowDspFrames = dspStats.FramesMixed;
++      windowVblanks = vblankCount;
++    }
++  }
++#endif
+ #if defined(__SWITCH__)
+   gSwitchRuntimeHostFrames = runFrameCount;
+   gSwitchRuntimeGuestFrames = frameCount;
+@@ -1360,6 +1539,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
+                lastSubmittedDrawId) {
+       submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
+     }
++#if defined(__ORBIS__)
++    static PicaPlanWorkers *const planWorkers =
++        new PicaPlanWorkers(shaderSourceCache);
++    static std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> prebuiltPlans;
++    const bool plansPrebuilt = draws.size() >= PicaPlanWorkers::kMinimumDraws;
++    if (plansPrebuilt) {
++      const auto planStart = std::chrono::steady_clock::now();
++      if (!planWorkers->Build(draws, prebuiltPlans, shaderSourceCache,
++                              error)) {
++        throw std::runtime_error("native PICA Vulkan plan failed: " + error);
++      }
++      phaseTiming.PicaPlanSeconds += SecondsSince(planStart);
++    }
++#endif
+     for (auto &draw : draws) {
+       while (memoryFillIndex < memoryFills.size() &&
+              memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
+@@ -1382,6 +1575,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
+           (usesCommonBackground || isOpaqueTargetInitialization);
+       Oot3dNativeGame::Oot3dPicaVulkanDrawPlan plan;
+       auto drawPhaseStart = std::chrono::steady_clock::now();
++#if defined(__ORBIS__)
++      if (plansPrebuilt) {
++        plan = std::move(prebuiltPlans[&draw - draws.data()]);
++      } else
++#endif
+       if (!Oot3dNativeGame::
+               BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
+                   draw, plan, &error, &shaderSourceCache)) {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
+index 13cbace..d06490a 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
+@@ -16,6 +16,7 @@
+ #include <cstdint>
+ #include <exception>
+ #include <span>
++#include <utility>
+ 
+ namespace Oot3dNativeGame {
+ namespace {
+@@ -263,10 +264,24 @@ bool ExecuteOot3dWholeAotFunction(
+     bool skipFirstBlockEntry, uint32_t stopPc) {
+   if (const Oot3dWholeAotProgramV2 *program = WholeAotProgram();
+       program != nullptr) {
+-    return program->Execute(pc, state, memory, result, stats, externalCall,
+-                            blockBudget, blocksConsumed, blockEntry,
+-                            blockEntryUser, blockEntryPcs, blockEntryPcCount,
+-                            blockEntryFilter, skipFirstBlockEntry, stopPc);
++    // A hook of an outer execution does not cover this one's guest code.
++    const bool outerHookActive =
++        std::exchange(gOot3dWholeAotBlockEntryHookActive, false);
++    const bool executed = program->Execute(
++        pc, state, memory, result, stats, externalCall, blockBudget,
++        blocksConsumed, blockEntry, blockEntryUser, blockEntryPcs,
++        blockEntryPcCount, blockEntryFilter, skipFirstBlockEntry, stopPc);
++    gOot3dWholeAotBlockEntryHookActive = outerHookActive;
++    if (std::exchange(gOot3dWholeAotDeferredExitPending, false) && executed &&
++        result != nullptr) {
++      // The generated code stopped at the block as at its budget; report the
++      // branch exit its catch of the observable-exit throw reports.
++      const uint32_t exitPc = gOot3dWholeAotObservableExitSnapshot.Pc;
++      Oot3dWholeAotTakeObservableExitSnapshot(exitPc, &state);
++      state.r[15] = exitPc;
++      *result = {a32::ExitKind::Branch, exitPc, a32::FallbackReason::None, 0U};
++    }
++    return executed;
+   }
+   const Oot3dDirectAotProgramV1 *program = DirectAotProgram();
+   if (program == nullptr || result == nullptr || stats == nullptr ||
+@@ -305,6 +320,12 @@ bool ExecuteOot3dWholeAotFunction(
+         Oot3dWholeAotTakeObservableExitSnapshot(exit.Pc, &observableExitState);
+     flow = Oot3dAotBranch(exit.Pc);
+   }
++  if (std::exchange(gOot3dWholeAotDeferredExitPending, false)) {
++    const uint32_t exitPc = gOot3dWholeAotObservableExitSnapshot.Pc;
++    restoreObservableExitState =
++        Oot3dWholeAotTakeObservableExitSnapshot(exitPc, &observableExitState);
++    flow = Oot3dAotBranch(exitPc);
++  }
+   if (restoreObservableExitState) {
+     state = observableExitState;
+   }
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h b/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h
+index 91cbc9b..c382581 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h
+@@ -30,6 +30,9 @@ inline constexpr uint32_t kOot3dOriginalSimulationRateHz = 30U;
+ inline constexpr int16_t kOot3dOriginalUpdateRate = 2;
+ inline constexpr uint32_t kOot3dNativeTimeUnitsPerSecond =
+     kOot3dOriginalSimulationRateHz * kOot3dOriginalUpdateRate;
++// (Not the PS4: one refresh is one 60 Hz CTR vblank, so one per 30 Hz
++// presentation ran the game at half speed - 1.17 measured 102 DSP frames/s
++// against 204.5 in real time.)
+ #if defined(__SWITCH__)
+ // A slow Switch frame must not schedule two complete CTR refresh/render
+ // passes into the following presentation. Dropping the missed refresh keeps
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_game.cpp b/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
+index e574720..e92b99d 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
+@@ -14,6 +14,9 @@
+ #if defined(__SWITCH__) || defined(__ANDROID__)
+ #include <SDL.h>
+ #endif
++#if defined(__ORBIS__)
++#include "fast/backends/gfx_orbis.h"
++#endif
+ 
+ #include "oot3d_demo_host_context.h"
+ #if defined(__ANDROID__)
+@@ -140,6 +143,11 @@ NativeGameArguments PrepareNativeGameArguments(int argc, char** argv) {
+ } // namespace
+ 
+ int main(int argc, char** argv) {
++#if defined(__ORBIS__)
++    // System modules, the boot log and the working directory (/data/triaevum:
++    // Orbis has no getcwd, so every relative path resolves through chdir).
++    Fast::OrbisProcessInit();
++#endif
+     try {
+         if (argc >= 2 && std::string_view(argv[1]) == "--prebuild-interior-sun")
+             return Oot3dNativeGame::InteriorSunToolMain(argc, argv);
+@@ -204,6 +212,44 @@ int main(int argc, char** argv) {
+             argc = static_cast<int>(homebrewArguments.size());
+             argv = homebrewArguments.data();
+         }
++#elif defined(__ORBIS__)
++        // PS4 layout (triaevum-ps4-vk docs/FASE3-PRODUTO.md): the user's own
++        // Forge-prepared game, configs and TopScreen pack under /data/triaevum
++        // (staged over FTP, never inside the PKG); resources in /app0.
++        launch.ControlConfig = Oot3dNativeGame::NativeControlPreset(
++            Oot3dNativeGame::NativeControlProfile::Controller);
++        auto homebrewArguments = std::to_array<char*>({
++            argc > 0 ? argv[0] : const_cast<char*>("eboot.bin"),
++            const_cast<char*>("--a32-process-manifest"),
++            const_cast<char*>("/data/triaevum/game/process-manifest.json"),
++            const_cast<char*>("--resource-root"),
++            const_cast<char*>("/app0/resources"),
++            const_cast<char*>("--config"),
++            const_cast<char*>("/data/triaevum/config/TriAevum.json"),
++            const_cast<char*>("--renderer"),
++            const_cast<char*>("opengl"),
++            const_cast<char*>("--save-data"),
++            const_cast<char*>("/data/triaevum/savedata"),
++            const_cast<char*>("--ui-profile"),
++            const_cast<char*>("topscreen"),
++            const_cast<char*>("--topscreen-config"),
++            const_cast<char*>("/data/triaevum/config/topscreen_ui.json"),
++            const_cast<char*>("--topscreen-texture-overrides"),
++            const_cast<char*>("/data/triaevum/mods/topscreen/atlas_overrides.o3tu"),
++            const_cast<char*>("--topscreen-link-animations"),
++            const_cast<char*>("/data/triaevum/mods/topscreen/zelda_link_ext.zar"),
++            const_cast<char*>("--controls-config"),
++            const_cast<char*>("/data/triaevum/config/oot3d_controls.json"),
++            // No --gameplay-timing/--presentation-rate: the desktop default
++            // (30 Hz simulation, interpolated presentation) lets F1's Frame
++            // rate choose 30, 60, 90 or uncapped.
++            const_cast<char*>("--width"),
++            const_cast<char*>("1920"),
++        });
++        if (argc <= 1) {
++            argc = static_cast<int>(homebrewArguments.size());
++            argv = homebrewArguments.data();
++        }
+ #else
+         preparedArguments = PrepareNativeGameArguments(argc, argv);
+         if (!preparedArguments.Pointers.empty()) {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp b/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp
+index f030a7d..2b0e543 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp
+@@ -522,6 +522,13 @@ bool ParseOot3dNativeGameArgs(int argc, char** argv, Oot3dNativeGameLaunch& laun
+         }
+     }
+ 
++#if defined(__ORBIS__)
++    if (launch.Host.Renderer == "opengl" || launch.Host.Renderer == "nri" ||
++        launch.Host.Renderer == "vulkan") {
++        // The PS4 has one backend: VideoOut + RADV (fast/backends/gfx_orbis.h).
++        launch.Host.BackendId = Fast::WindowBackend::FAST3D_ORBIS_VULKAN;
++    } else
++#endif
+     if (launch.Host.Renderer == "opengl") {
+         launch.Host.BackendId = Fast::WindowBackend::FAST3D_SDL_OPENGL;
+     } else if (launch.Host.Renderer == "nri" || launch.Host.Renderer == "vulkan") {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
+index 72e298a..066b2d0 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
+@@ -1,3 +1,6 @@
++#if defined(__ORBIS__)
++#include "fast/backends/gfx_orbis.h"
++#endif
+ #include "oot3d_native_render_command_stream.h"
+ 
+ #include <stdexcept>
+@@ -131,6 +134,9 @@ void NativeRenderCommandStream::StopWorker() {
+ }
+ 
+ void NativeRenderCommandStream::WorkerLoop() {
++#if defined(__ORBIS__)
++    Fast::OrbisRegisterThread("render");
++#endif
+     std::unique_lock lock(mMutex);
+     for (;;) {
+         mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
+index a981122..a2f3a6f 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
+@@ -128,6 +128,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
+     throw Oot3dWholeAotObservableExit{pc};
+ }
+ 
++// PS4: an observable exit requested by a block-entry hook leaves through the
++// block-limit return path instead of a C++ throw. Every generated caller
++// already returns any flow but its own return at once, so the guest stops at
++// the same block with the same state, and the host entry
++// (ExecuteOot3dWholeAotFunction) turns the exit back into the branch exit
++// the throw produced. Unwinding cost ~7% of the PS4's game thread (~740
++// exits/s, all from the widescreen projection policy). Only where the host
++// and the generated code share these thread-locals (one static image): a
++// title module of its own would not see the request.
++inline thread_local bool gOot3dWholeAotBlockEntryHookActive = false;
++inline thread_local bool gOot3dWholeAotDeferredExitPending = false;
++
++inline bool Oot3dWholeAotDeferObservableExit(
++    uint32_t pc, const oot3d::recomp::a32::GuestState& state) noexcept {
++#if defined(__ORBIS__)
++    if (gOot3dWholeAotBlockEntryHookActive) {
++        gOot3dWholeAotObservableExitSnapshot = {state, pc, true};
++        gOot3dWholeAotDeferredExitPending = true;
++        return true;
++    }
++#else
++    static_cast<void>(pc);
++    static_cast<void>(state);
++#endif
++    return false;
++}
++
+ inline bool Oot3dWholeAotTakeObservableExitSnapshot(
+     uint32_t pc, oot3d::recomp::a32::GuestState* state) noexcept {
+     auto& snapshot = gOot3dWholeAotObservableExitSnapshot;
+@@ -224,6 +251,20 @@ inline bool Oot3dAotShouldNotifyBlock(
+         context.BlockEntryPcs + context.BlockEntryPcCount, pc);
+ }
+ 
++// Runs the block-entry hook; false when it deferred an observable exit
++// (Oot3dWholeAotDeferObservableExit), which stops the block like the budget.
++inline bool Oot3dAotRunBlockEntryHook(
++    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame, uint32_t pc) {
++    struct HookScope final {
++        bool Previous = gOot3dWholeAotBlockEntryHookActive;
++        HookScope() noexcept { gOot3dWholeAotBlockEntryHookActive = true; }
++        ~HookScope() { gOot3dWholeAotBlockEntryHookActive = Previous; }
++    } scope;
++    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
++                       context.BlockEntryUser);
++    return !gOot3dWholeAotDeferredExitPending;
++}
++
+ inline bool Oot3dAotEnterBlock(
+     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
+     uint32_t pc) {
+@@ -234,9 +275,7 @@ inline bool Oot3dAotEnterBlock(
+     if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
+         return true;
+     }
+-    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
+-                       context.BlockEntryUser);
+-    return true;
++    return Oot3dAotRunBlockEntryHook(context, frame, pc);
+ }
+ 
+ inline bool Oot3dAotEnterBlock(
+@@ -250,10 +289,9 @@ inline bool Oot3dAotEnterBlock(
+         return true;
+     }
+     state.Flush(0x7FFFU, true);
+-    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
+-                       context.BlockEntryUser);
++    const bool proceed = Oot3dAotRunBlockEntryHook(context, frame, pc);
+     state.Reload(0x7FFFU, true);
+-    return true;
++    return proceed;
+ }
+ 
+ template <typename CommitState, typename ReloadState>
+@@ -270,11 +308,10 @@ inline bool Oot3dAotEnterBlock(
+     }
+     commitState();
+     state.Flush(0x7FFFU, true);
+-    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
+-                       context.BlockEntryUser);
++    const bool proceed = Oot3dAotRunBlockEntryHook(context, frame, pc);
+     state.Reload(0x7FFFU, true);
+     reloadState();
+-    return true;
++    return proceed;
+ }
+ 
+ inline Oot3dWholeAotFlow Oot3dAotCallExternal(
+diff --git a/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp b/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp
+index fb3303a..79941fb 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp
+@@ -34,7 +34,14 @@ std::string SizeText(std::uintmax_t bytes) {
+ }
+ 
+ std::string TimeText(std::filesystem::file_time_type time) {
++#if defined(TRIAEVUM_PS4_HOST)
++  // libc++ on the PS4 has no clock_cast for file_clock (its rep is
++  // __int128); translate through the two clocks' current instants.
++  const auto system = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
++      time - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
++#else
+   const auto system = std::chrono::clock_cast<std::chrono::system_clock>(time);
++#endif
+   const std::time_t seconds = std::chrono::system_clock::to_time_t(system);
+   std::tm local{};
+ #if defined(_WIN32)
+diff --git a/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp b/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp
+index 4bc9988..281f2cd 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp
+@@ -360,7 +360,16 @@ std::string SceneEnvironmentRuntime::FileStampLocked(bool night) const {
+       return exists || error ? std::string("unreadable") : std::string("-");
+     }
+     const auto time = std::filesystem::last_write_time(path, error);
++#if defined(TRIAEVUM_PS4_HOST)
++    // The file clock's rep is __int128 in the PS4's libc++, which
++    // std::to_string has no overload for: stamp in nanoseconds.
++    const long long ticks = error ? 0LL
++        : static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
++              time.time_since_epoch()).count());
++    return std::to_string(size) + ":" + std::to_string(ticks);
++#else
+     return std::to_string(size) + ":" + std::to_string(error ? 0 : time.time_since_epoch().count());
++#endif
+   };
+   auto own = stamp(ProfilePathLocked(night));
+   if (own != "-") return "scene:" + own;

@@ -1,0 +1,49 @@
+// Minimal <stop_token> for the OpenOrbis PS4 toolchain (its libc++ is LLVM 11
+// era and ships no C++20 <stop_token>).
+//
+// The TriAevum PS4 closure only reaches std::stop_token through
+// runtime/three_ds_recomp/include/fast/renderer3ds/room_shadow_shell.h, which
+// uses it exclusively as a default-constructed function parameter. The
+// renderer-side translation unit that drives stop control
+// (oot3d_native_room_shadow_shell.cpp) is NOT part of the PS4 closure, so the
+// types below only need to exist with inert, well-defined semantics.
+#ifndef TRIAEVUM_PS4_COMPAT_STOP_TOKEN
+#define TRIAEVUM_PS4_COMPAT_STOP_TOKEN
+
+#include <atomic>
+
+namespace std {
+
+class stop_token {
+public:
+    stop_token() noexcept = default;
+    stop_token(const stop_token &) noexcept = default;
+    stop_token &operator=(const stop_token &) noexcept = default;
+    ~stop_token() = default;
+    [[nodiscard]] bool stop_requested() const noexcept { return false; }
+    [[nodiscard]] bool stop_possible() const noexcept { return false; }
+
+private:
+    // Reference-type semantics are faked with an empty class: no stop_source
+    // in this closure can ever produce a request, so there is no state to
+    // share. Anything needing real stop control must not use this header.
+    void *unused_ = nullptr;
+};
+
+class stop_source {
+public:
+    stop_source() noexcept = default;
+    [[nodiscard]] stop_token get_stop_token() const noexcept { return {}; }
+    bool request_stop() noexcept { return false; }
+    [[nodiscard]] bool stop_requested() const noexcept { return false; }
+};
+
+template <class Callback>
+class stop_callback {
+public:
+    stop_callback(const stop_token &, Callback) noexcept {}
+};
+
+}  // namespace std
+
+#endif

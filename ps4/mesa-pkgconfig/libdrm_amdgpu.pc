@@ -1,0 +1,5 @@
+Name: libdrm_amdgpu
+Description: libdrm headers only (PS4 has no DRM)
+Version: 2.4.125
+Cflags: -I/home/mello/Projetos/triaevum/triaevum-ps4-vk/src/libdrm -I/home/mello/Projetos/triaevum/triaevum-ps4-vk/src/libdrm/include/drm -I/home/mello/Projetos/triaevum/triaevum-ps4-vk/src/libdrm/amdgpu
+Libs:

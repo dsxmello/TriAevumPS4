@@ -1,0 +1,27 @@
+# Only the port's own sources go in the repository. Everything below is
+# fetched, built, the user's own data or derived from the game:
+#   - the ROM, code.bin, the generated C++ (title-content/) and the title's
+#     SPIR-V never live here at all;
+#   - PGO profiles (pgo/) are measurements of the game's code;
+#   - packages (out/) embed the generated code.
+/build/
+/out/
+/pgo/
+/sdk/
+/src/
+/sysroot/
+/downloads/
+/mesa-venv/
+/refs/
+/triaevum-src.git/
+/docs/logs/
+*.pkg
+*.profraw
+*.profdata
+*.bin
+*.elf
+*.oelf
+*.self
+*.prx
+*.sprx
+*.spv

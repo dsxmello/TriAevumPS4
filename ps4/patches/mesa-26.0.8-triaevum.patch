@@ -1,0 +1,24 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -1998,6 +1998,20 @@
+ if not with_platform_windows and not dep_elf.found()
+   dep_elf = cc.find_library('elf', required : false)
+ endif
++if is_ps4
++  # The PS4 target has no libelf, and a cross build must not borrow the
++  # host's: on a build machine with libelf.so in the default search path,
++  # cc.find_library('elf') succeeds against the HOST library, ac_rtld.c
++  # compiles against host headers, and its elf_* symbols break the eboot
++  # link. The reference console builds (DolphinPS4, dusklight r25) ran on
++  # machines where libelf was not found, so RADV there uses the upstream
++  # #if !defined(USE_LIBELF) shader-upload path. Enforce that exact
++  # configuration regardless of what the build host has installed; this
++  # must come after the find_library fallback, which would overwrite it.
++  # (A not-found stub, NOT a disabler: a disabler in a dependencies list
++  # makes meson silently skip the whole target.)
++  dep_elf = dependency('', required : false)
++endif
+ if dep_elf.found()
+   pre_args += '-DUSE_LIBELF'
+ elif with_gallium_radeonsi
