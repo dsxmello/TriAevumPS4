@@ -20,6 +20,9 @@
 #include "fast/backends/gfx_window_manager_api.h"
 
 #include "fast/Fast3dGui.h"
+#if defined(__ORBIS__)
+#include "fast/backends/gfx_orbis.h"
+#endif
 
 #include <fstream>
 #include <stdexcept>
@@ -45,7 +48,12 @@ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastM
         AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_METAL);
     }
 #endif
+#if defined(__ORBIS__)
+    // The PS4 has no SDL video/OpenGL: VideoOut + the port's Vulkan backend.
+    AddAvailableWindowBackend(WindowBackend::FAST3D_ORBIS_VULKAN);
+#else
     AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_OPENGL);
+#endif
 }
 
 Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui)
@@ -178,6 +186,12 @@ void Fast3dWindow::InitWindowManager() {
             mWindowManagerApi = new GfxWindowBackendSDL2();
             mRenderingApi =
                 new GfxRenderingAPIVulkan(static_cast<GfxWindowBackendSDL2*>(mWindowManagerApi));
+            break;
+#endif
+#if defined(__ORBIS__)
+        case WindowBackend::FAST3D_ORBIS_VULKAN:
+            mWindowManagerApi = CreateOrbisWindowBackend();
+            mRenderingApi = CreateOrbisRenderingApi();
             break;
 #endif
         default:
@@ -516,6 +530,8 @@ std::string Fast3dWindow::GetWindowBackendName() {
             return "Metal";
         case WindowBackend::FAST3D_SDL_OOT3D_VULKAN:
             return "Vulkan (OOT3D)";
+        case WindowBackend::FAST3D_ORBIS_VULKAN:
+            return "Vulkan (PS4)";
         default:
             return "";
     }

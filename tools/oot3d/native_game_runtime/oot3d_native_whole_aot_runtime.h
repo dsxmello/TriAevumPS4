@@ -128,6 +128,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
     throw Oot3dWholeAotObservableExit{pc};
 }
 
+// PS4: an observable exit requested by a block-entry hook leaves through the
+// block-limit return path instead of a C++ throw. Every generated caller
+// already returns any flow but its own return at once, so the guest stops at
+// the same block with the same state, and the host entry
+// (ExecuteOot3dWholeAotFunction) turns the exit back into the branch exit
+// the throw produced. Unwinding cost ~7% of the PS4's game thread (~740
+// exits/s, all from the widescreen projection policy). Only where the host
+// and the generated code share these thread-locals (one static image): a
+// title module of its own would not see the request.
+inline thread_local bool gOot3dWholeAotBlockEntryHookActive = false;
+inline thread_local bool gOot3dWholeAotDeferredExitPending = false;
+
+inline bool Oot3dWholeAotDeferObservableExit(
+    uint32_t pc, const oot3d::recomp::a32::GuestState& state) noexcept {
+#if defined(__ORBIS__)
+    if (gOot3dWholeAotBlockEntryHookActive) {
+        gOot3dWholeAotObservableExitSnapshot = {state, pc, true};
+        gOot3dWholeAotDeferredExitPending = true;
+        return true;
+    }
+#else
+    static_cast<void>(pc);
+    static_cast<void>(state);
+#endif
+    return false;
+}
+
 inline bool Oot3dWholeAotTakeObservableExitSnapshot(
     uint32_t pc, oot3d::recomp::a32::GuestState* state) noexcept {
     auto& snapshot = gOot3dWholeAotObservableExitSnapshot;
@@ -224,6 +251,20 @@ inline bool Oot3dAotShouldNotifyBlock(
         context.BlockEntryPcs + context.BlockEntryPcCount, pc);
 }
 
+// Runs the block-entry hook; false when it deferred an observable exit
+// (Oot3dWholeAotDeferObservableExit), which stops the block like the budget.
+inline bool Oot3dAotRunBlockEntryHook(
+    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame, uint32_t pc) {
+    struct HookScope final {
+        bool Previous = gOot3dWholeAotBlockEntryHookActive;
+        HookScope() noexcept { gOot3dWholeAotBlockEntryHookActive = true; }
+        ~HookScope() { gOot3dWholeAotBlockEntryHookActive = Previous; }
+    } scope;
+    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
+                       context.BlockEntryUser);
+    return !gOot3dWholeAotDeferredExitPending;
+}
+
 inline bool Oot3dAotEnterBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
     uint32_t pc) {
@@ -234,9 +275,7 @@ inline bool Oot3dAotEnterBlock(
     if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
         return true;
     }
-    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
-                       context.BlockEntryUser);
-    return true;
+    return Oot3dAotRunBlockEntryHook(context, frame, pc);
 }
 
 inline bool Oot3dAotEnterBlock(
@@ -250,10 +289,9 @@ inline bool Oot3dAotEnterBlock(
         return true;
     }
     state.Flush(0x7FFFU, true);
-    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
-                       context.BlockEntryUser);
+    const bool proceed = Oot3dAotRunBlockEntryHook(context, frame, pc);
     state.Reload(0x7FFFU, true);
-    return true;
+    return proceed;
 }
 
 template <typename CommitState, typename ReloadState>
@@ -270,11 +308,10 @@ inline bool Oot3dAotEnterBlock(
     }
     commitState();
     state.Flush(0x7FFFU, true);
-    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
-                       context.BlockEntryUser);
+    const bool proceed = Oot3dAotRunBlockEntryHook(context, frame, pc);
     state.Reload(0x7FFFU, true);
     reloadState();
-    return true;
+    return proceed;
 }
 
 inline Oot3dWholeAotFlow Oot3dAotCallExternal(

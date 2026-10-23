@@ -360,7 +360,16 @@ std::string SceneEnvironmentRuntime::FileStampLocked(bool night) const {
       return exists || error ? std::string("unreadable") : std::string("-");
     }
     const auto time = std::filesystem::last_write_time(path, error);
+#if defined(TRIAEVUM_PS4_HOST)
+    // The file clock's rep is __int128 in the PS4's libc++, which
+    // std::to_string has no overload for: stamp in nanoseconds.
+    const long long ticks = error ? 0LL
+        : static_cast<long long>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+              time.time_since_epoch()).count());
+    return std::to_string(size) + ":" + std::to_string(ticks);
+#else
     return std::to_string(size) + ":" + std::to_string(error ? 0 : time.time_since_epoch().count());
+#endif
   };
   auto own = stamp(ProfilePathLocked(night));
   if (own != "-") return "scene:" + own;

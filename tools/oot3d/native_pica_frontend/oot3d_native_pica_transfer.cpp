@@ -215,25 +215,57 @@ bool ExecuteOot3dPicaTextureCopy(
     }
     // Validate all ranges before mutation; keep destination gaps untouched.
     // Source bytes are snapshotted before writes so aliases cannot invalidate
-    // the storage used by this portable copy implementation.
-    std::vector<uint8_t> source(plan.Size);
-    size_t offset = 0;
-    for (const auto& span : plan.Spans) {
-        if (!memory.ReadBytes(span.InputAddress,
-                              std::span<uint8_t>(source).subspan(offset, span.Size))) {
-            SetError(error, "PICA texture copy source read failed");
-            return false;
+    // the storage used by this portable copy implementation. Heap-clear
+    // scale copies (console evidence: a deterministic 173 MiB plan at the
+    // title transition) copy through a bounded-chunk path instead, because
+    // materializing the whole range killed the PS4 frame loop.
+    constexpr size_t kSnapshotMaximumBytes = 16U << 20U;
+    if (plan.Size <= kSnapshotMaximumBytes) {
+        std::vector<uint8_t> source(plan.Size);
+        size_t offset = 0;
+        for (const auto& span : plan.Spans) {
+            if (!memory.ReadBytes(
+                    span.InputAddress,
+                    std::span<uint8_t>(source).subspan(offset, span.Size))) {
+                SetError(error, "PICA texture copy source read failed");
+                return false;
+            }
+            offset += span.Size;
         }
-        offset += span.Size;
+        offset = 0;
+        for (const auto& span : plan.Spans) {
+            if (!memory.WriteBytes(
+                    span.OutputAddress,
+                    std::span<const uint8_t>(source).subspan(offset,
+                                                             span.Size))) {
+                SetError(error, "PICA texture copy destination write failed");
+                return false;
+            }
+            offset += span.Size;
+        }
+        return true;
     }
-    offset = 0;
+    // Every span range is validated above. Copy span by span through a
+    // bounded chunk: cross-span input/output aliasing is not preserved in
+    // this mode (the bounded snapshot preserves it), but no known title
+    // aliases spans at heap-clear scale, and the alternative is a fatal
+    // bad_alloc on the PS4.
+    constexpr size_t kCopyChunkBytes = 0x40000U; // 256 KiB
+    std::vector<uint8_t> chunk(kCopyChunkBytes);
     for (const auto& span : plan.Spans) {
-        if (!memory.WriteBytes(span.OutputAddress,
-                               std::span<const uint8_t>(source).subspan(offset, span.Size))) {
-            SetError(error, "PICA texture copy destination write failed");
-            return false;
+        for (size_t offset = 0U; offset < span.Size;
+             offset += kCopyChunkBytes) {
+            const size_t slice = std::min(span.Size - offset, kCopyChunkBytes);
+            if (!memory.ReadBytes(
+                    span.InputAddress + static_cast<uint32_t>(offset),
+                    std::span<uint8_t>(chunk).first(slice)) ||
+                !memory.WriteBytes(
+                    span.OutputAddress + static_cast<uint32_t>(offset),
+                    std::span<const uint8_t>(chunk).first(slice))) {
+                SetError(error, "PICA texture copy chunk transfer failed");
+                return false;
+            }
         }
-        offset += span.Size;
     }
     return true;
 }
@@ -263,11 +295,27 @@ bool ExecuteOot3dPicaMemoryFill(const Oot3dPicaMemoryFill& fill,
         static_cast<uint8_t>(fill.Value >> 8U),
         static_cast<uint8_t>(fill.Value >> 16U),
         static_cast<uint8_t>(fill.Value >> 24U)};
-    std::vector<uint8_t> bytes(size);
-    for (size_t offset = 0; offset < bytes.size(); ++offset) {
-        bytes[offset] = value[offset % elementSize];
+    // Fill through a bounded pattern chunk instead of materializing the
+    // whole range: games legitimately clear large heap spans (a title
+    // transition fill of ~173 MiB exceeded the PS4 heap and killed the
+    // frame loop), and an unwritable range must always surface as the
+    // range error rather than as a failed allocation. The written bytes
+    // are identical to the previous whole-range buffer.
+    constexpr size_t kFillChunkBytes = 0x40000U; // 256 KiB
+    std::vector<uint8_t> chunk(std::min(size, kFillChunkBytes));
+    for (size_t index = 0; index < chunk.size(); ++index) {
+        chunk[index] = value[index % elementSize];
     }
-    return memory.WriteBytes(fill.StartAddress, bytes);
+    for (size_t offset = 0U; offset < size; offset += chunk.size()) {
+        const size_t slice = std::min(size - offset, chunk.size());
+        if (!memory.WriteBytes(
+                fill.StartAddress + static_cast<uint32_t>(offset),
+                std::span<const uint8_t>(chunk).first(slice))) {
+            SetError(error, "PICA memory fill write failed");
+            return false;
+        }
+    }
+    return true;
 }
 
 bool ExecuteOot3dPicaDisplayTransfer(

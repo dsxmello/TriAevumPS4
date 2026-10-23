@@ -16,8 +16,17 @@ namespace Oot3dNativeGame {
 namespace {
 
 using RuntimeProfileClock = std::chrono::steady_clock;
+// Snapshot cache bounds. On PS4 the Jaguar-era homebrew heap needs headroom
+// for the title's deterministic 173 MiB svcControlMemory commit (the game's
+// heap budget) during scene transitions, so the caches stay far smaller than
+// the desktop limits; both remain LRU-evicted.
+#if defined(TRIAEVUM_PS4_HOST)
+constexpr size_t kGeometrySnapshotCacheLimit = 512U;
+constexpr size_t kMaximumTextureSnapshotCacheEntries = 4096U;
+#else
 constexpr size_t kGeometrySnapshotCacheLimit = 4096U;
 constexpr size_t kMaximumTextureSnapshotCacheEntries = 65536U;
+#endif
 constexpr size_t kMaximumSnapshotResourceBytes = 64U << 20U;
 // Bound the persisted raw-copy ownership ledger. Producers accumulate only
 // until a newer copy takes their bytes back, so the live count tracks distinct
@@ -281,6 +290,25 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
     Oot3dPicaResourceKind kind, uint8_t slot, uint32_t physicalAddress,
     uint32_t firstElement, size_t byteCount,
     Oot3dPicaResourceSnapshot &resource, std::string *error) {
+#if defined(TRIAEVUM_PS4_HOST)
+  // PS4: a draw with garbage vertex/index data at the title transition
+  // computed a ~173 MiB capture (elementCount x stride spanning nearly the
+  // whole linear-heap region), which the console heap refuses and which
+  // killed run_frame permanently (console evidence, PKG 0.10: exactly one
+  // failed allocation of 181534720 bytes, live heap 271 MiB at the time).
+  // Real hardware would render garbage and continue; return an empty
+  // snapshot for oversized ranges so the draw survives with that resource
+  // unbound instead of faulting the frame loop.
+  constexpr size_t kPs4MaximumGeometrySnapshotBytes = 16U << 20U;
+  if (byteCount > kPs4MaximumGeometrySnapshotBytes) {
+    resource = Oot3dPicaResourceSnapshot{};
+    resource.Kind = kind;
+    resource.Slot = slot;
+    resource.PhysicalAddress = physicalAddress;
+    resource.FirstElement = firstElement;
+    return true;
+  }
+#endif
   const auto source = mMemory.View(physicalAddress, byteCount);
   if (!source.has_value()) {
     SetError(error, kind == Oot3dPicaResourceKind::IndexBuffer

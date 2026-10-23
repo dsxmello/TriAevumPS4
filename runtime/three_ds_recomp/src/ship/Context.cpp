@@ -466,6 +466,9 @@ std::string Context::GetShortName() const {
 }
 
 std::string Context::GetAppBundlePath() {
+#if defined(__ORBIS__)
+    return "/app0"; // the PKG's read-only mount
+#endif
 #if defined(__ANDROID__)
     const char* externaldir = SDL_AndroidGetExternalStoragePath();
     if (externaldir != NULL) {
@@ -529,6 +532,9 @@ std::string Context::GetAppBundlePath() {
 }
 
 std::string Context::GetAppDirectoryPath(const std::string& appName) {
+#if defined(__ORBIS__)
+    return "/data/triaevum"; // writable user data (no getcwd on Orbis)
+#endif
 #if defined(__ANDROID__)
     const char* externaldir = SDL_AndroidGetExternalStoragePath();
     if (externaldir != NULL) {

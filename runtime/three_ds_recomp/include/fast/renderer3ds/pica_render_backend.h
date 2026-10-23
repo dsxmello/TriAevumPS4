@@ -9,6 +9,7 @@
 #include "fast/renderer3ds/pica_texture_copy_plan.h"
 #include "fast/renderer3ds/pica_vertex_artifact.h"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -20,6 +21,18 @@
 #include <vector>
 
 namespace Fast::Renderer3ds {
+
+// Optional inputs for backends that evaluate the PICA vertex program on
+// the CPU instead of compiling the generated GLSL (the PS4 path: Piglet's
+// shader compiler exhausts the system's internal memory pool on the
+// generated ~24 KB vertex programs - console evidence 0.18-0.25). All
+// fields default empty/false; a backend that ignores them compiles the
+// generated sources as before.
+struct PicaVertexOutputSemantic {
+    uint8_t present = 0;
+    uint8_t outRegister = 0;
+    uint8_t component = 0;
+};
 
 struct PicaDrawView {
     uint64_t SubmissionId = 0;
@@ -105,6 +118,13 @@ struct PicaDrawView {
     // Explicit producer proof of a stationary world surface. Unknown/moving
     // draws must not inherit camera-only history after a correspondence miss.
     bool TemporalCameraOnly = false;
+    // CPU-vertex evaluation inputs (see PicaVertexOutputSemantic above).
+    // Empty program span = compile the generated VertexShaderSource.
+    std::span<const uint32_t> VertexProgramWords;
+    std::span<const uint32_t> VertexSwizzleWords;
+    std::array<PicaVertexOutputSemantic, 24> VertexOutputSemantics;
+    uint16_t VertexMainOffset = 0;
+    bool VertexFlipViewport = false;
 };
 
 // Projects the full transient draw facade into the compact ordered metadata
@@ -127,10 +147,17 @@ BuildPicaCompositionDrawReference(const PicaDrawView& draw) noexcept {
     };
 }
 
+// Optional inputs for backends that evaluate the PICA vertex program on
+// the CPU instead of compiling the generated GLSL (the PS4 path: Piglet's
+// shader compiler exhausts the system's internal memory pool on the
+// generated ~24 KB vertex programs - console evidence 0.18-0.25). All
+// fields default empty/false; a backend that ignores them compiles the
+// generated sources as before.
 enum class PicaPresentationMode : uint8_t {
     Replace,
     AlphaOverlay,
 };
+
 
 struct PicaDisplayTransferView {
     uint64_t CompletionId = 0;

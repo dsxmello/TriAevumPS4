@@ -114,6 +114,17 @@ struct Oot3dPicaVulkanDrawPlan {
     uint64_t GeometryIdentity = 0;
     uint64_t GeometryContentVersion = 0;
     bool GeometryIdentityAvailable = false;
+    // CPU-vertex evaluation inputs (PS4 path): the raw PICA vertex program
+    // words + swizzles (copied out of the submission packet so the view can
+    // outlive it), the program's main offset and the output semantic table
+    // (identical computation to the shader generator's, which remains the
+    // rendering source of truth for the compiled path).
+    std::vector<uint32_t> VertexProgramWords;
+    std::vector<uint32_t> VertexSwizzleWords;
+    std::array<Oot3d::Renderer::PicaVertexOutputSemantic, 24>
+        VertexOutputSemantics{};
+    uint16_t VertexMainOffset = 0;
+    bool VertexFlipViewport = false;
 
     [[nodiscard]]
 

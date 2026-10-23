@@ -1,3 +1,6 @@
+#if defined(__ORBIS__)
+#include "fast/backends/gfx_orbis.h"
+#endif
 #include "oot3d_native_render_command_stream.h"
 
 #include <stdexcept>
@@ -131,6 +134,9 @@ void NativeRenderCommandStream::StopWorker() {
 }
 
 void NativeRenderCommandStream::WorkerLoop() {
+#if defined(__ORBIS__)
+    Fast::OrbisRegisterThread("render");
+#endif
     std::unique_lock lock(mMutex);
     for (;;) {
         mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });

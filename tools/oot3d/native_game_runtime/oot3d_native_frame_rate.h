@@ -30,6 +30,9 @@ inline constexpr uint32_t kOot3dOriginalSimulationRateHz = 30U;
 inline constexpr int16_t kOot3dOriginalUpdateRate = 2;
 inline constexpr uint32_t kOot3dNativeTimeUnitsPerSecond =
     kOot3dOriginalSimulationRateHz * kOot3dOriginalUpdateRate;
+// (Not the PS4: one refresh is one 60 Hz CTR vblank, so one per 30 Hz
+// presentation ran the game at half speed - 1.17 measured 102 DSP frames/s
+// against 204.5 in real time.)
 #if defined(__SWITCH__)
 // A slow Switch frame must not schedule two complete CTR refresh/render
 // passes into the following presentation. Dropping the missed refresh keeps

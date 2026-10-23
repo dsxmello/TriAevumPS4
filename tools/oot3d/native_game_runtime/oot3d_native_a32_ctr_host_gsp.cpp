@@ -1,6 +1,9 @@
 // CTR host services: the gsp::Gpu session.
 #include "oot3d_native_a32_ctr_host_internal.h"
 
+#include <memory>
+#include <span>
+
 namespace Oot3dNativeGame {
 
 // SendSyncRequest on a client session of gsp::Gpu.
@@ -313,10 +316,36 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
                     const uint32_t source = packet.Parameters[0];
                     const uint32_t destination = packet.Parameters[1];
                     const uint32_t size = packet.Parameters[2];
-                    std::vector<uint8_t> dmaBytes(size);
-                    submitted =
-                        memory.ReadBytes(source, dmaBytes) &&
-                        memory.WriteBytes(destination, dmaBytes);
+                    // Copy in bounded chunks. The request's size field comes
+                    // straight from guest memory, and a bogus value must fail
+                    // with the range error instead of first speculating the
+                    // whole allocation: on the PS4 a deterministic 173 MiB
+                    // request at the title transition exhausted the heap and
+                    // killed the frame loop (console evidence, PKG 0.10/0.11:
+                    // one failed allocation of 181534720 bytes). Behavior for
+                    // every well-formed request is byte-identical.
+                    constexpr uint32_t kDmaChunkBytes = 0x40000U; // 256 KiB
+                    // One buffer for every request: a fresh vector zeroed
+                    // all 256 KiB for each DMA, however small (on the PS4
+                    // the PGO profile's top memset).
+                    static thread_local const std::unique_ptr<uint8_t[]> dmaBuffer(
+                        new uint8_t[kDmaChunkBytes]);
+                    const std::span<uint8_t> dmaChunk(dmaBuffer.get(), kDmaChunkBytes);
+                    submitted = size != 0U;
+                    for (uint32_t offset = 0U; offset < size && submitted;
+                         offset += kDmaChunkBytes) {
+                        const uint32_t slice =
+                            size - offset < kDmaChunkBytes
+                                ? size - offset
+                                : kDmaChunkBytes;
+                        submitted =
+                            memory.ReadBytes(
+                                source + offset,
+                                dmaChunk.first(slice)) &&
+                            memory.WriteBytes(
+                                destination + offset,
+                                std::span<const uint8_t>(dmaChunk.first(slice)));
+                    }
                     if (submitted) {
                         submitted = QueueGspInterrupt(
                             memory, static_cast<uint8_t>(

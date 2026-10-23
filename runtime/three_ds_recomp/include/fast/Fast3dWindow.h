@@ -27,6 +27,7 @@ enum WindowBackend {
     FAST3D_SDL_OPENGL = 2,
     FAST3D_SDL_METAL = 3,
     FAST3D_SDL_OOT3D_VULKAN = 4,
+    FAST3D_ORBIS_VULKAN = 5, ///< PS4: VideoOut + RADV on GNM (fast/backends/gfx_orbis.h)
 };
 
 class Fast3dWindow : public Ship::Window {

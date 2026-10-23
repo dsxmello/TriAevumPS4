@@ -289,6 +289,11 @@ bool WithOot3dPicaVulkanDrawView(
     // Immutable title-owned family: the backend selects the effective program
     // after applying typed instrumentation, never by a scene/material identity.
     draw.VertexArtifacts = TitleVertexArtifacts();
+    draw.VertexProgramWords = plan.VertexProgramWords;
+    draw.VertexSwizzleWords = plan.VertexSwizzleWords;
+    draw.VertexOutputSemantics = plan.VertexOutputSemantics;
+    draw.VertexMainOffset = plan.VertexMainOffset;
+    draw.VertexFlipViewport = plan.VertexFlipViewport;
     draw.FragmentShaderSourceIdentity =
         plan.FragmentShader.SourceIdentity;
     if (plan.VertexShader.TemporalProgram != nullptr) {

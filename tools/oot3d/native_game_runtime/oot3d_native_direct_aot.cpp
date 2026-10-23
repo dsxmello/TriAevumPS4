@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <exception>
 #include <span>
+#include <utility>
 
 namespace Oot3dNativeGame {
 namespace {
@@ -263,10 +264,24 @@ bool ExecuteOot3dWholeAotFunction(
     bool skipFirstBlockEntry, uint32_t stopPc) {
   if (const Oot3dWholeAotProgramV2 *program = WholeAotProgram();
       program != nullptr) {
-    return program->Execute(pc, state, memory, result, stats, externalCall,
-                            blockBudget, blocksConsumed, blockEntry,
-                            blockEntryUser, blockEntryPcs, blockEntryPcCount,
-                            blockEntryFilter, skipFirstBlockEntry, stopPc);
+    // A hook of an outer execution does not cover this one's guest code.
+    const bool outerHookActive =
+        std::exchange(gOot3dWholeAotBlockEntryHookActive, false);
+    const bool executed = program->Execute(
+        pc, state, memory, result, stats, externalCall, blockBudget,
+        blocksConsumed, blockEntry, blockEntryUser, blockEntryPcs,
+        blockEntryPcCount, blockEntryFilter, skipFirstBlockEntry, stopPc);
+    gOot3dWholeAotBlockEntryHookActive = outerHookActive;
+    if (std::exchange(gOot3dWholeAotDeferredExitPending, false) && executed &&
+        result != nullptr) {
+      // The generated code stopped at the block as at its budget; report the
+      // branch exit its catch of the observable-exit throw reports.
+      const uint32_t exitPc = gOot3dWholeAotObservableExitSnapshot.Pc;
+      Oot3dWholeAotTakeObservableExitSnapshot(exitPc, &state);
+      state.r[15] = exitPc;
+      *result = {a32::ExitKind::Branch, exitPc, a32::FallbackReason::None, 0U};
+    }
+    return executed;
   }
   const Oot3dDirectAotProgramV1 *program = DirectAotProgram();
   if (program == nullptr || result == nullptr || stats == nullptr ||
@@ -304,6 +319,12 @@ bool ExecuteOot3dWholeAotFunction(
     restoreObservableExitState =
         Oot3dWholeAotTakeObservableExitSnapshot(exit.Pc, &observableExitState);
     flow = Oot3dAotBranch(exit.Pc);
+  }
+  if (std::exchange(gOot3dWholeAotDeferredExitPending, false)) {
+    const uint32_t exitPc = gOot3dWholeAotObservableExitSnapshot.Pc;
+    restoreObservableExitState =
+        Oot3dWholeAotTakeObservableExitSnapshot(exitPc, &observableExitState);
+    flow = Oot3dAotBranch(exitPc);
   }
   if (restoreObservableExitState) {
     state = observableExitState;

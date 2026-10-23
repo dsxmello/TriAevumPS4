@@ -14,6 +14,9 @@
 #if defined(__SWITCH__) || defined(__ANDROID__)
 #include <SDL.h>
 #endif
+#if defined(__ORBIS__)
+#include "fast/backends/gfx_orbis.h"
+#endif
 
 #include "oot3d_demo_host_context.h"
 #if defined(__ANDROID__)
@@ -140,6 +143,11 @@ NativeGameArguments PrepareNativeGameArguments(int argc, char** argv) {
 } // namespace
 
 int main(int argc, char** argv) {
+#if defined(__ORBIS__)
+    // System modules, the boot log and the working directory (/data/triaevum:
+    // Orbis has no getcwd, so every relative path resolves through chdir).
+    Fast::OrbisProcessInit();
+#endif
     try {
         if (argc >= 2 && std::string_view(argv[1]) == "--prebuild-interior-sun")
             return Oot3dNativeGame::InteriorSunToolMain(argc, argv);
@@ -200,6 +208,44 @@ int main(int argc, char** argv) {
             const_cast<char*>("--presentation-rate"),
             const_cast<char*>("30"),
         };
+        if (argc <= 1) {
+            argc = static_cast<int>(homebrewArguments.size());
+            argv = homebrewArguments.data();
+        }
+#elif defined(__ORBIS__)
+        // PS4 layout (triaevum-ps4-vk docs/FASE3-PRODUTO.md): the user's own
+        // Forge-prepared game, configs and TopScreen pack under /data/triaevum
+        // (staged over FTP, never inside the PKG); resources in /app0.
+        launch.ControlConfig = Oot3dNativeGame::NativeControlPreset(
+            Oot3dNativeGame::NativeControlProfile::Controller);
+        auto homebrewArguments = std::to_array<char*>({
+            argc > 0 ? argv[0] : const_cast<char*>("eboot.bin"),
+            const_cast<char*>("--a32-process-manifest"),
+            const_cast<char*>("/data/triaevum/game/process-manifest.json"),
+            const_cast<char*>("--resource-root"),
+            const_cast<char*>("/app0/resources"),
+            const_cast<char*>("--config"),
+            const_cast<char*>("/data/triaevum/config/TriAevum.json"),
+            const_cast<char*>("--renderer"),
+            const_cast<char*>("opengl"),
+            const_cast<char*>("--save-data"),
+            const_cast<char*>("/data/triaevum/savedata"),
+            const_cast<char*>("--ui-profile"),
+            const_cast<char*>("topscreen"),
+            const_cast<char*>("--topscreen-config"),
+            const_cast<char*>("/data/triaevum/config/topscreen_ui.json"),
+            const_cast<char*>("--topscreen-texture-overrides"),
+            const_cast<char*>("/data/triaevum/mods/topscreen/atlas_overrides.o3tu"),
+            const_cast<char*>("--topscreen-link-animations"),
+            const_cast<char*>("/data/triaevum/mods/topscreen/zelda_link_ext.zar"),
+            const_cast<char*>("--controls-config"),
+            const_cast<char*>("/data/triaevum/config/oot3d_controls.json"),
+            // No --gameplay-timing/--presentation-rate: the desktop default
+            // (30 Hz simulation, interpolated presentation) lets F1's Frame
+            // rate choose 30, 60, 90 or uncapped.
+            const_cast<char*>("--width"),
+            const_cast<char*>("1920"),
+        });
         if (argc <= 1) {
             argc = static_cast<int>(homebrewArguments.size());
             argv = homebrewArguments.data();

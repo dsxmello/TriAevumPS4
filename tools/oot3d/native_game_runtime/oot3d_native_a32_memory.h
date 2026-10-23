@@ -19,6 +19,14 @@
 
 #include <nlohmann/json_fwd.hpp>
 
+#if defined(__ORBIS__)
+#define OOT3D_MEMORY_FAST_PATH inline __attribute__((always_inline))
+#define OOT3D_MEMORY_SLOW_PATH __attribute__((noinline))
+#else
+#define OOT3D_MEMORY_FAST_PATH
+#define OOT3D_MEMORY_SLOW_PATH
+#endif
+
 namespace Oot3dNativeGame {
 
 struct NativeA32MemoryRegionConfig {
@@ -160,10 +168,13 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
 
     // AOT code uses these non-virtual typed paths. Fully mapped guest pages
     // become one indexed host load; boundaries and protected pages preserve
-    // the exact checked-memory behavior.
+    // the exact checked-memory behavior. On the PS4 the fast path is forced
+    // inline into the generated code (out of line, every guest load and
+    // store was a call returning through memory: ~17% of the game thread);
+    // the rare paths stay calls.
     template <typename T>
-    bool ReadFast(uint32_t address, T* value,
-                  uint32_t* faultAddress = nullptr) const noexcept {
+    OOT3D_MEMORY_FAST_PATH bool ReadFast(uint32_t address, T* value,
+                                         uint32_t* faultAddress = nullptr) const noexcept {
         static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>);
         static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 ||
                       sizeof(T) == 8);
@@ -180,19 +191,18 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
             if (source != nullptr) {
                 std::memcpy(value, source + offset, sizeof(T));
                 if (mTraceWriteFingerprint) [[unlikely]] {
-                    uint64_t checked = 0;
-                    if (ReadSized(address, static_cast<uint8_t>(sizeof(T)),
-                                  &checked, nullptr) &&
-                        *value != static_cast<T>(checked)) {
-                        ++mFastReadMismatchCount;
-                        mLastFastReadMismatchAddress = address;
-                        mLastFastReadMismatchValue = *value;
-                        mLastCheckedReadMismatchValue = checked;
-                    }
+                    CheckTracedFastRead(address, static_cast<uint8_t>(sizeof(T)),
+                                        static_cast<uint64_t>(*value));
                 }
                 return true;
             }
         }
+        return ReadFastChecked(address, value, faultAddress);
+    }
+
+    template <typename T>
+    OOT3D_MEMORY_SLOW_PATH bool ReadFastChecked(uint32_t address, T* value,
+                                                uint32_t* faultAddress) const noexcept {
         uint64_t decoded = 0;
         if (!ReadSized(address, static_cast<uint8_t>(sizeof(T)), &decoded,
                        faultAddress)) {
@@ -202,9 +212,21 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
         return true;
     }
 
+    OOT3D_MEMORY_SLOW_PATH void CheckTracedFastRead(uint32_t address, uint8_t size,
+                                                    uint64_t value) const noexcept {
+        uint64_t checked = 0;
+        const uint64_t mask = size == 8U ? ~0ULL : ((1ULL << (size * 8U)) - 1U);
+        if (ReadSized(address, size, &checked, nullptr) && value != (checked & mask)) {
+            ++mFastReadMismatchCount;
+            mLastFastReadMismatchAddress = address;
+            mLastFastReadMismatchValue = value;
+            mLastCheckedReadMismatchValue = checked;
+        }
+    }
+
     template <typename T>
-    bool WriteFast(uint32_t address, T value,
-                   uint32_t* faultAddress = nullptr) noexcept {
+    OOT3D_MEMORY_FAST_PATH bool WriteFast(uint32_t address, T value,
+                                          uint32_t* faultAddress = nullptr) noexcept {
         static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>);
         static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 ||
                       sizeof(T) == 8);
@@ -231,6 +253,12 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
                 return true;
             }
         }
+        return WriteFastChecked(address, value, faultAddress);
+    }
+
+    template <typename T>
+    OOT3D_MEMORY_SLOW_PATH bool WriteFastChecked(uint32_t address, T value,
+                                                 uint32_t* faultAddress) noexcept {
         return WriteSized(address, static_cast<uint8_t>(sizeof(T)), value,
                           faultAddress);
     }

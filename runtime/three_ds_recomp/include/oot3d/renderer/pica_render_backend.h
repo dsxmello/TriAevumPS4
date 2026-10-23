@@ -50,6 +50,7 @@ using ::Fast::Renderer3ds::PicaCompositionTargetReference;
 
 using ::Fast::Renderer3ds::PicaDisplayImageColorSnapshot;
 using ::Fast::Renderer3ds::PicaDisplayTransferView;
+using ::Fast::Renderer3ds::PicaVertexOutputSemantic;
 using ::Fast::Renderer3ds::PicaDrawView;
 using ::Fast::Renderer3ds::PicaMemoryFillView;
 using ::Fast::Renderer3ds::PicaPresentationMode;

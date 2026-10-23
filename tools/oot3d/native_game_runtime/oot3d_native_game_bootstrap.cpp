@@ -522,6 +522,13 @@ bool ParseOot3dNativeGameArgs(int argc, char** argv, Oot3dNativeGameLaunch& laun
         }
     }
 
+#if defined(__ORBIS__)
+    if (launch.Host.Renderer == "opengl" || launch.Host.Renderer == "nri" ||
+        launch.Host.Renderer == "vulkan") {
+        // The PS4 has one backend: VideoOut + RADV (fast/backends/gfx_orbis.h).
+        launch.Host.BackendId = Fast::WindowBackend::FAST3D_ORBIS_VULKAN;
+    } else
+#endif
     if (launch.Host.Renderer == "opengl") {
         launch.Host.BackendId = Fast::WindowBackend::FAST3D_SDL_OPENGL;
     } else if (launch.Host.Renderer == "nri" || launch.Host.Renderer == "vulkan") {

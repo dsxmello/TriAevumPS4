@@ -3,9 +3,131 @@
 #include "fast/renderer3ds/pica_surface_debug.h"
 #include "oot3d_native_room_shadow_shell.h"
 
+#if defined(__ORBIS__)
+#include "fast/backends/gfx_orbis.h"
+
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#endif
+
 namespace Oot3dA32Window {
 
 namespace {
+
+#if defined(__ORBIS__)
+// PS4: the draw plans of one drain pass are independent of each other and of
+// the guest (each reads only its own submission's snapshots, and the shader
+// source cache is a memo whose identities do not depend on which cache
+// produced them). The game thread is the PS4's bottleneck, so helpers on the
+// spare cores of its cluster build plans alongside it, each with a cache of
+// its own; the game thread then consumes them in submission order exactly as
+// before (DolphinPS4 likewise moves its GPU-side work off the CPU thread).
+class PicaPlanWorkers final {
+public:
+  static constexpr size_t kHelperCount = 2;
+  // Below this a pass is cheaper to plan than to hand out.
+  static constexpr size_t kMinimumDraws = 16;
+
+  explicit PicaPlanWorkers(
+      const Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &settings) {
+    for (auto &cache : mCaches) {
+      cache.TevMode = settings.TevMode;
+      cache.UberFragments = settings.UberFragments;
+    }
+    // Never joined: the pool lives as long as the process.
+    for (size_t helper = 0; helper < kHelperCount; ++helper) {
+      std::thread([this, helper] { HelperLoop(helper); }).detach();
+    }
+  }
+
+  // plans[i] for draws[i]. On a failure, the lowest failing index and its
+  // error.
+  bool Build(std::vector<Oot3dNativeGame::Oot3dPicaDrawSubmission> &draws,
+             std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> &plans,
+             Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &ownCache,
+             std::string &error) {
+    plans.clear();
+    plans.resize(draws.size());
+    mDraws = &draws;
+    mPlans = &plans;
+    mNext.store(0, std::memory_order_relaxed);
+    mFailedIndex = SIZE_MAX;
+    {
+      std::lock_guard lock(mMutex);
+      ++mGeneration;
+      mBusy = kHelperCount;
+    }
+    mWake.notify_all();
+    Run(ownCache);
+    {
+      std::unique_lock lock(mMutex);
+      mDone.wait(lock, [&] { return mBusy == 0; });
+    }
+    if (mFailedIndex == SIZE_MAX) {
+      return true;
+    }
+    error = mFailedError;
+    return false;
+  }
+
+private:
+  void Run(Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &cache) {
+    auto &draws = *mDraws;
+    auto &plans = *mPlans;
+    for (;;) {
+      const size_t index = mNext.fetch_add(1, std::memory_order_relaxed);
+      if (index >= draws.size()) {
+        return;
+      }
+      std::string error;
+      if (!Oot3dNativeGame::BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
+              draws[index], plans[index], &error, &cache)) {
+        std::lock_guard lock(mMutex);
+        if (index < mFailedIndex) {
+          mFailedIndex = index;
+          mFailedError = std::move(error);
+        }
+      }
+    }
+  }
+
+  void HelperLoop(size_t helper) {
+    Fast::OrbisRegisterThread("pica plan");
+    uint64_t seen = 0;
+    for (;;) {
+      {
+        std::unique_lock lock(mMutex);
+        mWake.wait(lock, [&] { return mGeneration != seen; });
+        seen = mGeneration;
+      }
+      Run(mCaches[helper]);
+      bool last = false;
+      {
+        std::lock_guard lock(mMutex);
+        last = --mBusy == 0;
+      }
+      if (last) {
+        mDone.notify_one();
+      }
+    }
+  }
+
+  std::array<Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache, kHelperCount>
+      mCaches;
+  std::mutex mMutex;
+  std::condition_variable mWake;
+  std::condition_variable mDone;
+  uint64_t mGeneration = 0;
+  size_t mBusy = 0;
+  std::vector<Oot3dNativeGame::Oot3dPicaDrawSubmission> *mDraws = nullptr;
+  std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> *mPlans = nullptr;
+  std::atomic<size_t> mNext{0};
+  size_t mFailedIndex = SIZE_MAX;
+  std::string mFailedError;
+};
+#endif
 
 uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
   uint64_t hash = 14695981039346656037ULL;
@@ -552,6 +674,63 @@ bool NativeA32WindowSession::RunFrame() {
   cpuPresent.Stop();
   ++presentationFrameCount;
   ++runFrameCount;
+#if defined(__ORBIS__)
+  // PS4: the game thread's rate and where its time goes, every five
+  // seconds - guest frames are what the player sees advance; presentations
+  // can repeat one.
+  {
+    static auto windowStart = std::chrono::steady_clock::now();
+    static uint64_t windowGuestFrames = frameCount;
+    static uint64_t windowHostFrames = runFrameCount;
+    static NativeFramePhaseTiming windowPhases = phaseTiming;
+    static uint64_t windowStarvations = audioOutputDiagnostics.StarvationObservations;
+    static uint64_t windowShortfall = audioOutputDiagnostics.EstimatedShortfallFrames;
+    static uint64_t windowDspFrames = dspStats.FramesMixed;
+    static uint64_t windowVblanks = vblankCount;
+    const auto now = std::chrono::steady_clock::now();
+    const double seconds = std::chrono::duration<double>(now - windowStart).count();
+    if (seconds >= 5.0) {
+      const double hostFrames = static_cast<double>(runFrameCount - windowHostFrames);
+      const auto ms = [&](double current, double previous) {
+        return hostFrames > 0.0 ? (current - previous) * 1000.0 / hostFrames : 0.0;
+      };
+      std::fprintf(stderr,
+                   "[triaevum] game: %.1f guest frames/s, %.1f host frames/s | per host frame ms:"
+                   " guest %.1f (pica submit %.1f, plan %.1f, backend %.1f), dsp %.1f, audio %.1f,"
+                   " input %.1f, frame start %.1f, visual %.1f, present %.1f, pacing %.1f |"
+                   " audio: %llu starvations, %llu frames short, %d buffered |"
+                   " speed: %.1f dsp frames/s (real time 204.5), %.1f vblanks/s\n",
+                   static_cast<double>(frameCount - windowGuestFrames) / seconds,
+                   hostFrames / seconds,
+                   ms(phaseTiming.GuestSeconds, windowPhases.GuestSeconds),
+                   ms(phaseTiming.PicaSubmitSeconds, windowPhases.PicaSubmitSeconds),
+                   ms(phaseTiming.PicaPlanSeconds, windowPhases.PicaPlanSeconds),
+                   ms(phaseTiming.PicaBackendSeconds, windowPhases.PicaBackendSeconds),
+                   ms(phaseTiming.DspMixSeconds, windowPhases.DspMixSeconds),
+                   ms(phaseTiming.AudioOutputSeconds, windowPhases.AudioOutputSeconds),
+                   ms(phaseTiming.InputPollSeconds, windowPhases.InputPollSeconds),
+                   ms(phaseTiming.FrameStartSeconds, windowPhases.FrameStartSeconds),
+                   ms(phaseTiming.VisualPresentationSeconds, windowPhases.VisualPresentationSeconds),
+                   ms(phaseTiming.PresentSeconds, windowPhases.PresentSeconds),
+                   ms(phaseTiming.PacingWaitSeconds, windowPhases.PacingWaitSeconds),
+                   static_cast<unsigned long long>(audioOutputDiagnostics.StarvationObservations -
+                                                   windowStarvations),
+                   static_cast<unsigned long long>(audioOutputDiagnostics.EstimatedShortfallFrames -
+                                                   windowShortfall),
+                   audioPlayer != nullptr && audioPlayer->IsInitialized() ? audioPlayer->Buffered() : -1,
+                   static_cast<double>(dspStats.FramesMixed - windowDspFrames) / seconds,
+                   static_cast<double>(vblankCount - windowVblanks) / seconds);
+      windowStart = now;
+      windowGuestFrames = frameCount;
+      windowHostFrames = runFrameCount;
+      windowPhases = phaseTiming;
+      windowStarvations = audioOutputDiagnostics.StarvationObservations;
+      windowShortfall = audioOutputDiagnostics.EstimatedShortfallFrames;
+      windowDspFrames = dspStats.FramesMixed;
+      windowVblanks = vblankCount;
+    }
+  }
+#endif
 #if defined(__SWITCH__)
   gSwitchRuntimeHostFrames = runFrameCount;
   gSwitchRuntimeGuestFrames = frameCount;
@@ -1360,6 +1539,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
                lastSubmittedDrawId) {
       submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
     }
+#if defined(__ORBIS__)
+    static PicaPlanWorkers *const planWorkers =
+        new PicaPlanWorkers(shaderSourceCache);
+    static std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> prebuiltPlans;
+    const bool plansPrebuilt = draws.size() >= PicaPlanWorkers::kMinimumDraws;
+    if (plansPrebuilt) {
+      const auto planStart = std::chrono::steady_clock::now();
+      if (!planWorkers->Build(draws, prebuiltPlans, shaderSourceCache,
+                              error)) {
+        throw std::runtime_error("native PICA Vulkan plan failed: " + error);
+      }
+      phaseTiming.PicaPlanSeconds += SecondsSince(planStart);
+    }
+#endif
     for (auto &draw : draws) {
       while (memoryFillIndex < memoryFills.size() &&
              memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
@@ -1382,6 +1575,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
           (usesCommonBackground || isOpaqueTargetInitialization);
       Oot3dNativeGame::Oot3dPicaVulkanDrawPlan plan;
       auto drawPhaseStart = std::chrono::steady_clock::now();
+#if defined(__ORBIS__)
+      if (plansPrebuilt) {
+        plan = std::move(prebuiltPlans[&draw - draws.data()]);
+      } else
+#endif
       if (!Oot3dNativeGame::
               BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
                   draw, plan, &error, &shaderSourceCache)) {

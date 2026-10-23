@@ -50,6 +50,32 @@ bool PathWithin(const std::filesystem::path &root,
   return rootPart == root.end();
 }
 
+#if defined(TRIAEVUM_PS4_HOST)
+// PS4 (OpenOrbis/Orbis libc): std::filesystem::weakly_canonical relies on a
+// realpath-style resolution that misbehaves under the console sandbox - it can
+// return an empty path with a clear error_code, and the follow-up
+// is_directory() then throws EINVAL on the empty path (console evidence,
+// 2026-10-19: "in posix_stat: ... Invalid argument [\"\"]"). This backend only
+// ever canonicalizes host paths that are already absolute, NormalizeRelativePath
+// rejects ".." components in the logical part, and the PS4 data partition is a
+// single-user homebrew directory, so lexical normalization is equivalent and
+// cannot be tricked into escaping the save root.
+std::filesystem::path HostPathCanonical(const std::filesystem::path &path,
+                                        std::error_code &error) {
+  error.clear();
+  if (!path.is_absolute()) {
+    error = std::make_error_code(std::errc::invalid_argument);
+    return {};
+  }
+  return path.lexically_normal();
+}
+#else
+std::filesystem::path HostPathCanonical(const std::filesystem::path &path,
+                                        std::error_code &error) {
+  return std::filesystem::weakly_canonical(path, error);
+}
+#endif
+
 std::uint64_t LastWriteTimeNs(const std::filesystem::path &path) {
   std::error_code error;
   const auto value = std::filesystem::last_write_time(path, error);
@@ -93,7 +119,7 @@ struct RootedFilesystemBackendV1::Impl {
     }
     std::error_code error;
     const auto checkPath = forCreation ? candidate.parent_path() : candidate;
-    const auto resolved = std::filesystem::weakly_canonical(checkPath, error);
+    const auto resolved = HostPathCanonical(checkPath, error);
     if (error || !PathWithin(SaveRoot, resolved)) {
       return std::nullopt;
     }
@@ -123,7 +149,7 @@ RootedFilesystemBackendV1::Create(RootedFilesystemConfigV1 config,
           !std::filesystem::is_regular_file(path, fileError) || fileError) {
         throw std::runtime_error("content mapping is invalid: " + logical);
       }
-      auto absolute = std::filesystem::weakly_canonical(path, fileError);
+      auto absolute = HostPathCanonical(path, fileError);
       if (fileError ||
           !impl->ContentFiles.emplace(*normalized, absolute).second) {
         throw std::runtime_error("content mapping is ambiguous: " + logical);
@@ -134,9 +160,13 @@ RootedFilesystemBackendV1::Create(RootedFilesystemConfigV1 config,
     if (directoryError) {
       throw std::runtime_error("save root could not be created");
     }
-    impl->SaveRoot =
-        std::filesystem::weakly_canonical(config.saveRoot, directoryError);
-    if (directoryError || !std::filesystem::is_directory(impl->SaveRoot)) {
+    impl->SaveRoot = HostPathCanonical(config.saveRoot, directoryError);
+    bool saveRootIsDirectory = false;
+    if (!directoryError) {
+      saveRootIsDirectory =
+          std::filesystem::is_directory(impl->SaveRoot, directoryError);
+    }
+    if (directoryError || !saveRootIsDirectory) {
       throw std::runtime_error("save root is invalid");
     }
     return std::unique_ptr<RootedFilesystemBackendV1>(

@@ -199,6 +199,9 @@ void ApplyNativeWidescreenProjectionPolicy(
       questDrawExit()) {
     if (runtime.ObservedExitPc != nullptr)
       *runtime.ObservedExitPc = pc;
+    // Like the throw below, nothing after this point runs for the block.
+    if (Oot3dNativeGame::Oot3dWholeAotDeferObservableExit(pc, state))
+      return;
 #if defined(OOT3D_NATIVE_DIRECT_AOT_PLUGIN)
     Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
 #else

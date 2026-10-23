@@ -102,9 +102,19 @@ ParseNativeA32ProcessImageManifest(const Json& document,
         const auto& process = document.at("process");
         const auto& thread = document.at("primary_thread");
         NativeA32ProcessImageManifest result;
-        result.ManifestPath = IsDevicePath(path)
-                                  ? path.lexically_normal()
-                                  : std::filesystem::absolute(path);
+        result.ManifestPath =
+#if defined(TRIAEVUM_PS4_HOST)
+            // Orbis implements no getcwd (ENOSYS), so std::filesystem::absolute
+            // throws for every relative path. Every real host path in the PS4
+            // port is already absolute, and the bytes overload passes only a
+            // placeholder name ("process_manifest"), so lexical normalization
+            // is sufficient and cannot fail.
+            path.lexically_normal();
+#else
+            IsDevicePath(path)
+                ? path.lexically_normal()
+                : std::filesystem::absolute(path);
+#endif
         result.CodeBinPath = ResolvePackagedInputPath(
             result.ManifestPath, source.at("code_bin_path").get<std::string>());
         result.CodeBinSha256 = source.at("code_bin_sha256").get<std::string>();

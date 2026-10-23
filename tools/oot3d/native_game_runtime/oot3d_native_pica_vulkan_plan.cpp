@@ -223,6 +223,51 @@ bool BuildOot3dPicaVulkanDrawPlanImpl(
         SetError(error, "native PICA Vulkan draw uses a geometry shader");
         return false;
     }
+    // CPU-vertex evaluation inputs (PS4 path; desktop backends ignore
+    // them): copy the raw program + swizzle words out of the packet and
+    // derive the output semantic table exactly like the shader generator
+    // does (registers 0x50.. map packed output registers to the 24
+    // semantic slots the generator's main() epilogue consumes).
+    plan.VertexMainOffset =
+        submission.State.ShaderInterface.VertexMainOffset;
+    plan.VertexFlipViewport = submission.State.Framebuffer.Flipped;
+    {
+        const auto& vertexShader = submission.Packet.VertexShader;
+        plan.VertexProgramWords.assign(
+            vertexShader.Program.Values().data(),
+            vertexShader.Program.Values().data() +
+            std::min<size_t>(vertexShader.ProgramWordCount,
+                             vertexShader.Program.Values().size()));
+        plan.VertexSwizzleWords.assign(
+            vertexShader.Swizzles.Values().data(),
+            vertexShader.Swizzles.Values().data() +
+            std::min<size_t>(vertexShader.SwizzleWordCount,
+                             vertexShader.Swizzles.Values().size()));
+        plan.VertexOutputSemantics = {};
+        size_t packedOutput = 0;
+        for (size_t outputRegister = 0; outputRegister < 16U;
+             ++outputRegister) {
+            if ((submission.State.ShaderInterface.OutputMask &
+                 (1U << outputRegister)) == 0U) {
+                continue;
+            }
+            if (packedOutput < 7U) {
+                const uint32_t map =
+                    submission.Packet.Registers[0x50U + packedOutput];
+                for (size_t component = 0; component < 4U; ++component) {
+                    const uint8_t semantic = static_cast<uint8_t>(
+                        (map >> (component * 8U)) & 0x1FU);
+                    if (semantic <
+                        plan.VertexOutputSemantics.size()) {
+                        plan.VertexOutputSemantics[semantic] = {
+                            1U, static_cast<uint8_t>(outputRegister),
+                            static_cast<uint8_t>(component)};
+                    }
+                }
+            }
+            ++packedOutput;
+        }
+    }
     const auto cachedVertex =
         shaderCache != nullptr
             ? shaderCache->VertexSources.find(vertexShaderKey)

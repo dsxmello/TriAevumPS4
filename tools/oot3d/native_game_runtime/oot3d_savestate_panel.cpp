@@ -34,7 +34,14 @@ std::string SizeText(std::uintmax_t bytes) {
 }
 
 std::string TimeText(std::filesystem::file_time_type time) {
+#if defined(TRIAEVUM_PS4_HOST)
+  // libc++ on the PS4 has no clock_cast for file_clock (its rep is
+  // __int128); translate through the two clocks' current instants.
+  const auto system = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+      time - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+#else
   const auto system = std::chrono::clock_cast<std::chrono::system_clock>(time);
+#endif
   const std::time_t seconds = std::chrono::system_clock::to_time_t(system);
   std::tm local{};
 #if defined(_WIN32)

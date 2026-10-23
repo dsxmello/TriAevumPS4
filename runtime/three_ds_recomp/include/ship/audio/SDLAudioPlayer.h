@@ -1,4 +1,6 @@
 #pragma once
+
+#include <vector>
 #include "AudioPlayer.h"
 #include <SDL2/SDL.h>
 
@@ -52,5 +54,10 @@ class SDLAudioPlayer final : public AudioPlayer {
   private:
     SDL_AudioDeviceID mDevice = 0; ///< Handle to the opened SDL audio device.
     int32_t mNumChannels = 2;      ///< Number of output channels (2 for stereo, 6 for 5.1).
+#if defined(__ORBIS__)
+    bool mRefilling = true;        ///< Output paused until the queue holds DesiredBuffered.
+    std::vector<int16_t> mStretched; ///< Rate-controlled copy of the submitted samples.
+    float mRateRatio = 1.0F;       ///< Smoothed stretch factor (pitch must not jump).
+#endif
 };
 } // namespace Ship

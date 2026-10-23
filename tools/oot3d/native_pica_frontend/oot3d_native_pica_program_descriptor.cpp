@@ -56,7 +56,9 @@ class CanonicalHashBuilder {
     explicit CanonicalHashBuilder(std::string_view domain) {
         AppendU32(kOot3dPicaProgramDescriptorSchemaVersion);
         AppendU32(static_cast<uint32_t>(domain.size()));
-        AppendBytes(std::as_bytes(std::span(domain)));
+        // span from (data, size) is the C++20-conformant spelling; span(range)
+        // requires the C++23 range constructor, which the PS4 libc++ lacks.
+        AppendBytes(std::as_bytes(std::span{domain.data(), domain.size()}));
     }
 
     void AppendU8(uint8_t value) {

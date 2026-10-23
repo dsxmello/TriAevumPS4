@@ -22,9 +22,28 @@ std::array<float, 4> ColorVector(const Fast::Oot3d::PicaLightingColor &color) {
 
 // Exact GLSL literals: shortest round-trip decimal.
 std::string FloatLiteral(float value) {
+  std::string literal;
+#if defined(TRIAEVUM_PS4_HOST)
+  // Orbis libc++ predates std::to_chars(float). Reproduce its contract with
+  // %g: the shortest precision whose decimal parses back to the same float.
+  for (int precision = 1; precision <= 9; ++precision) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof buffer, "%.*g", precision, value);
+    if (std::strtof(buffer, nullptr) == value) {
+      literal = buffer;
+      break;
+    }
+  }
+  if (literal.empty()) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof buffer, "%.9g", value);
+    literal = buffer;
+  }
+#else
   std::array<char, 32> buffer{};
   const auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
-  std::string literal(buffer.data(), result.ptr);
+  literal.assign(buffer.data(), result.ptr);
+#endif
   if (literal.find_first_of(".e") == std::string::npos) literal += ".0";
   return literal;
 }

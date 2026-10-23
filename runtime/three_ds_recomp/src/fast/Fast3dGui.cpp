@@ -11,9 +11,12 @@
 #include "fast/backends/gfx_vulkan.h"
 #endif
 #include "fast/resource/type/Texture.h"
-#ifdef ENABLE_OOT3D_VULKAN
+#if defined(ENABLE_OOT3D_VULKAN) || defined(__ORBIS__)
 #include "fast/oot3d/graphics_settings_runtime.h"
 #include "fast/oot3d/graphics_settings_window.h"
+#endif
+#if defined(__ORBIS__)
+#include "fast/backends/gfx_orbis.h"
 #endif
 #include "ship/window/gui/resource/GuiTextureFactory.h"
 #include "ship/resource/File.h"
@@ -40,6 +43,8 @@
 #ifdef ENABLE_OPENGL
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_sdl2.h>
+#elif defined(__ORBIS__)
+#include <imgui_impl_sdl2.h> // shared SDL paths compile; the PS4 never runs them
 #endif
 
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
@@ -52,7 +57,7 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARA
 
 namespace Fast {
 namespace {
-#ifdef ENABLE_OOT3D_VULKAN
+#if defined(ENABLE_OOT3D_VULKAN) || defined(__ORBIS__)
 class Oot3dGraphicsSettingsPersistence final
     : public Oot3d::GraphicsSettingsPersistencePort {
   public:
@@ -141,6 +146,9 @@ class Oot3dHostNoticeWindow final : public Ship::GuiWindow {
     void DrawElement() override {}
 };
 
+#endif
+
+#ifdef ENABLE_OOT3D_VULKAN
 struct Oot3dMousePosition {
     float X = 0.0F;
     float Y = 0.0F;
@@ -235,10 +243,25 @@ void Fast3dGui::Init(GuiWindowInitData windowImpl) {
         AddGuiWindow(std::make_shared<Oot3dHostNoticeWindow>());
     }
 #endif
+#if defined(__ORBIS__)
+    // PS4: the same consolidated settings window, opened by L3+R3.
+    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
+        Oot3d::InstallGraphicsSettingsPersistencePort(
+            std::make_shared<Oot3dGraphicsSettingsPersistence>());
+        AddGuiWindow(std::make_shared<Oot3dGraphicsSettingsWindow>());
+        AddGuiWindow(std::make_shared<Oot3dDisplayConfirmationWindow>());
+        AddGuiWindow(std::make_shared<Oot3dHostNoticeWindow>());
+    }
+#endif
     Gui::Init();
 }
 
 bool Fast3dGui::SupportsViewports() {
+#if defined(__ORBIS__)
+    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
+        return false; // one VideoOut surface, no platform windows
+    }
+#endif
 #ifdef ENABLE_OOT3D_VULKAN
     // The Vulkan backend owns one swapchain only. Letting ImGui create SDL
     // platform windows leaves those windows without renderer swapchains and
@@ -346,6 +369,14 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
 }
 
 void Fast3dGui::ToggleOot3dGraphicsWindow() {
+#if defined(__ORBIS__)
+    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
+        if (const auto settingsWindow = GetGuiWindow("OOT3D Graphics")) {
+            settingsWindow->ToggleVisibility();
+        }
+        return;
+    }
+#endif
 #ifdef ENABLE_OOT3D_VULKAN
     if (mImpl.Backend != WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
         return;
@@ -382,6 +413,11 @@ void Fast3dGui::DrawMenu() {
 
 void Fast3dGui::ImGuiWMInit() {
     switch (mImpl.Backend) {
+#if defined(__ORBIS__)
+        case WindowBackend::FAST3D_ORBIS_VULKAN:
+            OrbisImGuiPlatformInit();
+            break;
+#endif
         case WindowBackend::FAST3D_SDL_OPENGL:
             SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
             if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
@@ -443,6 +479,16 @@ void Fast3dGui::ImGuiWMShutdown() {
 void Fast3dGui::ImGuiBackendInit() {
     auto window = Ship::Context::GetRawInstance()->GetWindow();
     mInterpreter = std::dynamic_pointer_cast<Fast3dWindow>(window)->GetInterpreterWeak();
+#if defined(__ORBIS__)
+    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
+        if (auto interpreter = mInterpreter.lock()) {
+            if (auto* hooks = dynamic_cast<ImGuiRenderHooks*>(interpreter->GetCurrentRenderingAPI())) {
+                hooks->InitImGuiBackend();
+            }
+        }
+        return;
+    }
+#endif
     switch (mImpl.Backend) {
 #ifdef ENABLE_OPENGL
         case WindowBackend::FAST3D_SDL_OPENGL:
@@ -484,6 +530,16 @@ void Fast3dGui::ImGuiBackendInit() {
 }
 
 void Fast3dGui::ImGuiBackendShutdown() {
+#if defined(__ORBIS__)
+    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
+        if (auto interpreter = mInterpreter.lock()) {
+            if (auto* hooks = dynamic_cast<ImGuiRenderHooks*>(interpreter->GetCurrentRenderingAPI())) {
+                hooks->ShutdownImGuiBackend();
+            }
+        }
+        return;
+    }
+#endif
 #ifdef ENABLE_OOT3D_VULKAN
     if (mImpl.Backend == WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
         if (auto interpreter = mInterpreter.lock()) {
@@ -532,6 +588,29 @@ std::shared_ptr<ImDrawData> CloneImGuiDrawData(const ImDrawData* source) {
 } // namespace
 
 void Fast3dGui::ImGuiBackendNewFrame() {
+#if defined(__ORBIS__)
+    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
+        auto interpreter = mInterpreter.lock();
+        auto* hooks = interpreter != nullptr
+                          ? dynamic_cast<ImGuiRenderHooks*>(interpreter->GetCurrentRenderingAPI())
+                          : nullptr;
+        if (hooks == nullptr) {
+            SPDLOG_ERROR("Fast3dGui: no PS4 ImGui render hooks (interpreter {})",
+                         interpreter != nullptr ? "without them" : "missing");
+            // ImGui::NewFrame needs a built font atlas either way.
+            if (!ImGui::GetIO().Fonts->IsBuilt()) ImGui::GetIO().Fonts->Build();
+        } else if (!mRendererRouting.Synchronous) {
+            hooks->NewImGuiFrame();
+        } else if (!hooks->ImGuiBackendReady()) {
+            // Initialization and the font upload record GPU work into the
+            // command buffer the render worker owns. Once ready, the
+            // backend's new-frame step has nothing to do: waiting for the
+            // worker every frame would serialize the game with the renderer.
+            mRendererRouting.Synchronous([hooks] { hooks->NewImGuiFrame(); });
+        }
+        return;
+    }
+#endif
     switch (mImpl.Backend) {
 #ifdef ENABLE_OPENGL
         case WindowBackend::FAST3D_SDL_OPENGL:
@@ -591,6 +670,14 @@ void Fast3dGui::SyncOot3dVulkanMousePosition() {
 
 void Fast3dGui::ImGuiWMNewFrame() {
     switch (mImpl.Backend) {
+#if defined(__ORBIS__)
+        case WindowBackend::FAST3D_ORBIS_VULKAN:
+            // L3+R3 is the controller's F1.
+            if (OrbisImGuiPlatformNewFrame()) {
+                ToggleOot3dGraphicsWindow();
+            }
+            break;
+#endif
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
 #ifdef ENABLE_OOT3D_VULKAN
@@ -621,6 +708,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
 }
 
 void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
+#if defined(__ORBIS__)
+    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
+        if (auto interpreter = mInterpreter.lock()) {
+            auto* hooks = dynamic_cast<ImGuiRenderHooks*>(interpreter->GetCurrentRenderingAPI());
+            if (hooks != nullptr && mRendererRouting.Deferred && data != nullptr) {
+                // Rendered in renderer order on the render worker, from a copy.
+                mRendererRouting.Deferred(
+                    [hooks, copy = CloneImGuiDrawData(data)] { hooks->RenderImGuiDrawData(copy.get()); });
+            } else if (hooks != nullptr) {
+                hooks->RenderImGuiDrawData(data);
+            }
+        }
+        return;
+    }
+#endif
     switch (mImpl.Backend) {
 #ifdef ENABLE_OPENGL
         case WindowBackend::FAST3D_SDL_OPENGL:
