@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
@@ -21,10 +23,17 @@ using RuntimeProfileClock = std::chrono::steady_clock;
 // heap budget) during scene transitions, so the caches stay far smaller than
 // the desktop limits; both remain LRU-evicted.
 #if defined(TRIAEVUM_PS4_HOST)
-constexpr size_t kGeometrySnapshotCacheLimit = 512U;
+// 1.29: 512 entries thrashed in Kakariko-sized scenes (~400 draws a frame,
+// each with several vertex loaders): every miss copied the buffer again and
+// scanned the whole cache for the oldest entry. The entry bound is now the
+// desktop's, with a byte bound that keeps the heap's headroom (512 MiB main
+// heap plus the direct-memory overflow heap).
+constexpr size_t kGeometrySnapshotCacheLimit = 4096U;
+constexpr size_t kGeometrySnapshotCacheByteLimit = 160U << 20U;
 constexpr size_t kMaximumTextureSnapshotCacheEntries = 4096U;
 #else
 constexpr size_t kGeometrySnapshotCacheLimit = 4096U;
+constexpr size_t kGeometrySnapshotCacheByteLimit = SIZE_MAX;
 constexpr size_t kMaximumTextureSnapshotCacheEntries = 65536U;
 #endif
 constexpr size_t kMaximumSnapshotResourceBytes = 64U << 20U;
@@ -355,17 +364,15 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
     }
   }
   if (!cacheHit) {
-    if (cached == mGeometrySnapshotCache.end() &&
-        mGeometrySnapshotCache.size() >= kGeometrySnapshotCacheLimit) {
-      const auto oldest = std::min_element(
-          mGeometrySnapshotCache.begin(), mGeometrySnapshotCache.end(),
-          [](const auto &left, const auto &right) {
-            return left.second.LastUsedSequence < right.second.LastUsedSequence;
-          });
-      if (oldest != mGeometrySnapshotCache.end()) {
-        mGeometrySnapshotCache.erase(oldest);
-      }
+    if (cached != mGeometrySnapshotCache.end() && cached->second.Bytes != nullptr) {
+      mGeometrySnapshotCacheBytes -= cached->second.Bytes->size();
     }
+    if (cached == mGeometrySnapshotCache.end() &&
+        (mGeometrySnapshotCache.size() >= kGeometrySnapshotCacheLimit ||
+         mGeometrySnapshotCacheBytes + source->size() > kGeometrySnapshotCacheByteLimit)) {
+      EvictGeometrySnapshots();
+    }
+    mGeometrySnapshotCacheBytes += source->size();
     GeometrySnapshotCacheEntry entry;
     entry.Bytes = std::make_shared<const std::vector<uint8_t>>(source->begin(),
                                                                source->end());
@@ -382,10 +389,39 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
       cached->second.Bytes =
           std::make_shared<const std::vector<uint8_t>>(source->begin(),
                                                        source->end());
+      mGeometrySnapshotCacheBytes += source->size();
     }
     cached->second.SourceWriteGeneration = sourceWriteGeneration.value_or(0U);
   }
   cached->second.LastUsedSequence = ++mGeometrySnapshotSequence;
+#if defined(TRIAEVUM_PS4_HOST)
+  // PS4: the geometry cache's effect, every five seconds (boot log).
+  {
+    static uint64_t hits = 0, misses = 0, copiedBytes = 0, calls = 0;
+    static auto windowStart = std::chrono::steady_clock::now();
+    if (cacheHit) {
+      ++hits;
+    } else {
+      ++misses;
+      copiedBytes += source->size();
+    }
+    if ((++calls & 1023U) == 0U) {
+      const auto now = std::chrono::steady_clock::now();
+      const double seconds = std::chrono::duration<double>(now - windowStart).count();
+      if (seconds >= 5.0) {
+        std::fprintf(stderr,
+                     "[triaevum] geometry cache: %zu entries, %.1f MiB | per second: %.0f hits,"
+                     " %.0f misses, %.2f MiB copied\n",
+                     mGeometrySnapshotCache.size(),
+                     static_cast<double>(mGeometrySnapshotCacheBytes) / 1048576.0,
+                     static_cast<double>(hits) / seconds, static_cast<double>(misses) / seconds,
+                     static_cast<double>(copiedBytes) / 1048576.0 / seconds);
+        hits = misses = copiedBytes = 0;
+        windowStart = now;
+      }
+    }
+  }
+#endif
 
   resource.Kind = kind;
   resource.Slot = slot;
@@ -554,6 +590,40 @@ bool Oot3dNativePicaSubmissionQueue::ObservePhysicalWriteSpan(
 void Oot3dNativePicaSubmissionQueue::ResetSnapshotObservation() {
     for (auto& [key, entry] : mGeometrySnapshotCache) entry.SourceWriteGeneration = 0;
     for (auto& [key, entry] : mTextureSnapshotCache) entry.SourceWriteGeneration = 0;
+}
+
+// Drops the least recently used eighth of the geometry snapshots, and more
+// until the byte bound has room: one partial sort per batch instead of a
+// full scan for the single oldest entry on every miss.
+void Oot3dNativePicaSubmissionQueue::EvictGeometrySnapshots() {
+  if (mGeometrySnapshotCache.empty()) return;
+  std::vector<uint64_t> sequences;
+  sequences.reserve(mGeometrySnapshotCache.size());
+  for (const auto &[key, entry] : mGeometrySnapshotCache) {
+    sequences.push_back(entry.LastUsedSequence);
+  }
+  size_t evict = std::max<size_t>(1U, sequences.size() / 8U);
+  for (;;) {
+    std::nth_element(sequences.begin(), sequences.begin() + (evict - 1U), sequences.end());
+    const uint64_t threshold = sequences[evict - 1U];
+    for (auto it = mGeometrySnapshotCache.begin(); it != mGeometrySnapshotCache.end();) {
+      if (it->second.LastUsedSequence <= threshold) {
+        if (it->second.Bytes != nullptr) mGeometrySnapshotCacheBytes -= it->second.Bytes->size();
+        it = mGeometrySnapshotCache.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    if (mGeometrySnapshotCacheBytes <= kGeometrySnapshotCacheByteLimit * 7U / 8U ||
+        mGeometrySnapshotCache.empty()) {
+      return;
+    }
+    sequences.clear();
+    for (const auto &[key, entry] : mGeometrySnapshotCache) {
+      sequences.push_back(entry.LastUsedSequence);
+    }
+    evict = std::max<size_t>(1U, sequences.size() / 4U);
+  }
 }
 
 std::optional<uint64_t> Oot3dNativePicaSubmissionQueue::SnapshotWriteGeneration(
@@ -1651,6 +1721,10 @@ bool Oot3dNativePicaSubmissionQueue::RestoreState(
             std::move(restoredTransfers);
         mTextureSnapshotCache = std::move(textureSnapshotCache);
         mGeometrySnapshotCache = std::move(geometrySnapshotCache);
+        mGeometrySnapshotCacheBytes = 0;
+        for (const auto& [key, entry] : mGeometrySnapshotCache) {
+            if (entry.Bytes != nullptr) mGeometrySnapshotCacheBytes += entry.Bytes->size();
+        }
         ResetSnapshotObservation();
         mNextGeometryContentVersion = nextGeometryContentVersion;
         mGeometrySnapshotSequence = geometrySnapshotSequence;

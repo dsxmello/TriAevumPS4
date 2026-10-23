@@ -398,6 +398,10 @@ class Oot3dNativePicaSubmissionQueue final : public Oot3dPicaPacketSink {
     std::unordered_map<GeometrySnapshotKey, GeometrySnapshotCacheEntry,
                        GeometrySnapshotKeyHash>
         mGeometrySnapshotCache;
+    // Bytes held by mGeometrySnapshotCache's snapshots (a byte bound next to
+    // the entry bound; see EvictGeometrySnapshots).
+    size_t mGeometrySnapshotCacheBytes = 0;
+    void EvictGeometrySnapshots();
     Oot3dPicaSubmissionRuntimeProfile mRuntimeProfile;
     uint64_t mNextGeometryContentVersion = 1;
     uint64_t mGeometrySnapshotSequence = 0;

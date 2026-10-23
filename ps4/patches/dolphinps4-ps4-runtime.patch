@@ -556,7 +556,7 @@ diff --git a/toolchain/prepare-sysroot.sh b/toolchain/prepare-sysroot.sh
 old mode 100644
 new mode 100755
 diff --git a/port/ps4_sampler.cpp b/port/ps4_sampler.cpp
-index aa89572..959e7c0 100644
+index aa89572..8787672 100644
 --- a/port/ps4_sampler.cpp
 +++ b/port/ps4_sampler.cpp
 @@ -26,6 +26,7 @@
@@ -567,7 +567,7 @@ index aa89572..959e7c0 100644
  extern "C" int pthread_getthreadid_np(void);  // libkernel (FreeBSD libthr)
  extern "C" void ps4_boot_trace(const char* stage);
  
-@@ -47,8 +48,44 @@ struct ThreadSamples {
+@@ -47,8 +48,43 @@ struct ThreadSamples {
      const char* name = nullptr;
      uint64_t samples[kMaxSamples];
      std::atomic<int> count{0};
@@ -579,8 +579,9 @@ index aa89572..959e7c0 100644
  
 +// The call site of a sample in one of ps4_string.c's leaf functions. They keep the frame pointer
 +// (push %rbp; memmove also pushes %rbx), so the return address sits at [rsp], [rsp+8] or
-+// [rsp+16]: the first slot that follows a `call rel32` whose target is that function, with the
-+// sample within its first 1 KiB. 0 otherwise.
++// [rsp+16]: the first slot that follows a call - `call rel32` (direct, or to a PLT stub: -fPIC
++// code reaches memcpy through one) or `call *disp32(%rip)` (through the GOT) - with the sample
++// within the function's first 1 KiB. 0 otherwise.
 +uint64_t memCaller(uint64_t rip, uint64_t rsp) {
 +    const uintptr_t text = reinterpret_cast<uintptr_t>(__text_start);
 +    const uintptr_t text_end = reinterpret_cast<uintptr_t>(__eh_frame_hdr_end);
@@ -596,15 +597,13 @@ index aa89572..959e7c0 100644
 +        return 0;
 +    for (int slot = 0; slot < 3; slot++) {
 +        const uint64_t ret = reinterpret_cast<const uint64_t*>(rsp)[slot];
-+        if (ret < text + 5 || ret >= text_end)
++        if (ret < text + 6 || ret >= text_end)
 +            continue;
-+        const auto* call = reinterpret_cast<const uint8_t*>(ret - 5);
-+        if (call[0] != 0xE8)
-+            continue;
-+        int32_t rel;
-+        memcpy(&rel, call + 1, sizeof(rel));
-+        if (static_cast<uintptr_t>(static_cast<int64_t>(ret) + rel) == target)
++        const auto* call = reinterpret_cast<const uint8_t*>(ret - 6);
++        if (call[1] == 0xE8)
 +            return ret - 5 - text;
++        if (call[0] == 0xFF && call[1] == 0x15)
++            return ret - 6 - text;
 +    }
 +    return 0;
 +}
@@ -612,7 +611,7 @@ index aa89572..959e7c0 100644
  ThreadSamples g_threads[kMaxThreads];
  std::atomic<int> g_thread_count{0};
  
-@@ -71,6 +108,13 @@ void profHandler(int, siginfo_t*, void* context) {
+@@ -71,6 +107,13 @@ void profHandler(int, siginfo_t*, void* context) {
                  sample |= kCallerTag;
              t.samples[n] = sample;
              t.count.store(n + 1, std::memory_order_release);
@@ -626,7 +625,7 @@ index aa89572..959e7c0 100644
          }
          return;
      }
-@@ -93,9 +137,13 @@ void noteHotJit(uint64_t address, int count);
+@@ -93,9 +136,13 @@ void noteHotJit(uint64_t address, int count);
  void report(int fd, ThreadSamples& t, double window_start) {
      // Copy first: the handler keeps writing into t.samples once count is reset.
      static uint64_t s[kMaxSamples];
@@ -640,7 +639,7 @@ index aa89572..959e7c0 100644
      if (n == 0)
          return;
      const uintptr_t text = reinterpret_cast<uintptr_t>(__text_start);
-@@ -148,6 +196,26 @@ void report(int fd, ThreadSamples& t, double window_start) {
+@@ -148,6 +195,26 @@ void report(int fd, ThreadSamples& t, double window_start) {
                       static_cast<unsigned long long>(entries[i].key));
          writeLine(fd, line);
      }

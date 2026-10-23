@@ -92,3 +92,30 @@ Ordem: 1 (testar já), 2, 4–7, 3, 8, e o PGO no fim.
   `memCaller` testa os três contra o `call rel32`. Diff anexado a
   `patches/dolphinps4-ps4-runtime.patch`.
 - PKG `out/...-1.28.pkg` (sem PGO), enviado para `/data/pkg`.
+
+## Medição da 1.28 (2026-10-23)
+
+- Daniel: GPU folgada em 1080p e em 4K (render scale até 6x); casas ~90%,
+  vila "mal chega a 60%". RAM/VRAM com uso baixo.
+- Log: casas 86–99% (1.27: ~72–90%), vila 37–66%. Thread do jogo: espera no
+  kernel caiu de 30% para 1,3% (item 1 confirmado); agora ela trabalha o
+  tempo todo e é o único limite. Na vila são 45–74 ms de CPU por quadro
+  apresentado (2 quadros do jogo; o orçamento é 33 ms).
+- Perfil da thread do jogo: memcpy 6,6% + memset 1,5% + memmove 0,6%,
+  `CaptureGeometryResource` 3,9%, cauda longa do código gerado.
+- Só 1,4% dos mem* foi atribuído: com -fPIC o `call` vai para o stub da PLT
+  (ou pela GOT), não direto para o memcpy. 1.29 aceita qualquer `call rel32`
+  ou `call *disp32(%rip)` logo antes do retorno.
+
+## 1.29 — cache de geometria (troca RAM por CPU)
+
+- O cache de snapshots de geometria do PS4 era de 512 entradas (desktop
+  4096), por medo do heap. Na vila (~400 draws, vários vertex loaders cada)
+  ele estourava: cada falta copiava o buffer de novo (memcpy) e varria o
+  cache inteiro procurando a entrada mais velha (`min_element`).
+- Agora 4096 entradas com teto de 160 MiB (`mGeometrySnapshotCacheBytes`,
+  contado na inserção/descarte/restauração de savestate), e descarte em
+  lote: o oitavo menos usado sai de uma vez (`nth_element`), em vez de uma
+  varredura por falta.
+- Log a cada 5 s: `[triaevum] geometry cache: N entries, X MiB | per second:
+  hits, misses, MiB copied`.
