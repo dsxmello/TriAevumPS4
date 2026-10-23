@@ -68,7 +68,17 @@ struct Oot3dWholeAotObservableExitSnapshot final {
 // sorted lookup.  A positive result remains only a hint; callers must still
 // use the exact list to reject hash collisions.
 struct Oot3dAotBlockEntryFilter final {
-    static constexpr size_t kBitCount = 4096U;
+#if defined(__ORBIS__)
+    // Every guest block tests this filter; a false positive costs a call and
+    // a binary search. At 4096 bits, blocks of hot collision loops
+    // (BgCheck_LineTestImpl) hit it on every pass (~1.4% of the game thread).
+    // The PS4 links the title statically, so the filter can grow (8 KiB);
+    // elsewhere it is part of the title-module ABI.
+    static constexpr uint32_t kBitCountLog2 = 16U;
+#else
+    static constexpr uint32_t kBitCountLog2 = 12U;
+#endif
+    static constexpr size_t kBitCount = size_t{1} << kBitCountLog2;
     static constexpr size_t kWordCount = kBitCount / 64U;
 
     std::array<uint64_t, kWordCount> Words{};
@@ -76,7 +86,7 @@ struct Oot3dAotBlockEntryFilter final {
     static constexpr size_t BitIndex(uint32_t pc) noexcept {
         const uint32_t instructionIndex = pc >> 2U;
         const uint32_t hash = instructionIndex * 2654435761U;
-        return static_cast<size_t>(hash >> 20U);
+        return static_cast<size_t>(hash >> (32U - kBitCountLog2));
     }
 
     void Insert(uint32_t pc) noexcept {

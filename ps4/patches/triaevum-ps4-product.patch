@@ -1953,7 +1953,7 @@ index 29e449f5..1ea336bf 100644
      for (;;) {
          mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
-index a9811221..470205b8 100644
+index a9811221..b2d58167 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 @@ -10,6 +10,7 @@
@@ -1964,7 +1964,35 @@ index a9811221..470205b8 100644
  
  namespace Oot3dNativeGame {
  
-@@ -128,6 +129,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
+@@ -67,7 +68,17 @@ struct Oot3dWholeAotObservableExitSnapshot final {
+ // sorted lookup.  A positive result remains only a hint; callers must still
+ // use the exact list to reject hash collisions.
+ struct Oot3dAotBlockEntryFilter final {
+-    static constexpr size_t kBitCount = 4096U;
++#if defined(__ORBIS__)
++    // Every guest block tests this filter; a false positive costs a call and
++    // a binary search. At 4096 bits, blocks of hot collision loops
++    // (BgCheck_LineTestImpl) hit it on every pass (~1.4% of the game thread).
++    // The PS4 links the title statically, so the filter can grow (8 KiB);
++    // elsewhere it is part of the title-module ABI.
++    static constexpr uint32_t kBitCountLog2 = 16U;
++#else
++    static constexpr uint32_t kBitCountLog2 = 12U;
++#endif
++    static constexpr size_t kBitCount = size_t{1} << kBitCountLog2;
+     static constexpr size_t kWordCount = kBitCount / 64U;
+ 
+     std::array<uint64_t, kWordCount> Words{};
+@@ -75,7 +86,7 @@ struct Oot3dAotBlockEntryFilter final {
+     static constexpr size_t BitIndex(uint32_t pc) noexcept {
+         const uint32_t instructionIndex = pc >> 2U;
+         const uint32_t hash = instructionIndex * 2654435761U;
+-        return static_cast<size_t>(hash >> 20U);
++        return static_cast<size_t>(hash >> (32U - kBitCountLog2));
+     }
+ 
+     void Insert(uint32_t pc) noexcept {
+@@ -128,6 +139,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
      throw Oot3dWholeAotObservableExit{pc};
  }
  
@@ -1998,7 +2026,7 @@ index a9811221..470205b8 100644
  inline bool Oot3dWholeAotTakeObservableExitSnapshot(
      uint32_t pc, oot3d::recomp::a32::GuestState* state) noexcept {
      auto& snapshot = gOot3dWholeAotObservableExitSnapshot;
-@@ -196,7 +224,20 @@ constexpr Oot3dAotExternalStateAccess Oot3dAotExternalStateAccessFor(
+@@ -196,7 +234,20 @@ constexpr Oot3dAotExternalStateAccess Oot3dAotExternalStateAccessFor(
      }
  }
  
@@ -2020,7 +2048,7 @@ index a9811221..470205b8 100644
      if (context.BlocksRemaining == 0U) {
          return false;
      }
-@@ -205,59 +246,113 @@ inline bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& context) noexcept {
+@@ -205,59 +256,113 @@ inline bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& context) noexcept {
      return true;
  }
  
@@ -2155,7 +2183,7 @@ index a9811221..470205b8 100644
      Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
      Oot3dAotArchitecturalState& state, uint32_t pc,
      CommitState&& commitState, ReloadState&& reloadState) {
-@@ -265,16 +360,12 @@ inline bool Oot3dAotEnterBlock(
+@@ -265,16 +370,12 @@ inline bool Oot3dAotEnterBlock(
      if (!Oot3dAotConsumeBlock(context)) {
          return false;
      }

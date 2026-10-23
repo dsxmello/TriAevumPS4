@@ -177,3 +177,20 @@ Ordem: 1 (testar já), 2, 4–7, 3, 8, e o PGO no fim.
   program/seleção/code.bin, não estão neste PC): LDM/STM com uma busca de
   página e um passo de geração para todas as palavras (~25 instruções e ~8
   acessos por palavra hoje).
+
+## Medição da 1.31 (2026-10-23)
+
+- Áreas leves (< 200 draws): 48,2 quadros do jogo/s (80%) contra 45,6 (76%)
+  na 1.30; 17,8 ms de CPU por quadro do jogo (era 19,2): ~-7%.
+- Vila: só 2 janelas (29,7 quadros/s): pouco para comparar.
+- Perfil da thread do jogo: `EnterBlock` 2,9% -> 0 (sem cópias fora de
+  linha). Sobrou 1,35% em `Oot3dAotNotifyBlock`, quase tudo na busca
+  binária, em `BgCheck_LineTestImpl` e `FUN_004a0338`: blocos de laços
+  quentes que caem em bits ocupados do filtro de 4096 bits (falso positivo
+  a cada passagem).
+
+## 1.32 — filtro de entrada de bloco maior
+
+- `Oot3dAotBlockEntryFilter` com 65.536 bits (8 KiB) no PS4 (antes 4096):
+  ~16x menos falsos positivos. Fora do PS4 o tamanho fica (faz parte da ABI
+  do módulo do título). Recompila todos os shards.
