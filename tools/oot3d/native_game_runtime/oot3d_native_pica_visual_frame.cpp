@@ -2026,7 +2026,11 @@ void CollectOot3dPicaFrameCopyReferences(
     }
 }
 
-void Oot3dPicaVisualFrameAccumulator::Append(Oot3dPicaVulkanDrawPlan plan) {
+void Oot3dPicaVisualFrameAccumulator::Append(const Oot3dPicaVulkanDrawPlan& plan) {
+    mPendingDraws.push_back(plan);
+}
+
+void Oot3dPicaVisualFrameAccumulator::Append(Oot3dPicaVulkanDrawPlan&& plan) {
     mPendingDraws.push_back(std::move(plan));
 }
 
@@ -2163,8 +2167,17 @@ std::vector<Oot3dPicaVisualFrame> Oot3dPicaVisualFrameAccumulator::FinishFrames(
         frame.TopTransfer = tops[segment];
         const size_t firstDraw = draw;
         while (draw < mPendingDraws.size() && mPendingDraws[draw].SubmissionId <= end) ++draw;
-        frame.Draws.assign(std::make_move_iterator(mPendingDraws.begin() + firstDraw),
-                           std::make_move_iterator(mPendingDraws.begin() + draw));
+        if (firstDraw == 0U && draw == mPendingDraws.size()) {
+            // The usual case, one frame holding every pending draw: take the
+            // buffer instead of moving each plan (several kilobytes) into a
+            // new one.
+            frame.Draws = std::move(mPendingDraws);
+            mPendingDraws.clear();
+            draw = 0U;
+        } else {
+            frame.Draws.assign(std::make_move_iterator(mPendingDraws.begin() + firstDraw),
+                               std::make_move_iterator(mPendingDraws.begin() + draw));
+        }
         frame.StrictDrawIdentities.reserve(frame.Draws.size());
         for (const auto& plan : frame.Draws) {
             frame.StrictDrawIdentities.push_back(ComputeOot3dPicaVisualDrawIdentity(plan));

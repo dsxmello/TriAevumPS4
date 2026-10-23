@@ -191,7 +191,8 @@ class Oot3dPicaPreparedVisualTransition final {
 
 class Oot3dPicaVisualFrameAccumulator final {
   public:
-    void Append(Oot3dPicaVulkanDrawPlan plan);
+    void Append(const Oot3dPicaVulkanDrawPlan& plan);
+    void Append(Oot3dPicaVulkanDrawPlan&& plan);
     void Append(Oot3dPicaMemoryFillSubmission fill);
     void Append(Oot3dPicaDisplayTransferSubmission transfer);
     std::optional<Oot3dPicaVisualFrame>

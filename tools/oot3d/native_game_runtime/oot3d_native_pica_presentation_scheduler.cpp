@@ -49,7 +49,13 @@ private:
 
 } // namespace
 
-void Oot3dPicaPresentationScheduler::Capture(Oot3dPicaVulkanDrawPlan plan) {
+void Oot3dPicaPresentationScheduler::Capture(
+    const Oot3dPicaVulkanDrawPlan &plan) {
+  ++mStats.ProducedGuestDraws;
+  mAccumulator.Append(plan);
+}
+
+void Oot3dPicaPresentationScheduler::Capture(Oot3dPicaVulkanDrawPlan &&plan) {
   ++mStats.ProducedGuestDraws;
   mAccumulator.Append(std::move(plan));
 }

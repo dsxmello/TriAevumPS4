@@ -1031,7 +1031,7 @@ index 5f59a070..9c84472c 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..c594965b 100644
+index 01026912..f281d4d1 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 @@ -4,10 +4,149 @@
@@ -1315,18 +1315,39 @@ index 01026912..c594965b 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1466,6 +1714,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1712,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+           suppressTopScreenFrontendBackdrop &&
+           targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
-       Oot3dNativeGame::Oot3dPicaVulkanDrawPlan plan;
+-      Oot3dNativeGame::Oot3dPicaVulkanDrawPlan plan;
++      // The plan is used in place (prebuilt or local) and moved once, into
++      // the scheduler: it is several kilobytes of inline state.
++      std::optional<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> localPlan;
++      Oot3dNativeGame::Oot3dPicaVulkanDrawPlan *builtPlan = nullptr;
        auto drawPhaseStart = std::chrono::steady_clock::now();
+-      if (!Oot3dNativeGame::
+-              BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
+-                  draw, plan, &error, &shaderSourceCache)) {
+-        throw std::runtime_error("native PICA Vulkan plan failed: " +
+-                                 error);
 +#if defined(__ORBIS__)
 +      if (plansPrebuilt) {
-+        plan = std::move(prebuiltPlans[&draw - draws.data()]);
++        builtPlan = &prebuiltPlans[&draw - draws.data()];
 +      } else
 +#endif
-       if (!Oot3dNativeGame::
-               BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
-                   draw, plan, &error, &shaderSourceCache)) {
++      {
++        builtPlan = &localPlan.emplace();
++        if (!Oot3dNativeGame::
++                BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
++                    draw, *builtPlan, &error, &shaderSourceCache)) {
++          throw std::runtime_error("native PICA Vulkan plan failed: " +
++                                   error);
++        }
+       }
++      auto &plan = *builtPlan;
+       phaseTiming.PicaPlanSeconds += SecondsSince(drawPhaseStart);
+       if (picaRawDrawRecorder.Enabled() &&
+           !picaRawDrawRecorder.Seen(plan.CanonicalIdentity.PipelineId)) {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp
 index bddcb6b9..7205000f 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp
@@ -1514,6 +1535,41 @@ index 00a6f526..d87b7c52 100644
      if (launch.Host.Renderer == "opengl") {
          launch.Host.BackendId = Fast::WindowBackend::FAST3D_SDL_OPENGL;
      } else if (launch.Host.Renderer == "nri" || launch.Host.Renderer == "vulkan") {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp
+index 4cd4764e..69b39631 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp
+@@ -49,7 +49,13 @@ private:
+ 
+ } // namespace
+ 
+-void Oot3dPicaPresentationScheduler::Capture(Oot3dPicaVulkanDrawPlan plan) {
++void Oot3dPicaPresentationScheduler::Capture(
++    const Oot3dPicaVulkanDrawPlan &plan) {
++  ++mStats.ProducedGuestDraws;
++  mAccumulator.Append(plan);
++}
++
++void Oot3dPicaPresentationScheduler::Capture(Oot3dPicaVulkanDrawPlan &&plan) {
+   ++mStats.ProducedGuestDraws;
+   mAccumulator.Append(std::move(plan));
+ }
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.h
+index d5edd030..88a42bae 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.h
+@@ -83,7 +83,10 @@ struct Oot3dPicaPresentationSchedulerState {
+ // presentation. Raw-copy completion belongs only to the native dependency.
+ class Oot3dPicaPresentationScheduler final {
+ public:
+-  void Capture(Oot3dPicaVulkanDrawPlan plan);
++  // A plan is several kilobytes of inline state: the game loop hands it over
++  // by rvalue so it moves once, into the pending frame.
++  void Capture(const Oot3dPicaVulkanDrawPlan &plan);
++  void Capture(Oot3dPicaVulkanDrawPlan &&plan);
+   void Capture(Oot3dPicaMemoryFillSubmission fill);
+   void Capture(Oot3dPicaDisplayTransferSubmission transfer);
+ 
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp
 index 151b1c06..5d917206 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp
@@ -1710,6 +1766,57 @@ index a81e0eef..58f1283b 100644
      Oot3dPicaSubmissionRuntimeProfile mRuntimeProfile;
      uint64_t mNextGeometryContentVersion = 1;
      uint64_t mGeometrySnapshotSequence = 0;
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp
+index ebf74085..da485733 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp
+@@ -2026,7 +2026,11 @@ void CollectOot3dPicaFrameCopyReferences(
+     }
+ }
+ 
+-void Oot3dPicaVisualFrameAccumulator::Append(Oot3dPicaVulkanDrawPlan plan) {
++void Oot3dPicaVisualFrameAccumulator::Append(const Oot3dPicaVulkanDrawPlan& plan) {
++    mPendingDraws.push_back(plan);
++}
++
++void Oot3dPicaVisualFrameAccumulator::Append(Oot3dPicaVulkanDrawPlan&& plan) {
+     mPendingDraws.push_back(std::move(plan));
+ }
+ 
+@@ -2163,8 +2167,17 @@ std::vector<Oot3dPicaVisualFrame> Oot3dPicaVisualFrameAccumulator::FinishFrames(
+         frame.TopTransfer = tops[segment];
+         const size_t firstDraw = draw;
+         while (draw < mPendingDraws.size() && mPendingDraws[draw].SubmissionId <= end) ++draw;
+-        frame.Draws.assign(std::make_move_iterator(mPendingDraws.begin() + firstDraw),
+-                           std::make_move_iterator(mPendingDraws.begin() + draw));
++        if (firstDraw == 0U && draw == mPendingDraws.size()) {
++            // The usual case, one frame holding every pending draw: take the
++            // buffer instead of moving each plan (several kilobytes) into a
++            // new one.
++            frame.Draws = std::move(mPendingDraws);
++            mPendingDraws.clear();
++            draw = 0U;
++        } else {
++            frame.Draws.assign(std::make_move_iterator(mPendingDraws.begin() + firstDraw),
++                               std::make_move_iterator(mPendingDraws.begin() + draw));
++        }
+         frame.StrictDrawIdentities.reserve(frame.Draws.size());
+         for (const auto& plan : frame.Draws) {
+             frame.StrictDrawIdentities.push_back(ComputeOot3dPicaVisualDrawIdentity(plan));
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.h
+index 71c2412b..da7a519b 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.h
+@@ -191,7 +191,8 @@ class Oot3dPicaPreparedVisualTransition final {
+ 
+ class Oot3dPicaVisualFrameAccumulator final {
+   public:
+-    void Append(Oot3dPicaVulkanDrawPlan plan);
++    void Append(const Oot3dPicaVulkanDrawPlan& plan);
++    void Append(Oot3dPicaVulkanDrawPlan&& plan);
+     void Append(Oot3dPicaMemoryFillSubmission fill);
+     void Append(Oot3dPicaDisplayTransferSubmission transfer);
+     std::optional<Oot3dPicaVisualFrame>
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp
 index 387bd3f4..50f16f2e 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp

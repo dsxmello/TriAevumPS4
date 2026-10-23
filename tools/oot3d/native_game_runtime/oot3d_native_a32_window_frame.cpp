@@ -1712,19 +1712,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
           suppressTopScreenFrontendBackdrop &&
           targetsFrontendBackdrop &&
           (usesCommonBackground || isOpaqueTargetInitialization);
-      Oot3dNativeGame::Oot3dPicaVulkanDrawPlan plan;
+      // The plan is used in place (prebuilt or local) and moved once, into
+      // the scheduler: it is several kilobytes of inline state.
+      std::optional<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> localPlan;
+      Oot3dNativeGame::Oot3dPicaVulkanDrawPlan *builtPlan = nullptr;
       auto drawPhaseStart = std::chrono::steady_clock::now();
 #if defined(__ORBIS__)
       if (plansPrebuilt) {
-        plan = std::move(prebuiltPlans[&draw - draws.data()]);
+        builtPlan = &prebuiltPlans[&draw - draws.data()];
       } else
 #endif
-      if (!Oot3dNativeGame::
-              BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
-                  draw, plan, &error, &shaderSourceCache)) {
-        throw std::runtime_error("native PICA Vulkan plan failed: " +
-                                 error);
+      {
+        builtPlan = &localPlan.emplace();
+        if (!Oot3dNativeGame::
+                BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
+                    draw, *builtPlan, &error, &shaderSourceCache)) {
+          throw std::runtime_error("native PICA Vulkan plan failed: " +
+                                   error);
+        }
       }
+      auto &plan = *builtPlan;
       phaseTiming.PicaPlanSeconds += SecondsSince(drawPhaseStart);
       if (picaRawDrawRecorder.Enabled() &&
           !picaRawDrawRecorder.Seen(plan.CanonicalIdentity.PipelineId)) {

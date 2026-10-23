@@ -119,3 +119,29 @@ Ordem: 1 (testar já), 2, 4–7, 3, 8, e o PGO no fim.
   varredura por falta.
 - Log a cada 5 s: `[triaevum] geometry cache: N entries, X MiB | per second:
   hits, misses, MiB copied`.
+
+## Medição da 1.29 (2026-10-23)
+
+- Vila 25–32 quadros do jogo/s (42–53%), 330–420 draws, render scale 6x;
+  áreas leves 50–57 (85–95%). Mesma faixa da 1.28: sem ganho.
+- Cache de geometria: < 2 MiB, > 98% de acertos, 0,2 MiB/s copiados. Ele não
+  era a origem do memcpy.
+- Thread do jogo: kernel ~3%; mem* ~9,8%, agora quase tudo atribuído:
+  construtor de **move** do `Oot3dPicaVulkanDrawPlan` ~4,4%, `operator=`
+  (move e cópia) ~1,6%, `RunGuestRefresh`/`Oot3dPicaDrawSubmission`/
+  `Capture` ~1,7%. O plano tem ~15,5 KB (~14 KB de estado inline copiado
+  por memcpy a cada move) e cada draw era movido 4–5 vezes por quadro.
+  As cópias de verdade só aparecem na interpolação visual (upstream).
+- Endereços do sampler: `elf` = endereço do ELF; `jit` acima de 64 MiB do
+  .text também é eboot (subtrair 0x400000). Agregador por função:
+  símbolos do `build/product/triaevum_product` (llvm-nm do SDK).
+
+## 1.30 — menos moves do plano de draw
+
+- `oot3d_native_a32_window_frame.cpp`: o plano é usado no lugar (prebuilt
+  ou local em `std::optional`), sem construir um vazio e mover para ele.
+- `Capture`/`Append` com sobrecargas `const&` e `&&` (antes por valor: um
+  move a mais em cada uma). Os testes continuam passando cópias.
+- `FinishFrames`: quando um quadro leva todos os draws pendentes, o vetor
+  inteiro é movido (um ponteiro) em vez de cada plano.
+- Por draw: de 1 construção vazia + 4 moves para 1 move (o `push_back`).

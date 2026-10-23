@@ -83,7 +83,10 @@ struct Oot3dPicaPresentationSchedulerState {
 // presentation. Raw-copy completion belongs only to the native dependency.
 class Oot3dPicaPresentationScheduler final {
 public:
-  void Capture(Oot3dPicaVulkanDrawPlan plan);
+  // A plan is several kilobytes of inline state: the game loop hands it over
+  // by rvalue so it moves once, into the pending frame.
+  void Capture(const Oot3dPicaVulkanDrawPlan &plan);
+  void Capture(Oot3dPicaVulkanDrawPlan &&plan);
   void Capture(Oot3dPicaMemoryFillSubmission fill);
   void Capture(Oot3dPicaDisplayTransferSubmission transfer);
 
