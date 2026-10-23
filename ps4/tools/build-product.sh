@@ -64,5 +64,5 @@ cp "$eboot" "$stage/"
 cp "$PS4_PORT_ROOT/sce_sys/icon0.png" "$stage/sce_sys/"
 cp -r "$PS4_PORT_ROOT/../TriAevum/runtime/triaevum_resources/." "$stage/resources/"
 pkg="$(SFO_STYLE=plain NO_PIGLET_MODULES=1 "$HERE/make-pkg.sh" "$stage" "${PRODUCT_TITLE_ID:-TRIA00005}" \
-    "TriAevum PS4" "${PRODUCT_VERSION:-01.30}" TRIAEVUMPRODUCT0 "$PS4_BUILD_ROOT/out" | tail -1)"
+    "TriAevum PS4" "${PRODUCT_VERSION:-01.31}" TRIAEVUMPRODUCT0 "$PS4_BUILD_ROOT/out" | tail -1)"
 echo "product: $(basename "$pkg")"

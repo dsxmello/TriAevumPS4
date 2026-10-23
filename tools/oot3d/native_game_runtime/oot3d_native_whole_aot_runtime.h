@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 namespace Oot3dNativeGame {
 
@@ -223,7 +224,20 @@ constexpr Oot3dAotExternalStateAccess Oot3dAotExternalStateAccessFor(
     }
 }
 
-inline bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& context) noexcept {
+// Every generated guest block enters through Oot3dAotEnterBlock. With the
+// hook path in the same function it was too large to inline, so each block
+// paid a call plus a full callee-saved register save and restore. On the PS4
+// only the budget and the block-entry filter stay inline; the exact PC search
+// and the hook (rare) are calls.
+#if defined(__ORBIS__)
+#define OOT3D_AOT_BLOCK_FAST_PATH inline __attribute__((always_inline))
+#define OOT3D_AOT_BLOCK_SLOW_PATH inline __attribute__((noinline))
+#else
+#define OOT3D_AOT_BLOCK_FAST_PATH inline
+#define OOT3D_AOT_BLOCK_SLOW_PATH inline
+#endif
+
+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& context) noexcept {
     if (context.BlocksRemaining == 0U) {
         return false;
     }
@@ -232,23 +246,33 @@ inline bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& context) noexcept {
     return true;
 }
 
-inline bool Oot3dAotShouldNotifyBlock(
+// The inline part of Oot3dAotShouldNotifyBlock: false when no hook can run
+// for pc. True still needs Oot3dAotBlockEntryListed.
+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotMayNotifyBlock(
     const Oot3dWholeAotContext& context, uint32_t pc,
     bool firstBlock) noexcept {
     if (context.BlockEntry == nullptr ||
         (firstBlock && context.SkipFirstBlockEntry)) {
         return false;
     }
-    if (context.BlockEntryPcCount == 0U) {
-        return true;
-    }
-    if (context.BlockEntryFilter != nullptr &&
-        !context.BlockEntryFilter->MayContain(pc)) {
-        return false;
-    }
-    return std::binary_search(
-        context.BlockEntryPcs,
-        context.BlockEntryPcs + context.BlockEntryPcCount, pc);
+    return context.BlockEntryPcCount == 0U ||
+           context.BlockEntryFilter == nullptr ||
+           context.BlockEntryFilter->MayContain(pc);
+}
+
+inline bool Oot3dAotBlockEntryListed(
+    const Oot3dWholeAotContext& context, uint32_t pc) noexcept {
+    return context.BlockEntryPcCount == 0U ||
+           std::binary_search(
+               context.BlockEntryPcs,
+               context.BlockEntryPcs + context.BlockEntryPcCount, pc);
+}
+
+inline bool Oot3dAotShouldNotifyBlock(
+    const Oot3dWholeAotContext& context, uint32_t pc,
+    bool firstBlock) noexcept {
+    return Oot3dAotMayNotifyBlock(context, pc, firstBlock) &&
+           Oot3dAotBlockEntryListed(context, pc);
 }
 
 // Runs the block-entry hook; false when it deferred an observable exit
@@ -265,27 +289,18 @@ inline bool Oot3dAotRunBlockEntryHook(
     return !gOot3dWholeAotDeferredExitPending;
 }
 
-inline bool Oot3dAotEnterBlock(
-    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
-    uint32_t pc) {
-    const bool firstBlock = context.BlocksConsumed == 0U;
-    if (!Oot3dAotConsumeBlock(context)) {
-        return false;
-    }
-    if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
+OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
+    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame, uint32_t pc) {
+    if (!Oot3dAotBlockEntryListed(context, pc)) {
         return true;
     }
     return Oot3dAotRunBlockEntryHook(context, frame, pc);
 }
 
-inline bool Oot3dAotEnterBlock(
+OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
     Oot3dAotArchitecturalState& state, uint32_t pc) {
-    const bool firstBlock = context.BlocksConsumed == 0U;
-    if (!Oot3dAotConsumeBlock(context)) {
-        return false;
-    }
-    if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
+    if (!Oot3dAotBlockEntryListed(context, pc)) {
         return true;
     }
     state.Flush(0x7FFFU, true);
@@ -295,15 +310,11 @@ inline bool Oot3dAotEnterBlock(
 }
 
 template <typename CommitState, typename ReloadState>
-inline bool Oot3dAotEnterBlock(
+OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
     Oot3dAotArchitecturalState& state, uint32_t pc,
     CommitState&& commitState, ReloadState&& reloadState) {
-    const bool firstBlock = context.BlocksConsumed == 0U;
-    if (!Oot3dAotConsumeBlock(context)) {
-        return false;
-    }
-    if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
+    if (!Oot3dAotBlockEntryListed(context, pc)) {
         return true;
     }
     commitState();
@@ -312,6 +323,49 @@ inline bool Oot3dAotEnterBlock(
     state.Reload(0x7FFFU, true);
     reloadState();
     return proceed;
+}
+
+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
+    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
+    uint32_t pc) {
+    const bool firstBlock = context.BlocksConsumed == 0U;
+    if (!Oot3dAotConsumeBlock(context)) {
+        return false;
+    }
+    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
+        return true;
+    }
+    return Oot3dAotNotifyBlock(context, frame, pc);
+}
+
+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
+    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
+    Oot3dAotArchitecturalState& state, uint32_t pc) {
+    const bool firstBlock = context.BlocksConsumed == 0U;
+    if (!Oot3dAotConsumeBlock(context)) {
+        return false;
+    }
+    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
+        return true;
+    }
+    return Oot3dAotNotifyBlock(context, frame, state, pc);
+}
+
+template <typename CommitState, typename ReloadState>
+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
+    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
+    Oot3dAotArchitecturalState& state, uint32_t pc,
+    CommitState&& commitState, ReloadState&& reloadState) {
+    const bool firstBlock = context.BlocksConsumed == 0U;
+    if (!Oot3dAotConsumeBlock(context)) {
+        return false;
+    }
+    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
+        return true;
+    }
+    return Oot3dAotNotifyBlock(context, frame, state, pc,
+                               std::forward<CommitState>(commitState),
+                               std::forward<ReloadState>(reloadState));
 }
 
 inline Oot3dWholeAotFlow Oot3dAotCallExternal(

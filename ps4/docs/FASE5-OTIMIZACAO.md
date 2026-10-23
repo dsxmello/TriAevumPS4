@@ -158,3 +158,22 @@ Ordem: 1 (testar já), 2, 4–7, 3, 8, e o PGO no fim.
   realocações do `mPendingDraws` quando um quadro passa do maior anterior.
   Para cortar mais é preciso encolher o plano (os ~12 KB inline dos shaders
   gerados/estado), não movê-lo menos.
+
+## 1.31 — item 8, entrada de bloco do AOT
+
+- Cada bloco do guest entra por `Oot3dAotEnterBlock`. Com o caminho do hook
+  na mesma função ele não era inlinado: 10.329 cópias fora de linha e 167 mil
+  chamadas no binário, cada bloco pagando call + 7 push/pop para só
+  decrementar o orçamento e testar o filtro de PCs. Visível no perfil da
+  1.30: 2,9% da thread do jogo (mais que todo o corpo gerado visível, 1,9%;
+  ~69% das amostras ficam na cauda do código gerado).
+- `oot3d_native_whole_aot_runtime.h`: orçamento + filtro inline
+  (`always_inline` no ORBIS, como o `ReadFast`/`WriteFast`); a busca exata
+  do PC e o hook vão para `Oot3dAotNotifyBlock` (`noinline`). Mesma
+  semântica. Só o header muda: o código gerado não precisa ser regenerado.
+- Binário: 0 cópias de `Oot3dAotEnterBlock`, eboot +15 MB. Recompila todos
+  os shards (~8 min).
+- Próximo do item 8 (precisa do C++ gerado de novo: as entradas do gerador,
+  program/seleção/code.bin, não estão neste PC): LDM/STM com uma busca de
+  página e um passo de geração para todas as palavras (~25 instruções e ~8
+  acessos por palavra hoje).
