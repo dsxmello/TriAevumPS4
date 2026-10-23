@@ -224,7 +224,9 @@ NativeA32HostResult NativeA32CtrHostServices::HandleRomFsRequest(
             success = file.FileBackend->Read(file.FileOffset + offset, bytes, &returned) &&
                       returned <= requested;
         } else if (romfs) {
-            if (!file.RomFsBacking) file.RomFsBacking = std::make_shared<RomFsBackingFile>(file.FilePath);
+            if (!file.RomFsBacking)
+                file.RomFsBacking = std::make_shared<RomFsBackingFile>(
+                    file.FilePath, mConfig.RomFsOverlay, mConfig.RomFsImageOffset);
             bool opened = false;
             success = file.RomFsBacking->Read(file.FileOffset + offset, bytes, &opened);
             returned = success ? requested : 0U;
@@ -366,7 +368,7 @@ NativeA32HostResult NativeA32CtrHostServices::HandleFsRequest(
                 auto file = std::make_shared<KernelObject>();
                 file->Type = "client_session:file:romfs";
                 file->FileOffset = mConfig.RomFsImageOffset;
-                file->FileSize = mConfig.RomFsImageSize;
+                file->FileSize = RomFsServiceViewSize();
                 bool opened = false;
                 if (mConfig.Filesystem != nullptr) {
                     file->FilePath = mConfig.RomFsContentPath;
@@ -384,7 +386,8 @@ NativeA32HostResult NativeA32CtrHostServices::HandleFsRequest(
                     file->FilePath = mConfig.RomFsImagePath;
                     file->RomFsBacking =
                         std::make_shared<RomFsBackingFile>(
-                            file->FilePath);
+                            file->FilePath, mConfig.RomFsOverlay,
+                            mConfig.RomFsImageOffset);
                     opened = true;
                 }
                 const uint32_t handle =

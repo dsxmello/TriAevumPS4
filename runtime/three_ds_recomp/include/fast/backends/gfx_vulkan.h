@@ -20,6 +20,8 @@
 #include "fast/renderer3ds/pica_pbr_seams.h"
 #include "fast/renderer3ds/pica_surface_lighting.h"
 #include "fast/renderer3ds/pica_surface_calibration_trace.h"
+#include "fast/renderer3ds/gpu_memory_residency.h"
+#include "fast/renderer3ds/vulkan_memory_budget.h"
 #include "fast/backends/oot3d_vulkan_diagnostics.h"
 #include "fast/backends/oot3d_vulkan_gpu_profiler.h"
 #include "fast/backends/oot3d_vulkan_validation.h"
@@ -28,6 +30,8 @@
 #include "fast/oot3d/brixelizer_gi_pass.h"
 #include "fast/oot3d/brixelizer_scene.h"
 #include "fast/oot3d/graphics_settings_runtime.h"
+#include "fast/oot3d/presentation_picture.h"
+#include "fast/oot3d/render_resolution_policy.h"
 #include "fast/oot3d/screen_space_gi_provider.h"
 #include "fast/oot3d/sample_view.h"
 #include "fast/renderer3ds/pica_gi_geometry.h"
@@ -422,6 +426,9 @@ class GfxRenderingAPIVulkan final : public GfxRenderingAPI,
         bool CustomReplacementApplied = false;
         bool CustomReplacementPending = false;
         bool CustomReplacementReady = false;
+        // The last frame a draw resolved this record: the texture cache
+        // releases records no draw samples (ReleaseIdleNativePicaTextures).
+        uint64_t LastUsedFrame = 0;
     };
 
     struct NativePicaMaterialBundle {
@@ -947,6 +954,16 @@ class GfxRenderingAPIVulkan final : public GfxRenderingAPI,
         const Oot3d::PicaCompositionStageAnchor& anchor);
     void ReleaseEffectGraphImageClients();
     void ApplyInternalResolutionScale(float scale);
+    // The output the native PICA targets follow: the presentation picture of
+    // the acquired swapchain, or the whole swapchain before a frame resolved
+    // one.
+    [[nodiscard]] Oot3d::RenderExtent NativePicaOutputExtent() const noexcept {
+        return mPresentationPicture.Valid()
+            ? Oot3d::RenderExtent{mPresentationPicture.Width,
+                                  mPresentationPicture.Height}
+            : Oot3d::RenderExtent{mSwapchainExtent.width,
+                                  mSwapchainExtent.height};
+    }
     void ResetNativePicaRenderTargets(bool preserveDisplayImages = false);
     void ForgetNativePicaEffectNriTextures();
     void ApplyPendingNativePicaMemoryFills(NativePicaRenderTarget& target);
@@ -1066,10 +1083,20 @@ class GfxRenderingAPIVulkan final : public GfxRenderingAPI,
         const NativePicaTextureKey& textureKey,
         const GfxNativePicaTextureView& texture, uint32_t width,
         uint32_t height);
+    // Resolves the sampled record and marks it used this frame.
     TextureRecord* GetOrCreateNativePicaTexture(
         const GfxNativePicaTextureView& texture, std::string* error,
         uint64_t replacementGeneration, uint64_t renderTargetNamespace,
         const uint64_t* precomputedContentHash = nullptr);
+    TextureRecord* ResolveNativePicaTexture(
+        const GfxNativePicaTextureView& texture, std::string* error,
+        uint64_t replacementGeneration, uint64_t renderTargetNamespace,
+        const uint64_t* precomputedContentHash);
+    // Releases cached textures and lighting LUTs no draw sampled lately
+    // (Renderer3ds::GpuMemoryResidencyPolicy), sooner while the device-local
+    // heap is short of its budget. Records that another owner's lifetime
+    // governs (raw-copy samples, live render-target aliases) are left to it.
+    void ReleaseIdleNativePicaTextures();
     TextureRecord* GetOrCreateNativePicaLightingLut(
         const ::Oot3d::Renderer::PicaLightingLutView& lightingLut,
         std::string* error);
@@ -1139,6 +1166,10 @@ class GfxRenderingAPIVulkan final : public GfxRenderingAPI,
     VkSwapchainKHR mSwapchain = VK_NULL_HANDLE;
     VkFormat mSwapchainFormat = VK_FORMAT_UNDEFINED;
     VkExtent2D mSwapchainExtent{};
+    // The presentation picture inside the acquired swapchain: the aspect
+    // ratio's letterbox, centred (presentation_picture.h). Native PICA
+    // targets follow it and scanout places the display in it.
+    Oot3d::PresentationPicture mPresentationPicture{};
     VkSurfaceCapabilitiesKHR mSwapchainSurfaceCapabilities{};
     VkSurfaceFormatKHR mSwapchainSurfaceFormat{};
     std::vector<VkImage> mSwapchainImages;
@@ -1634,6 +1665,18 @@ class GfxRenderingAPIVulkan final : public GfxRenderingAPI,
     bool SubmitNativePicaTextureCopy(const GfxNativePicaDisplayTransferView& transfer, std::string* error);
     std::map<uint64_t, NativePicaLightingLutTexture>
         mNativePicaLightingLuts;
+    // Texture-cache residency (ReleaseIdleNativePicaTextures): the policy, the
+    // last budget reading and what was released since the last report.
+    struct NativePicaTextureResidency {
+        Renderer3ds::GpuMemoryResidencyPolicy Policy;
+        uint64_t NextSweepFrame = 0;
+        uint64_t NextReportFrame = 0;
+        bool Pressure = false;
+        std::optional<Renderer3ds::VulkanDeviceLocalMemory> DeviceLocal;
+        uint64_t ReleasedRecords = 0;
+        uint64_t ReleasedBytes = 0;
+    };
+    NativePicaTextureResidency mNativePicaTextureResidency;
     std::map<NativePicaRenderTargetKey, NativePicaRenderTarget>
         mNativePicaRenderTargets;
     std::map<std::pair<uint64_t, uint32_t>, NativePicaDisplayImage>

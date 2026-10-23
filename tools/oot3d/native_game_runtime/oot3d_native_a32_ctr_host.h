@@ -3,6 +3,7 @@
 #include "oot3d_native_a32_ctr_pica_bridge.h"
 #include "oot3d_native_a32_input.h"
 #include "oot3d_native_a32_process.h"
+#include "oot3d_native_a32_romfs_overlay.h"
 #include "../../ctr_services/y2r_service.h"
 
 #include <array>
@@ -223,6 +224,9 @@ struct NativeA32CtrHostConfig {
     std::filesystem::path RomFsImagePath;
     uint64_t RomFsImageOffset = 0;
     uint64_t RomFsImageSize = 0;
+    // Optional user-installed RomFS mods over RomFsImagePath's service view
+    // (Forge's O3RO overlay). Absent: the service view is the image itself.
+    std::shared_ptr<const NativeA32RomFsOverlay> RomFsOverlay;
     NativeA32CtrFilesystem* Filesystem = nullptr;
     std::string RomFsContentPath = "inputs/romfs";
     Oot3dNativePicaFrontend* PicaFrontend = nullptr;
@@ -323,6 +327,8 @@ class NativeA32CtrHostServices final : public NativeA32HostServices {
         uint32_t commandBuffer, const std::optional<std::string>& sessionType,
         NativeA32CtrSvcEvent event, uint32_t result, std::string_view reason,
         uint64_t offset = 0U, uint64_t length = 0U);
+    // The guest-visible RomFS size: the image's view, plus any overlay tail.
+    uint64_t RomFsServiceViewSize() const noexcept;
     struct RomFsBackingFile;
 
     struct KernelObject {

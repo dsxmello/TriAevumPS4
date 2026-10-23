@@ -331,8 +331,12 @@ bool NativeA32CtrHostServices::RestoreState(const nlohmann::json& state,
             object->FileOpenMode = encoded.at("file_open_mode").get<uint32_t>();
             object->FileClosed = encoded.value("file_closed", false);
             if (isRomFsFile && (object->FileOffset != mConfig.RomFsImageOffset ||
-                                object->FileSize != mConfig.RomFsImageSize)) {
-                throw std::runtime_error("restored RomFS service view is incompatible");
+                                object->FileSize != RomFsServiceViewSize())) {
+                // The view size includes installed RomFS mods: a state is
+                // bound to the mods that were active when it was saved.
+                throw std::runtime_error(
+                    "restored RomFS service view is incompatible (the save state "
+                    "was made with different RomFS mods or game data)");
             }
             if (!object->FileClosed && mConfig.Filesystem != nullptr && (isRomFsFile || isSaveFile)) {
                 uint32_t openFlags = 0U;
@@ -359,8 +363,9 @@ bool NativeA32CtrHostServices::RestoreState(const nlohmann::json& state,
                         "restored RomFS range exceeds its backing file");
                 }
             } else if (isRomFsFile && !object->FileClosed) {
-                object->RomFsBacking =
-                    std::make_shared<RomFsBackingFile>(object->FilePath);
+                object->RomFsBacking = std::make_shared<RomFsBackingFile>(
+                    object->FilePath, mConfig.RomFsOverlay,
+                    mConfig.RomFsImageOffset);
             }
             if (!encoded.at("mapped_address").is_null()) {
                 object->MappedAddress =

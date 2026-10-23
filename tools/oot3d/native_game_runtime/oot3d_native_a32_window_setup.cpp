@@ -111,6 +111,18 @@ void NativeA32WindowSession::Setup() {
       Oot3dNativeGame::DetectGameLanguages(manifest->RomFsImagePath,
           manifest->RomFsImageOffset, manifest->RomFsImageSize));
   hostConfig.SystemLanguage = languageSettings->SystemId();
+  if (!launch.UiTexturePackDirectory.empty()) {
+    // Forge's UI texture pack beneath the user's pack: the boot language's
+    // folders, then the language-neutral textures.
+    std::vector<std::filesystem::path> directories;
+    for (const auto &folder :
+         Oot3dNativeGame::UiTexturePackLanguageFolders(languageSettings->SystemId())) {
+      const auto directory = launch.UiTexturePackDirectory / "languages" / folder;
+      if (std::filesystem::is_directory(directory)) directories.push_back(directory);
+    }
+    directories.push_back(launch.UiTexturePackDirectory / "common");
+    Oot3d::Renderer::AzaharTexturePackRuntime::Instance().SetBaseDirectories(std::move(directories));
+  }
   hostConfig.ResourceLimitValues = manifest->ResourceLimitValues;
   hostConfig.ResourceCurrentValues = manifest->ResourceCurrentValues;
   hostConfig.LinearHeapBaseAddress = manifest->LinearHeapBaseAddress;
@@ -120,6 +132,25 @@ void NativeA32WindowSession::Setup() {
   hostConfig.RomFsImagePath = manifest->RomFsImagePath;
   hostConfig.RomFsImageOffset = manifest->RomFsImageOffset;
   hostConfig.RomFsImageSize = manifest->RomFsImageSize;
+  if (!launch.RomFsOverlayPath.empty()) {
+    // User-enabled RomFS mods: Forge built the overlay over this exact image.
+    std::ifstream image(manifest->RomFsImagePath, std::ios::binary);
+    const uint64_t imageOffset = manifest->RomFsImageOffset;
+    hostConfig.RomFsOverlay = Oot3dNativeGame::NativeA32RomFsOverlay::Load(
+        launch.RomFsOverlayPath, manifest->RomFsImageSize,
+        [&](uint64_t offset, std::span<uint8_t> bytes) {
+          image.clear();
+          image.seekg(static_cast<std::streamoff>(imageOffset + offset), std::ios::beg);
+          image.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+          return static_cast<bool>(image);
+        },
+        &error);
+    if (!hostConfig.RomFsOverlay) throw std::runtime_error(error);
+    std::cout << "oot3d_native_game: RomFS mods active ("
+              << hostConfig.RomFsOverlay->PatchCount() << " metadata patches, "
+              << (hostConfig.RomFsOverlay->ViewSize() - manifest->RomFsImageSize)
+              << " appended bytes)\n";
+  }
   hostConfig.PicaFrontend = &picaFrontend;
   hostConfig.PicaCompositionDomain = &picaCompositionDomain;
   hostConfig.PicaCompositionProvider = &picaCompositionTracker;
@@ -278,6 +309,9 @@ void NativeA32WindowSession::Setup() {
     blockEntryHooks.insert(blockEntryHooks.end(),
                            topScreenSourcePortHooks.begin(),
                            topScreenSourcePortHooks.end());
+    const auto reframedFileHooks = Oot3dNativeGame::TopScreenReframedFileSelect::HookPcs();
+    blockEntryHooks.insert(blockEntryHooks.end(), reframedFileHooks.begin(),
+                           reframedFileHooks.end());
     for (const auto &contract :
          Oot3dNativeGame::TopScreenVerifiedControlFlowContracts()) {
       blockEntryHooks.push_back(contract.Entry);
@@ -450,7 +484,12 @@ void NativeA32WindowSession::Setup() {
         Oot3dNativeGame::kTopScreenGearModelDrawCall,
         Oot3dNativeGame::kTopScreenViewModelTransformBlock,
         Oot3dNativeGame::kTopScreenQuestDrawHook,
-        kPauseSceneDimBranch};
+        kPauseSceneDimBranch,
+        Oot3dNativeGame::kTopScreenVisionsUpperDispatch,
+        Oot3dNativeGame::kTopScreenVisionsLowerDispatch};
+    const auto reframedFileSites = Oot3dNativeGame::TopScreenReframedFileSelect::HookPcs();
+    topScreenSourcePortBlocks.insert(topScreenSourcePortBlocks.end(),
+                                     reframedFileSites.begin(), reframedFileSites.end());
     for (const auto &contract :
          Oot3dNativeGame::TopScreenVerifiedControlFlowContracts()) {
       topScreenSourcePortBlocks.push_back(contract.Entry);
@@ -818,12 +857,13 @@ void NativeA32WindowSession::Setup() {
   applicationSettingsTabs.push_back(
       Oot3dNativeGame::CreateSavestatePanel(savestateLibrary));
   applicationSettingsTabs.push_back(Oot3dNativeGame::CreateGameLanguagePanel(languageSettings));
+  applicationSettingsTabs.push_back(
+      Oot3dNativeGame::CreatePhotoModePanel(nativeCandidateDispatch.DevFreeCamera, photoMode));
 #if defined(TRIAEVUM_DEVELOPER_TOOLS)
   devWarp = std::make_shared<Oot3dNativeGame::DevWarpRuntime>(
       std::filesystem::path(launch.Host.ConfigurationPath).parent_path() / "developer-tools.json");
   applicationSettingsTabs.push_back(
-      Oot3dNativeGame::CreateDevToolsPanel(devWarp, nativeCandidateDispatch.DevFreeCamera,
-                                           languageSettings->BootLanguage()));
+      Oot3dNativeGame::CreateDevToolsPanel(devWarp, languageSettings->BootLanguage()));
   // Scripted check of the Better list without the menu:
   // TRIAEVUM_DEV_WARP=<scene>:<entrance>:<child|adult>:<day|night> (list
   // indices), requested when gameplay first starts.
@@ -919,6 +959,16 @@ void NativeA32WindowSession::Setup() {
   if (gui == nullptr) {
     throw std::runtime_error("native PICA host has no renderer GUI");
   }
+  // The in-game menu (Esc / R3): the controller-friendly subset, through the
+  // same owners as the F1 tabs above. Built only now, after the renderer
+  // window: its first snapshot creates the graphics settings runtime, which
+  // reads the settings file through the persistence port the window's GUI
+  // installs. Built earlier, the runtime would start without the port, run the
+  // launch on the defaults ("session only") and never load or save the file.
+  inGameMenuStorage.emplace(Oot3dNativeGame::InGameMenuOwners{
+      controlConfigRuntime,
+      launch.UiProfile == Oot3dNativeGame::Oot3dUiProfile::TopScreen ? topScreenConfigRuntime : nullptr,
+      languageSettings, savestateLibrary, nativeCandidateDispatch.DevFreeCamera, photoMode});
 #if defined(__SWITCH__)
   WriteSwitchBootStage("opengl_renderer_initialized");
 #endif
@@ -1004,6 +1054,8 @@ void NativeA32WindowSession::Setup() {
   widescreenProjection.ItemDescription = &itemDescription;
   auto &wideItems = wideItemsStorage.emplace(process.Memory());
   nativeCandidateDispatch.WideItems = &wideItems;
+  nativeCandidateDispatch.Visions = &visionsStorage.emplace(process.Memory());
+  nativeCandidateDispatch.ReframedFileSelect = &reframedFileSelectStorage.emplace(process.Memory());
   widescreenProjection.WideItems = &wideItems;
   // SingleScreen 3.0 shortcut column: reordering previews the host config;
   // saving stays an explicit F1 action.
@@ -1040,8 +1092,11 @@ void NativeA32WindowSession::Setup() {
   widescreenProjection.Rain = &rain;
   ApplyTopScreenRainConfig();
   auto &uiRenderBackend = uiRenderBackendStorage.emplace(api);
+  // The in-game menu's baked fonts answer their own texture names; everything
+  // else still resolves through the ocarina text and native providers.
+  auto &menuFontProvider = menuFontProviderStorage.emplace(&ocarinaText);
   auto &n64UiRenderer = n64UiRendererStorage.emplace(uiRenderBackend,
-                                               &ocarinaText);
+                                               &menuFontProvider);
   window.SetTextureFilter(Fast::FILTER_LINEAR);
   inputTimeline = Oot3dNativeGame::NativeA32InputTimeline::LoadFile(
       launch.Host.InputTimelinePath);
@@ -1336,7 +1391,7 @@ void NativeA32WindowSession::ApplyTopScreenConfigSnapshot() {
   }
   activeTopScreenConfig = snapshot.Config;
   appliedTopScreenConfigRevision = snapshot.Revision;
-  uiLifecycleBridge.SetTopScreenConfig(activeTopScreenConfig);
+  PublishTopScreenUiConfig();
   widescreenProjection.TopScreenConfig = activeTopScreenConfig;
   if (gameplayStorage) gameplayStorage->SetConfig(activeTopScreenConfig);
   ApplyTopScreenRainConfig();
@@ -1354,10 +1409,29 @@ void NativeA32WindowSession::ApplyTopScreenConfigSnapshot() {
 }
 
 void NativeA32WindowSession::SetTopScreenSessionMinimapVisible(bool visible) {
-  auto &uiLifecycleBridge = *uiLifecycleBridgeStorage;
   activeTopScreenConfig.MinimapVisible = visible;
-  uiLifecycleBridge.SetTopScreenConfig(activeTopScreenConfig);
+  PublishTopScreenUiConfig();
   widescreenProjection.TopScreenConfig = activeTopScreenConfig;
+}
+
+void NativeA32WindowSession::PublishTopScreenUiConfig() {
+  // Photo mode's Hide HUD is a session state over the saved configuration:
+  // the TopScreen compositor sees render_hud off, the configuration keeps it.
+  auto shown = activeTopScreenConfig;
+  if (photoModeHudHidden) shown.RenderHud = false;
+  uiLifecycleBridgeStorage->SetTopScreenConfig(shown);
+}
+
+void NativeA32WindowSession::ApplyPhotoModeHud() {
+  const bool hidden = photoMode->HideHud.load(std::memory_order_relaxed);
+  if (hidden != photoModeHudHidden) {
+    photoModeHudHidden = hidden;
+    PublishTopScreenUiConfig();
+  }
+  // The game's own gameplay HUD draws (the action icon, the minimap), which
+  // the TopScreen compositor does not draw, follow render_hud as well.
+  picaPresentationScheduler.SetNativeGameplayHudVisible(
+      !hidden && (!nativeCandidateDispatch.TopScreenUiProfile || activeTopScreenConfig.RenderHud));
 }
 
 void NativeA32WindowSession::ApplySelectedUiProfile() {
@@ -1390,11 +1464,17 @@ void NativeA32WindowSession::ApplySelectedUiProfile() {
 
 void NativeA32WindowSession::UpdateScenePresentation() {
   auto &window = *windowPointer;
+  const auto graphics = Fast::Oot3d::GraphicsSettingsRuntime::Instance().Snapshot();
+  // The picture is the aspect ratio's letterbox in the window; the scene's
+  // FOV policy follows the picture's shape (the renderer sizes its targets
+  // to the same picture), never the window's.
+  presentationPicture = Fast::Oot3d::ResolvePresentationPicture(
+      std::max<uint32_t>(1, window.GetWidth()),
+      std::max<uint32_t>(1, window.GetHeight()), graphics.Aspect);
   widescreenProjection.Projection.Presentation =
       Fast::Oot3d::ResolveScenePresentationPolicy(
-          std::max<uint32_t>(1, window.GetWidth()),
-          std::max<uint32_t>(1, window.GetHeight()));
-  const auto graphics = Fast::Oot3d::GraphicsSettingsRuntime::Instance().Snapshot();
+          std::max<uint32_t>(1, presentationPicture.Width),
+          std::max<uint32_t>(1, presentationPicture.Height));
   widescreenProjection.Projection.FovMultiplier = graphics.FovMultiplier;
   auto &visibility = widescreenProjection.ActorVisibility;
   visibility.ExtendedDrawDistance = graphics.ExtendedDrawDistance;
