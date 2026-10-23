@@ -194,3 +194,17 @@ Ordem: 1 (testar já), 2, 4–7, 3, 8, e o PGO no fim.
 - `Oot3dAotBlockEntryFilter` com 65.536 bits (8 KiB) no PS4 (antes 4096):
   ~16x menos falsos positivos. Fora do PS4 o tamanho fica (faz parte da ABI
   do módulo do título). Recompila todos os shards.
+
+## Medição da 1.32 (2026-10-23)
+
+| Faixa | 1.29 | 1.30 | 1.31 | 1.32 |
+|---|---|---|---|---|
+| leve (< 200 draws) | 74% | 76% | 80% | **86%** (16,5 ms/quadro do jogo) |
+| média (200–300) | 69% | 58% (2 jan.) | 60% (2 jan.) | **71%** (20,4 ms) |
+| vila (> 300) | 49% (27,0 ms) | 53% (25,9) | 50% (2 jan.) | **54%** (25,3 ms, 11 janelas, 376 draws) |
+
+- `NotifyBlock` 1,35% -> 0,22%: o filtro maior acabou com os falsos
+  positivos. Entrada de bloco somada: 2,9% (1.30) -> 0,2%.
+- Na vila a thread do jogo continua em ~50 ms por quadro apresentado; o que
+  sobra visível: mem* 7,2%, frontend PICA 5,3%, VFP 3%; ~70% na cauda do
+  código gerado (acesso à memória do guest: próximo passo do item 8).
