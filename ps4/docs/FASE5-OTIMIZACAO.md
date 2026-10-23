@@ -145,3 +145,16 @@ Ordem: 1 (testar já), 2, 4–7, 3, 8, e o PGO no fim.
 - `FinishFrames`: quando um quadro leva todos os draws pendentes, o vetor
   inteiro é movido (um ponteiro) em vez de cada plano.
 - Por draw: de 1 construção vazia + 4 moves para 1 move (o `push_back`).
+
+## Medição da 1.30 (2026-10-23)
+
+- Vila (> 300 draws): 32,0 quadros do jogo/s (53%) contra 29,3 (49%) na 1.29;
+  25,9 ms de CPU por quadro do jogo (era 27,0); pica submit 9,9 -> 7,9 ms e
+  plan 5,0 -> 4,0 ms por quadro do host. Poucas janelas na vila (5): ganho
+  de ~+5–9%, dentro do estimado. Áreas leves sem mudança (76%).
+- Thread do jogo: memcpy 7,5% -> 4,4%; construtor de move do plano
+  4,5% -> 3,1%; `operator=` 0,95% -> 0,16%.
+- O move que sobra é o único necessário (`Append` -> `push_back`) mais
+  realocações do `mPendingDraws` quando um quadro passa do maior anterior.
+  Para cortar mais é preciso encolher o plano (os ~12 KB inline dos shaders
+  gerados/estado), não movê-lo menos.
