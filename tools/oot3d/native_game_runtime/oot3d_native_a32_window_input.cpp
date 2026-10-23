@@ -214,7 +214,17 @@ PollNativeA32Input(Fast::Fast3dWindow &window,
     menu.Back = key(Ship::KbScancode::LUS_KB_BACKSPACE) || padButton(SDL_CONTROLLER_BUTTON_B);
     menu.TabPrevious = key(Ship::KbScancode::LUS_KB_Q) || padButton(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
     menu.TabNext = key(Ship::KbScancode::LUS_KB_E) || padButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+#if defined(__ORBIS__)
+    const bool rightStick = padButton(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    if (rightStick && padButton(SDL_CONTROLLER_BUTTON_LEFTSTICK)) pollingState.MenuStickChorded = true;
+    const bool rightStickReleased = pollingState.MenuStickHeld && !rightStick;
+    menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) ||
+                  (rightStickReleased && !pollingState.MenuStickChorded);
+    if (!rightStick) pollingState.MenuStickChorded = false;
+    pollingState.MenuStickHeld = rightStick;
+#else
     menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) || padButton(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+#endif
     // The mouse for the menu: its window position with the presentation
     // picture the menu is drawn in, the left button, and the wheel while a
     // host surface is up (gameplay never sees it then). The window's wheel

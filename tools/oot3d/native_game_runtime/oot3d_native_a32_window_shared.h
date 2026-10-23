@@ -693,6 +693,12 @@ struct NativeControlPollingState {
   // The in-game menu's controls (Esc / R3, D-pad, A/B, shoulders), from the
   // raw devices every poll.
   Oot3dNativeGame::InGameMenuHostInput Menu;
+#if defined(__ORBIS__)
+  // PS4: L3+R3 opens the full settings window, so R3 opens this menu on its
+  // release, and only when L3 stayed up for the whole press.
+  bool MenuStickHeld = false;
+  bool MenuStickChorded = false;
+#endif
 };
 
 bool ExecuteProductTopScreenHook(uint32_t pc, oot3d::recomp::a32::GuestState &state,

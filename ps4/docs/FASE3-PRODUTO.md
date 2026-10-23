@@ -483,3 +483,14 @@ harness cobre só a parte PICA). Primeiro boot no console é o teste.
   (`sync/removed-paths.txt`; `tools/sync-upstream.sh` os remove de novo a cada
   merge). README do repositório reescrito só para o PS4.
 - Próxima fase: preparação no console (`docs/FASE4-PREPARACAO-NO-CONSOLE.md`).
+
+## 1.26 — R3 x L3+R3 (2026-10-23)
+
+- Console na 1.25: o menu in-game novo do upstream abre com R3
+  (`menu.Toggle = Esc || R3`), então L3+R3 abria os dois menus juntos.
+  Agora no PS4: R3 sozinho abre o menu in-game novo ao **soltar** o R3, só
+  se o L3 não foi apertado durante o toque; L3+R3 abre só a janela de
+  configurações completa (o F1). `oot3d_native_a32_window_input.cpp`.
+- Log da 1.25 (sem PGO): 23–45 quadros do jogo/s (35–70% do tempo real),
+  CPU do jogo 22–50 ms por quadro. A 1.24 com PGO fazia ~72% na vila. Nova
+  coleta PGO fica para depois que o runtime estabilizar.

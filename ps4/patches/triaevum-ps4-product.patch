@@ -1070,6 +1070,45 @@ index 01026912..760287f9 100644
        if (!Oot3dNativeGame::
                BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
                    draw, plan, &error, &shaderSourceCache)) {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp
+index bddcb6b9..a3878df1 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp
+@@ -214,7 +214,17 @@ PollNativeA32Input(Fast::Fast3dWindow &window,
+     menu.Back = key(Ship::KbScancode::LUS_KB_BACKSPACE) || padButton(SDL_CONTROLLER_BUTTON_B);
+     menu.TabPrevious = key(Ship::KbScancode::LUS_KB_Q) || padButton(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+     menu.TabNext = key(Ship::KbScancode::LUS_KB_E) || padButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
++#if defined(__ORBIS__)
++    const bool rightStick = padButton(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
++    if (rightStick && padButton(SDL_CONTROLLER_BUTTON_LEFTSTICK)) pollingState.MenuStickChorded = true;
++    const bool rightStickReleased = pollingState.MenuStickHeld && !rightStick;
++    menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) ||
++                  (rightStickReleased && !pollingState.MenuStickChorded);
++    if (!rightStick) pollingState.MenuStickChorded = false;
++    pollingState.MenuStickHeld = rightStick;
++#else
+     menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) || padButton(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
++#endif
+     // The mouse for the menu: its window position with the presentation
+     // picture the menu is drawn in, the left button, and the wheel while a
+     // host surface is up (gameplay never sees it then). The window's wheel
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
+index 8071a191..80ecc298 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
+@@ -693,6 +693,12 @@ struct NativeControlPollingState {
+   // The in-game menu's controls (Esc / R3, D-pad, A/B, shoulders), from the
+   // raw devices every poll.
+   Oot3dNativeGame::InGameMenuHostInput Menu;
++#if defined(__ORBIS__)
++  // PS4: L3+R3 opens the full settings window, so R3 opens this menu on its
++  // release, and only when L3 stayed up for the whole press.
++  bool MenuStickHeld = false;
++  bool MenuStickChorded = false;
++#endif
+ };
+ 
+ bool ExecuteProductTopScreenHook(uint32_t pc, oot3d::recomp::a32::GuestState &state,
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
 index 2487dd8f..6598bbcf 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
