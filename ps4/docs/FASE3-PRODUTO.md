@@ -458,3 +458,28 @@ harness cobre só a parte PICA). Primeiro boot no console é o teste.
   e relançadas na thread do jogo; e um vigia (ps4_process_init.cpp) escreve
   "[triaevum] stall: ..." com a espera nomeada (OrbisWaitScope: ajudantes
   de plano, render worker, flip) quando 10 s passam sem quadro.
+
+## 1.25 — sync com o upstream beta.1.2 (2026-10-23)
+
+- O fork no GitHub estava 73 commits atrás do coccofresco/TriAevum. Merge
+  feito (um conflito só, em `oot3d_native_game.cpp`: o init ORBIS e o novo
+  diretório de DLLs do Windows ficam lado a lado) e a 1.24 (vigia de
+  travamento), que só existia local, entrou como commit em cima.
+- A árvore local `../TriAevum` agora é cópia exata do fork (LF; backup da
+  anterior em `../TriAevum-antes-do-sync-2026-10-23.tar.zst`). O
+  `triaevum-src.git` (baseline dd2de71) ficou obsoleto: o histórico das
+  mudanças é o próprio fork, e `patches/triaevum-ps4-product.patch` agora é o
+  diff contra o `main` do upstream.
+- Closure regenerada (`tools/product/regen-closure.sh`, que antes era passo
+  manual num scratchpad perdido): 43 alvos, 602 fontes (+17: menu in-game,
+  photo mode, LOD/residência da grama, overlay de RomFS, Visions e seleção de
+  arquivo Reframed do TopScreen, fonte do menu). Compilou sem nenhum erro.
+- PKG `out/...-1.25-upstream-beta12.pkg` **sem PGO** (o perfil da 1.23 não
+  vale mais para o runtime mudado): esperar menos velocidade que a 1.24 até a
+  nova coleta. Testar no console: boot, título, vila; o upstream agora abre um
+  menu in-game com R3 — conferir se não briga com o nosso L3+R3.
+- Limpeza do fork: saem os ports/scripts de Android, Switch, AppImage/Flatpak/
+  Windows, `.github` e as imagens/notas de release do PC
+  (`sync/removed-paths.txt`; `tools/sync-upstream.sh` os remove de novo a cada
+  merge). README do repositório reescrito só para o PS4.
+- Próxima fase: preparação no console (`docs/FASE4-PREPARACAO-NO-CONSOLE.md`).

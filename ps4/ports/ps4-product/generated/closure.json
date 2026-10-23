@@ -41,7 +41,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
     ],
     "flags": [
-     "-O2 -DNDEBUG"
+     "-O2 -DNDEBUG -std=gnu++20"
     ]
    }
   ]
@@ -88,7 +88,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
     ],
     "flags": [
-     "-O2 -DNDEBUG"
+     "-O2 -DNDEBUG -std=gnu++20"
     ]
    }
   ]
@@ -135,7 +135,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
     ],
     "flags": [
-     "-O2 -DNDEBUG"
+     "-O2 -DNDEBUG -std=gnu++20"
     ]
    }
   ]
@@ -145,31 +145,31 @@
   "type": "STATIC_LIBRARY",
   "sources": [
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui_demo.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/imgui_demo.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui_draw.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/imgui_draw.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui_tables.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/imgui_tables.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui_widgets.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/imgui_widgets.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/imgui.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/imgui.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends/imgui_impl_opengl3.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends/imgui_impl_opengl3.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends/imgui_impl_sdl2.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends/imgui_impl_sdl2.cpp",
     "group": 0
    }
   ],
@@ -203,12 +203,12 @@
      "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends",
      "/usr/include/SDL2"
     ],
     "flags": [
-     "-O2 -DNDEBUG"
+     "-O2 -DNDEBUG -std=gnu++20"
     ]
    }
   ]
@@ -218,7 +218,7 @@
   "type": "STATIC_LIBRARY",
   "sources": [
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb/stb_impl.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb/stb_impl.c",
     "group": 0
    }
   ],
@@ -252,10 +252,10 @@
      "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb"
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb"
     ],
     "flags": [
-     "-O2 -DNDEBUG"
+     "-O2 -DNDEBUG -std=gnu23"
     ]
    }
   ]
@@ -265,11 +265,11 @@
   "type": "STATIC_LIBRARY",
   "sources": [
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/monocypher.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/monocypher.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional/monocypher-ed25519.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/optional/monocypher-ed25519.c",
     "group": 0
    }
   ],
@@ -303,8 +303,8 @@
      "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional"
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/optional"
     ],
     "flags": [
      "-O2 -DNDEBUG -std=gnu11"
@@ -317,27 +317,27 @@
   "type": "STATIC_LIBRARY",
   "sources": [
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/main.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src/main.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/ast.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src/prism/ast.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/lexer.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src/prism/lexer.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/processor.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src/prism/processor.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/utils/gv.cpp",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src/prism/utils/gv.cpp",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src/prism/utils/invoke.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src/prism/utils/invoke.c",
     "group": 1
    }
   ],
@@ -371,9 +371,9 @@
      "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src"
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src"
     ],
     "flags": [
      "-Wno-narrowing -O3 -std=gnu++20"
@@ -408,9 +408,9 @@
      "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src"
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src"
     ],
     "flags": [
      "-O2 -DNDEBUG -std=gnu11"
@@ -492,7 +492,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include"
     ],
     "flags": [
-     "-O2 -DNDEBUG"
+     "-O2 -DNDEBUG -std=gnu++20"
     ]
    }
   ]
@@ -608,7 +608,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
     ],
     "flags": [
-     "-O2 -DNDEBUG"
+     "-O2 -DNDEBUG -std=gnu++20"
     ]
    }
   ]
@@ -866,6 +866,18 @@
     "group": 0
    },
    {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_card_atlas.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_card_lod.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_card_renderer.cpp",
+    "group": 0
+   },
+   {
     "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_collision_resolver.cpp",
     "group": 0
    },
@@ -879,6 +891,10 @@
    },
    {
     "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_gpu_instance_compactor.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_gpu_memory.cpp",
     "group": 0
    },
    {
@@ -906,6 +922,14 @@
     "group": 0
    },
    {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_pipeline_factory.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_placement_audit.cpp",
+    "group": 0
+   },
+   {
     "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_placement_cache.cpp",
     "group": 0
    },
@@ -915,6 +939,10 @@
    },
    {
     "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_render_telemetry.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/fast/oot3d/grass_residency.cpp",
     "group": 0
    },
    {
@@ -1897,27 +1925,29 @@
      "ENABLE_OPENGL",
      "F3DEX_GBI_2",
      "NDEBUG",
-     "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE"
+     "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE",
+     "TINYXML2_IMPORT",
+     "_FILE_OFFSET_BITS=64"
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/three_ds_recomp_runtime/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/three_ds_recomp_runtime/src",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/threadpool-src/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/optional",
      "/usr/include/SDL2"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-Wall",
      "-Wextra",
      "-Wno-error",
@@ -1960,23 +1990,25 @@
      "ENABLE_OPENGL",
      "F3DEX_GBI_2",
      "NDEBUG",
-     "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE"
+     "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE",
+     "TINYXML2_IMPORT",
+     "_FILE_OFFSET_BITS=64"
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/three_ds_recomp_runtime/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/three_ds_recomp_runtime/src",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/threadpool-src/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/optional",
      "/usr/include/SDL2"
     ],
     "flags": [
@@ -2045,27 +2077,29 @@
      "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
      "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
      "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
-     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\"",
+     "TINYXML2_IMPORT",
+     "_FILE_OFFSET_BITS=64"
     ],
     "includes": [
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/threadpool-src/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/optional",
      "/usr/include/SDL2"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2137,7 +2171,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2216,7 +2250,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2300,7 +2334,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2424,7 +2458,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2477,7 +2511,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2559,7 +2593,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2614,7 +2648,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2674,7 +2708,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2755,7 +2789,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    },
@@ -2801,7 +2835,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2861,7 +2895,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2917,7 +2951,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -2985,7 +3019,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3037,7 +3071,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3305,7 +3339,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3358,7 +3392,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3408,7 +3442,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3456,12 +3490,12 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends",
      "/usr/include/SDL2"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3521,7 +3555,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3570,7 +3604,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3620,7 +3654,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3677,7 +3711,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3737,7 +3771,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/three_ds/input"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3801,7 +3835,71 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
+     "-w"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "oot3d_ui_menu",
+  "type": "STATIC_LIBRARY",
+  "sources": [
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_menu/oot3d_menu_model.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_menu/oot3d_menu_font.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_menu/oot3d_menu_font_atlas_data.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_menu/oot3d_menu_presentation.cpp",
+    "group": 0
+   }
+  ],
+  "groups": [
+   {
+    "language": "CXX",
+    "defines": [
+     "CONTROLLERBUTTONS_T=uint32_t",
+     "CVAR_ALLOW_BACKGROUND_INPUTS=\"gAllowBackgroundInputs\"",
+     "CVAR_AUDIO_CHANNELS_SETTING=\"gAudioChannelsSetting\"",
+     "CVAR_CONSOLE_WINDOW_OPEN=\".Console\"",
+     "CVAR_CONTROLLER_CONFIGURATION_WINDOW_OPEN=\"gControllerConfigurationEnabled\"",
+     "CVAR_CONTROLLER_DISCONNECTED_WINDOW_OPEN=\".ControllerDisconnected\"",
+     "CVAR_CONTROLLER_REORDERING_WINDOW_OPEN=\".ControllerReordering\"",
+     "CVAR_ENABLE_MULTI_VIEWPORTS=\".EnableMultiViewports\"",
+     "CVAR_GAME_OVERLAY_FONT=\".OverlayFont\"",
+     "CVAR_GFX_DEBUGGER_WINDOW_OPEN=\".GfxDebugger\"",
+     "CVAR_IMGUI_CONTROLLER_NAV=\".ControlNav\"",
+     "CVAR_INTERNAL_RESOLUTION=\".InternalResolution\"",
+     "CVAR_LOW_RES_MODE=\".LowResMode\"",
+     "CVAR_MENU_BAR_OPEN=\".OpenMenuBar\"",
+     "CVAR_MSAA_VALUE=\".MSAAValue\"",
+     "CVAR_PREFIX_ADVANCED_RESOLUTION=\".AdvancedResolution\"",
+     "CVAR_PREFIX_CONTROLLERS=\".Controllers\"",
+     "CVAR_SCRIPT_SAFE_LEVEL=\"gScriptSafeLevel\"",
+     "CVAR_SDL_WINDOWED_FULLSCREEN=\".SdlWindowedFullscreen\"",
+     "CVAR_SIMULATED_INPUT_LAG=\".SimulatedInputLag\"",
+     "CVAR_STATS_WINDOW_OPEN=\".Stats\"",
+     "CVAR_TEXTURE_FILTER=\".TextureFilter\"",
+     "CVAR_VSYNC_ENABLED=\".VsyncEnabled\"",
+     "CVAR_Z_FIGHTING_MODE=\".ZFightingMode\""
+    ],
+    "includes": [
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_menu",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
+     "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb"
+    ],
+    "flags": [
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3837,6 +3935,10 @@
    },
    {
     "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_state.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_a32_romfs_overlay.cpp",
     "group": 0
    },
    {
@@ -3911,7 +4013,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/include"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -3962,7 +4064,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream"
     ],
     "flags": [
-     "-O2 -DNDEBUG -fPIC",
+     "-O2 -DNDEBUG -std=gnu++20 -fPIC",
      "-w"
     ]
    }
@@ -3973,123 +4075,123 @@
   "type": "STATIC_LIBRARY",
   "sources": [
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/debug.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/common/debug.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/entropy_common.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/common/entropy_common.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/error_private.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/common/error_private.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/fse_decompress.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/common/fse_decompress.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/pool.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/common/pool.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/threading.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/common/threading.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/xxhash.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/common/xxhash.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/common/zstd_common.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/common/zstd_common.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/fse_compress.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/fse_compress.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/hist.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/hist.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/huf_compress.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/huf_compress.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_compress.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_compress.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_compress_literals.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_compress_literals.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_compress_sequences.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_compress_sequences.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_compress_superblock.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_compress_superblock.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_double_fast.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_double_fast.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_fast.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_fast.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_lazy.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_lazy.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_ldm.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_ldm.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstd_opt.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstd_opt.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/compress/zstdmt_compress.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/compress/zstdmt_compress.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/huf_decompress.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/decompress/huf_decompress.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/zstd_ddict.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/decompress/zstd_ddict.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/zstd_decompress.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/decompress/zstd_decompress.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/zstd_decompress_block.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/decompress/zstd_decompress_block.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/decompress/huf_decompress_amd64.S",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/decompress/huf_decompress_amd64.S",
     "group": 1
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/dictBuilder/cover.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/dictBuilder/cover.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/dictBuilder/divsufsort.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/dictBuilder/divsufsort.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/dictBuilder/fastcover.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/dictBuilder/fastcover.c",
     "group": 0
    },
    {
-    "path": "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib/dictBuilder/zdict.c",
+    "path": "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib/dictBuilder/zdict.c",
     "group": 0
    }
   ],
@@ -4125,11 +4227,11 @@
      "ZSTD_LEGACY_SUPPORT=0"
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-build/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/build/cmake/lib"
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-build/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/build/cmake/lib"
     ],
     "flags": [
-     " -Wall -Wextra -Wundef -Wshadow -Wcast-align -Wcast-qual -Wstrict-prototypes -Wa,--noexecstack -O2 -DNDEBUG -std=gnu2x -fPIC"
+     " -Wall -Wextra -Wundef -Wshadow -Wcast-align -Wcast-qual -Wstrict-prototypes -Qunused-arguments -Wa,--noexecstack -O2 -DNDEBUG -std=gnu23 -fPIC"
     ]
    },
    {
@@ -4163,8 +4265,8 @@
      "ZSTD_LEGACY_SUPPORT=0"
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-build/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/build/cmake/lib"
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-build/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/build/cmake/lib"
     ],
     "flags": [
      "-O3 -DNDEBUG -fPIC"
@@ -4225,11 +4327,11 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/zstd-src/build/cmake/../../lib"
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/zstd-src/build/cmake/../../lib"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -4257,6 +4359,10 @@
    },
    {
     "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_presentation_pacer.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_native_input_latency_trace.cpp",
     "group": 0
    },
    {
@@ -4316,7 +4422,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/mass_cpp"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -4364,7 +4470,7 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }
@@ -4451,6 +4557,14 @@
     "group": 0
    },
    {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_visions_runtime.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_reframed_file_select.cpp",
+    "group": 0
+   },
+   {
     "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_top_screen_gameplay_runtime.cpp",
     "group": 0
    },
@@ -4527,6 +4641,14 @@
     "group": 0
    },
    {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_photo_mode_panel.cpp",
+    "group": 0
+   },
+   {
+    "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp",
+    "group": 0
+   },
+   {
     "path": "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime/oot3d_graphics_settings_schedule.cpp",
     "group": 0
    }
@@ -4562,26 +4684,28 @@
      "OOT3D_NATIVE_A32_WINDOW_AVAILABLE=1",
      "OOT3D_NATIVE_DIRECT_AOT_PLUGIN=1",
      "OOT3D_REQUIRE_WHOLE_AOT_PLUGIN_V2=1",
-     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1"
+     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1",
+     "TINYXML2_IMPORT",
+     "_FILE_OFFSET_BITS=64"
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/triaevum-product",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/triaevum-product",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/threadpool-src/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/optional",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
@@ -4592,11 +4716,12 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_menu",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
      "/usr/include/SDL2"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    },
@@ -4630,26 +4755,28 @@
      "OOT3D_NATIVE_A32_WINDOW_AVAILABLE=1",
      "OOT3D_NATIVE_DIRECT_AOT_PLUGIN=1",
      "OOT3D_REQUIRE_WHOLE_AOT_PLUGIN_V2=1",
-     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1"
+     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1",
+     "TINYXML2_IMPORT",
+     "_FILE_OFFSET_BITS=64"
     ],
     "includes": [
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/triaevum-product",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/triaevum-product",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/threadpool-src/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/optional",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
@@ -4660,11 +4787,12 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_menu",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
      "/usr/include/SDL2"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w",
      "-ffp-contract=off"
     ]
@@ -4699,27 +4827,29 @@
      "OOT3D_NATIVE_A32_WINDOW_AVAILABLE=1",
      "OOT3D_NATIVE_DIRECT_AOT_PLUGIN=1",
      "OOT3D_REQUIRE_WHOLE_AOT_PLUGIN_V2=1",
-     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1"
+     "OOT3D_WHOLE_AOT_PRODUCT_MODE=1",
+     "TINYXML2_IMPORT",
+     "_FILE_OFFSET_BITS=64"
     ],
     "includes": [
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/triaevum-product",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/triaevum-product",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_demo_host",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_game_runtime",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_topscreen",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/decomp_support/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../include",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/imgui-src/backends",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/stb",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/threadpool-src/include",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/imgui-src/backends",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/stb",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/threadpool-src/include",
      "/home/mello/Projetos/triaevum/TriAevum/runtime/three_ds_recomp/src/../module_interface",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/lib",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/prism-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src",
-     "/tmp/claude-1000/-home-mello-Projetos-triaevum/6988284b-7b49-461f-8d6c-5a56263dffeb/scratchpad/tri-host/_deps/monocypher-src/src/optional",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/lib",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/prism-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src",
+     "/home/mello/Projetos/triaevum/triaevum-ps4-vk/build/tri-host/_deps/monocypher-src/src/optional",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/typed_gameplay",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_a32_runtime/upstream/recomp",
@@ -4730,11 +4860,12 @@
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/native_pica_frontend",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/third_party/azahar_pica",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_contract",
+     "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_menu",
      "/home/mello/Projetos/triaevum/TriAevum/tools/oot3d/ui_n64",
      "/usr/include/SDL2"
     ],
     "flags": [
-     "-O2 -DNDEBUG",
+     "-O2 -DNDEBUG -std=gnu++20",
      "-w"
     ]
    }

@@ -1,0 +1,14 @@
+# Upstream TriAevum paths this PS4 fork does not carry. tools/sync-upstream.sh
+# removes them again after every merge, so upstream edits to them never
+# conflict. Only other platforms' ports, packaging and PC release material go
+# here: the PS4 build (its CMake closure) and the title translator need the
+# rest of the tree.
+.github
+docs/images
+docs/releases
+ports/android
+ports/switch_gl_probe
+ports/switch_vulkan_probe
+scripts
+tools/android
+run-clang-format.ps1

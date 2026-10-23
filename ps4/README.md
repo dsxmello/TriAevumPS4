@@ -16,10 +16,11 @@ próprio usuário. Também ficam fora o que é baixado ou compilado (`sdk/`,
 `src/`, `sysroot/`, `build/`, `out/`) e a árvore do DolphinPS4 (`refs/`,
 reconstruída a partir do upstream + `patches/dolphinps4-ps4-runtime.patch`).
 
-No GitHub este diretório é a pasta `ps4/` do repositório, e as mudanças no
-TriAevum já estão aplicadas na árvore dele (commit "PS4: runtime changes").
-Os scripts esperam o TriAevum ao lado, em `../TriAevum`, e o C++ gerado do
-usuário em `../title-content/aot-cpp`:
+No GitHub este diretório é a pasta `ps4/` do repositório
+[dsxmello/TriAevumPS4](https://github.com/dsxmello/TriAevumPS4), um fork do
+TriAevum só com o port de PS4; as mudanças no TriAevum já estão aplicadas na
+árvore dele. Os scripts esperam o TriAevum ao lado, em `../TriAevum`, e o C++
+gerado do usuário em `../title-content/aot-cpp`:
 
 ```sh
 git clone https://github.com/dsxmello/TriAevumPS4 TriAevum
@@ -27,10 +28,15 @@ ln -s TriAevum/ps4 triaevum-ps4-vk     # build root do port
 # title-content/aot-cpp: gerado pelo TriAevum a partir da cópia do usuário
 ```
 
-O patch equivalente também fica em `patches/triaevum-ps4-product.patch`
-(contra o commit-base dd2de71 da árvore do TriAevum), aplicadas em
-`../TriAevum`. O produto (TRIA00005) sai de `tools/build-product.sh`
-(`PGO=generate|use` para builds com PGO).
+O mesmo conjunto de mudanças fica em `patches/triaevum-ps4-product.patch`
+(diff contra o `main` do upstream na data do último sync). O produto
+(TRIA00005) sai de `tools/build-product.sh` (`PGO=generate|use` para builds
+com PGO).
+
+Sincronizar com o upstream (coccofresco/TriAevum): `tools/sync-upstream.sh`
+num clone do fork (refaz o merge e apaga de novo o que está em
+`sync/removed-paths.txt`), depois `tools/product/regen-closure.sh` (lista de
+fontes do produto a partir do CMake do TriAevum) e `tools/build-product.sh`.
 
 Licença: GPLv3 (`LICENSE`), a mesma do TriAevum. Os patches de terceiros
 (Mesa, DolphinPS4, dusklight-ps4) seguem as licenças dos projetos de origem.

@@ -1,5 +1,5 @@
 diff --git a/runtime/three_ds_recomp/include/fast/Fast3dWindow.h b/runtime/three_ds_recomp/include/fast/Fast3dWindow.h
-index 2bec3a7..e73468c 100644
+index 04968b59..056d04ca 100644
 --- a/runtime/three_ds_recomp/include/fast/Fast3dWindow.h
 +++ b/runtime/three_ds_recomp/include/fast/Fast3dWindow.h
 @@ -27,6 +27,7 @@ enum WindowBackend {
@@ -12,7 +12,7 @@ index 2bec3a7..e73468c 100644
  class Fast3dWindow : public Ship::Window {
 diff --git a/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
 new file mode 100644
-index 0000000..0105caf
+index 00000000..0105cafa
 --- /dev/null
 +++ b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
 @@ -0,0 +1,71 @@
@@ -87,8 +87,84 @@ index 0000000..0105caf
 +} // namespace Fast
 +
 +#endif
+diff --git a/runtime/three_ds_recomp/include/fast/renderer3ds/pica_render_backend.h b/runtime/three_ds_recomp/include/fast/renderer3ds/pica_render_backend.h
+index c195a3c8..26ef85a2 100644
+--- a/runtime/three_ds_recomp/include/fast/renderer3ds/pica_render_backend.h
++++ b/runtime/three_ds_recomp/include/fast/renderer3ds/pica_render_backend.h
+@@ -9,6 +9,7 @@
+ #include "fast/renderer3ds/pica_texture_copy_plan.h"
+ #include "fast/renderer3ds/pica_vertex_artifact.h"
+ 
++#include <array>
+ #include <cmath>
+ #include <cstdint>
+ #include <functional>
+@@ -21,6 +22,18 @@
+ 
+ namespace Fast::Renderer3ds {
+ 
++// Optional inputs for backends that evaluate the PICA vertex program on
++// the CPU instead of compiling the generated GLSL (the PS4 path: Piglet's
++// shader compiler exhausts the system's internal memory pool on the
++// generated ~24 KB vertex programs - console evidence 0.18-0.25). All
++// fields default empty/false; a backend that ignores them compiles the
++// generated sources as before.
++struct PicaVertexOutputSemantic {
++    uint8_t present = 0;
++    uint8_t outRegister = 0;
++    uint8_t component = 0;
++};
++
+ struct PicaDrawView {
+     uint64_t SubmissionId = 0;
+     uint64_t RenderTargetNamespace = 0;
+@@ -105,6 +118,13 @@ struct PicaDrawView {
+     // Explicit producer proof of a stationary world surface. Unknown/moving
+     // draws must not inherit camera-only history after a correspondence miss.
+     bool TemporalCameraOnly = false;
++    // CPU-vertex evaluation inputs (see PicaVertexOutputSemantic above).
++    // Empty program span = compile the generated VertexShaderSource.
++    std::span<const uint32_t> VertexProgramWords;
++    std::span<const uint32_t> VertexSwizzleWords;
++    std::array<PicaVertexOutputSemantic, 24> VertexOutputSemantics;
++    uint16_t VertexMainOffset = 0;
++    bool VertexFlipViewport = false;
+ };
+ 
+ // Projects the full transient draw facade into the compact ordered metadata
+@@ -127,11 +147,18 @@ BuildPicaCompositionDrawReference(const PicaDrawView& draw) noexcept {
+     };
+ }
+ 
++// Optional inputs for backends that evaluate the PICA vertex program on
++// the CPU instead of compiling the generated GLSL (the PS4 path: Piglet's
++// shader compiler exhausts the system's internal memory pool on the
++// generated ~24 KB vertex programs - console evidence 0.18-0.25). All
++// fields default empty/false; a backend that ignores them compiles the
++// generated sources as before.
+ enum class PicaPresentationMode : uint8_t {
+     Replace,
+     AlphaOverlay,
+ };
+ 
++
+ struct PicaDisplayTransferView {
+     uint64_t CompletionId = 0;
+     uint64_t RenderTargetNamespace = 0;
+diff --git a/runtime/three_ds_recomp/include/oot3d/renderer/pica_render_backend.h b/runtime/three_ds_recomp/include/oot3d/renderer/pica_render_backend.h
+index 4d5b6901..4e7d4d70 100644
+--- a/runtime/three_ds_recomp/include/oot3d/renderer/pica_render_backend.h
++++ b/runtime/three_ds_recomp/include/oot3d/renderer/pica_render_backend.h
+@@ -50,6 +50,7 @@ using ::Fast::Renderer3ds::PicaCompositionTargetReference;
+ 
+ using ::Fast::Renderer3ds::PicaDisplayImageColorSnapshot;
+ using ::Fast::Renderer3ds::PicaDisplayTransferView;
++using ::Fast::Renderer3ds::PicaVertexOutputSemantic;
+ using ::Fast::Renderer3ds::PicaDrawView;
+ using ::Fast::Renderer3ds::PicaMemoryFillView;
+ using ::Fast::Renderer3ds::PicaPresentationMode;
 diff --git a/runtime/three_ds_recomp/include/ship/audio/SDLAudioPlayer.h b/runtime/three_ds_recomp/include/ship/audio/SDLAudioPlayer.h
-index f67d3d9..7098409 100644
+index f67d3d97..70984094 100644
 --- a/runtime/three_ds_recomp/include/ship/audio/SDLAudioPlayer.h
 +++ b/runtime/three_ds_recomp/include/ship/audio/SDLAudioPlayer.h
 @@ -1,4 +1,6 @@
@@ -110,7 +186,7 @@ index f67d3d9..7098409 100644
  };
  } // namespace Ship
 diff --git a/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp b/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
-index e11cd74..2665f22 100644
+index b49d215c..518a2ab8 100644
 --- a/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
 +++ b/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
 @@ -11,10 +11,13 @@
@@ -146,7 +222,7 @@ index e11cd74..2665f22 100644
  class Oot3dGraphicsSettingsPersistence final
      : public Oot3d::GraphicsSettingsPersistencePort {
    public:
-@@ -141,6 +146,9 @@ class Oot3dHostNoticeWindow final : public Ship::GuiWindow {
+@@ -142,6 +147,9 @@ class Oot3dHostNoticeWindow final : public Ship::GuiWindow {
      void DrawElement() override {}
  };
  
@@ -156,7 +232,7 @@ index e11cd74..2665f22 100644
  struct Oot3dMousePosition {
      float X = 0.0F;
      float Y = 0.0F;
-@@ -234,11 +242,26 @@ void Fast3dGui::Init(GuiWindowInitData windowImpl) {
+@@ -235,11 +243,26 @@ void Fast3dGui::Init(GuiWindowInitData windowImpl) {
          AddGuiWindow(std::make_shared<Oot3dDisplayConfirmationWindow>());
          AddGuiWindow(std::make_shared<Oot3dHostNoticeWindow>());
      }
@@ -183,7 +259,7 @@ index e11cd74..2665f22 100644
  #ifdef ENABLE_OOT3D_VULKAN
      // The Vulkan backend owns one swapchain only. Letting ImGui create SDL
      // platform windows leaves those windows without renderer swapchains and
-@@ -346,6 +369,14 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
+@@ -347,6 +370,14 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
  }
  
  void Fast3dGui::ToggleOot3dGraphicsWindow() {
@@ -198,7 +274,7 @@ index e11cd74..2665f22 100644
  #ifdef ENABLE_OOT3D_VULKAN
      if (mImpl.Backend != WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
          return;
-@@ -382,6 +413,11 @@ void Fast3dGui::DrawMenu() {
+@@ -383,6 +414,11 @@ void Fast3dGui::DrawMenu() {
  
  void Fast3dGui::ImGuiWMInit() {
      switch (mImpl.Backend) {
@@ -210,7 +286,7 @@ index e11cd74..2665f22 100644
          case WindowBackend::FAST3D_SDL_OPENGL:
              SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
              if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
-@@ -443,6 +479,16 @@ void Fast3dGui::ImGuiWMShutdown() {
+@@ -444,6 +480,16 @@ void Fast3dGui::ImGuiWMShutdown() {
  void Fast3dGui::ImGuiBackendInit() {
      auto window = Ship::Context::GetRawInstance()->GetWindow();
      mInterpreter = std::dynamic_pointer_cast<Fast3dWindow>(window)->GetInterpreterWeak();
@@ -227,7 +303,7 @@ index e11cd74..2665f22 100644
      switch (mImpl.Backend) {
  #ifdef ENABLE_OPENGL
          case WindowBackend::FAST3D_SDL_OPENGL:
-@@ -484,6 +530,16 @@ void Fast3dGui::ImGuiBackendInit() {
+@@ -485,6 +531,16 @@ void Fast3dGui::ImGuiBackendInit() {
  }
  
  void Fast3dGui::ImGuiBackendShutdown() {
@@ -244,7 +320,7 @@ index e11cd74..2665f22 100644
  #ifdef ENABLE_OOT3D_VULKAN
      if (mImpl.Backend == WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
          if (auto interpreter = mInterpreter.lock()) {
-@@ -532,6 +588,29 @@ std::shared_ptr<ImDrawData> CloneImGuiDrawData(const ImDrawData* source) {
+@@ -533,6 +589,29 @@ std::shared_ptr<ImDrawData> CloneImGuiDrawData(const ImDrawData* source) {
  } // namespace
  
  void Fast3dGui::ImGuiBackendNewFrame() {
@@ -274,7 +350,7 @@ index e11cd74..2665f22 100644
      switch (mImpl.Backend) {
  #ifdef ENABLE_OPENGL
          case WindowBackend::FAST3D_SDL_OPENGL:
-@@ -591,6 +670,14 @@ void Fast3dGui::SyncOot3dVulkanMousePosition() {
+@@ -592,6 +671,14 @@ void Fast3dGui::SyncOot3dVulkanMousePosition() {
  
  void Fast3dGui::ImGuiWMNewFrame() {
      switch (mImpl.Backend) {
@@ -289,7 +365,7 @@ index e11cd74..2665f22 100644
          case WindowBackend::FAST3D_SDL_OPENGL:
          case WindowBackend::FAST3D_SDL_METAL:
  #ifdef ENABLE_OOT3D_VULKAN
-@@ -621,6 +708,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
+@@ -622,6 +709,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
  }
  
  void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
@@ -312,7 +388,7 @@ index e11cd74..2665f22 100644
  #ifdef ENABLE_OPENGL
          case WindowBackend::FAST3D_SDL_OPENGL:
 diff --git a/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp b/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp
-index d26a7c4..4044712 100644
+index a1c50e23..14961054 100644
 --- a/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp
 +++ b/runtime/three_ds_recomp/src/fast/Fast3dWindow.cpp
 @@ -20,6 +20,9 @@
@@ -338,7 +414,7 @@ index d26a7c4..4044712 100644
  }
  
  Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui)
-@@ -179,6 +187,12 @@ void Fast3dWindow::InitWindowManager() {
+@@ -187,6 +195,12 @@ void Fast3dWindow::InitWindowManager() {
              mRenderingApi =
                  new GfxRenderingAPIVulkan(static_cast<GfxWindowBackendSDL2*>(mWindowManagerApi));
              break;
@@ -351,7 +427,7 @@ index d26a7c4..4044712 100644
  #endif
          default:
              SPDLOG_ERROR("Could not load the correct rendering backend");
-@@ -516,6 +530,8 @@ std::string Fast3dWindow::GetWindowBackendName() {
+@@ -524,6 +538,8 @@ std::string Fast3dWindow::GetWindowBackendName() {
              return "Metal";
          case WindowBackend::FAST3D_SDL_OOT3D_VULKAN:
              return "Vulkan (OOT3D)";
@@ -361,10 +437,10 @@ index d26a7c4..4044712 100644
              return "";
      }
 diff --git a/runtime/three_ds_recomp/src/ship/Context.cpp b/runtime/three_ds_recomp/src/ship/Context.cpp
-index 970cd38..0f2e643 100644
+index 3f875ff9..204ded9c 100644
 --- a/runtime/three_ds_recomp/src/ship/Context.cpp
 +++ b/runtime/three_ds_recomp/src/ship/Context.cpp
-@@ -466,6 +466,9 @@ std::string Context::GetShortName() const {
+@@ -474,6 +474,9 @@ std::string Context::GetShortName() const {
  }
  
  std::string Context::GetAppBundlePath() {
@@ -374,7 +450,7 @@ index 970cd38..0f2e643 100644
  #if defined(__ANDROID__)
      const char* externaldir = SDL_AndroidGetExternalStoragePath();
      if (externaldir != NULL) {
-@@ -529,6 +532,9 @@ std::string Context::GetAppBundlePath() {
+@@ -537,6 +540,9 @@ std::string Context::GetAppBundlePath() {
  }
  
  std::string Context::GetAppDirectoryPath(const std::string& appName) {
@@ -385,7 +461,7 @@ index 970cd38..0f2e643 100644
      const char* externaldir = SDL_AndroidGetExternalStoragePath();
      if (externaldir != NULL) {
 diff --git a/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp b/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp
-index bd6311b..d4f7b83 100644
+index bd6311b7..d4f7b831 100644
 --- a/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp
 +++ b/runtime/three_ds_recomp/src/ship/audio/SDLAudioPlayer.cpp
 @@ -1,4 +1,7 @@
@@ -474,8 +550,80 @@ index bd6311b..d4f7b83 100644
  }
  
  
+diff --git a/runtime/triaevum_module/src/rooted_filesystem_backend.cpp b/runtime/triaevum_module/src/rooted_filesystem_backend.cpp
+index f7498800..fdbcaf55 100644
+--- a/runtime/triaevum_module/src/rooted_filesystem_backend.cpp
++++ b/runtime/triaevum_module/src/rooted_filesystem_backend.cpp
+@@ -50,6 +50,32 @@ bool PathWithin(const std::filesystem::path &root,
+   return rootPart == root.end();
+ }
+ 
++#if defined(TRIAEVUM_PS4_HOST)
++// PS4 (OpenOrbis/Orbis libc): std::filesystem::weakly_canonical relies on a
++// realpath-style resolution that misbehaves under the console sandbox - it can
++// return an empty path with a clear error_code, and the follow-up
++// is_directory() then throws EINVAL on the empty path (console evidence,
++// 2026-10-19: "in posix_stat: ... Invalid argument [\"\"]"). This backend only
++// ever canonicalizes host paths that are already absolute, NormalizeRelativePath
++// rejects ".." components in the logical part, and the PS4 data partition is a
++// single-user homebrew directory, so lexical normalization is equivalent and
++// cannot be tricked into escaping the save root.
++std::filesystem::path HostPathCanonical(const std::filesystem::path &path,
++                                        std::error_code &error) {
++  error.clear();
++  if (!path.is_absolute()) {
++    error = std::make_error_code(std::errc::invalid_argument);
++    return {};
++  }
++  return path.lexically_normal();
++}
++#else
++std::filesystem::path HostPathCanonical(const std::filesystem::path &path,
++                                        std::error_code &error) {
++  return std::filesystem::weakly_canonical(path, error);
++}
++#endif
++
+ std::uint64_t LastWriteTimeNs(const std::filesystem::path &path) {
+   std::error_code error;
+   const auto value = std::filesystem::last_write_time(path, error);
+@@ -93,7 +119,7 @@ struct RootedFilesystemBackendV1::Impl {
+     }
+     std::error_code error;
+     const auto checkPath = forCreation ? candidate.parent_path() : candidate;
+-    const auto resolved = std::filesystem::weakly_canonical(checkPath, error);
++    const auto resolved = HostPathCanonical(checkPath, error);
+     if (error || !PathWithin(SaveRoot, resolved)) {
+       return std::nullopt;
+     }
+@@ -123,7 +149,7 @@ RootedFilesystemBackendV1::Create(RootedFilesystemConfigV1 config,
+           !std::filesystem::is_regular_file(path, fileError) || fileError) {
+         throw std::runtime_error("content mapping is invalid: " + logical);
+       }
+-      auto absolute = std::filesystem::weakly_canonical(path, fileError);
++      auto absolute = HostPathCanonical(path, fileError);
+       if (fileError ||
+           !impl->ContentFiles.emplace(*normalized, absolute).second) {
+         throw std::runtime_error("content mapping is ambiguous: " + logical);
+@@ -134,9 +160,13 @@ RootedFilesystemBackendV1::Create(RootedFilesystemConfigV1 config,
+     if (directoryError) {
+       throw std::runtime_error("save root could not be created");
+     }
+-    impl->SaveRoot =
+-        std::filesystem::weakly_canonical(config.saveRoot, directoryError);
+-    if (directoryError || !std::filesystem::is_directory(impl->SaveRoot)) {
++    impl->SaveRoot = HostPathCanonical(config.saveRoot, directoryError);
++    bool saveRootIsDirectory = false;
++    if (!directoryError) {
++      saveRootIsDirectory =
++          std::filesystem::is_directory(impl->SaveRoot, directoryError);
++    }
++    if (directoryError || !saveRootIsDirectory) {
+       throw std::runtime_error("save root is invalid");
+     }
+     return std::unique_ptr<RootedFilesystemBackendV1>(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
-index b9bff97..eb393c6 100644
+index 571e4752..eb393c6f 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
 @@ -1,6 +1,9 @@
@@ -488,36 +636,49 @@ index b9bff97..eb393c6 100644
  namespace Oot3dNativeGame {
  
  // SendSyncRequest on a client session of gsp::Gpu.
-@@ -322,7 +325,12 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
-                     // one failed allocation of 181534720 bytes). Behavior for
-                     // every well-formed request is byte-identical.
-                     constexpr uint32_t kDmaChunkBytes = 0x40000U; // 256 KiB
--                    std::vector<uint8_t> dmaChunk(kDmaChunkBytes);
+@@ -313,10 +316,36 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
+                     const uint32_t source = packet.Parameters[0];
+                     const uint32_t destination = packet.Parameters[1];
+                     const uint32_t size = packet.Parameters[2];
+-                    std::vector<uint8_t> dmaBytes(size);
+-                    submitted =
+-                        memory.ReadBytes(source, dmaBytes) &&
+-                        memory.WriteBytes(destination, dmaBytes);
++                    // Copy in bounded chunks. The request's size field comes
++                    // straight from guest memory, and a bogus value must fail
++                    // with the range error instead of first speculating the
++                    // whole allocation: on the PS4 a deterministic 173 MiB
++                    // request at the title transition exhausted the heap and
++                    // killed the frame loop (console evidence, PKG 0.10/0.11:
++                    // one failed allocation of 181534720 bytes). Behavior for
++                    // every well-formed request is byte-identical.
++                    constexpr uint32_t kDmaChunkBytes = 0x40000U; // 256 KiB
 +                    // One buffer for every request: a fresh vector zeroed
 +                    // all 256 KiB for each DMA, however small (on the PS4
 +                    // the PGO profile's top memset).
 +                    static thread_local const std::unique_ptr<uint8_t[]> dmaBuffer(
 +                        new uint8_t[kDmaChunkBytes]);
 +                    const std::span<uint8_t> dmaChunk(dmaBuffer.get(), kDmaChunkBytes);
-                     submitted = size != 0U;
-                     for (uint32_t offset = 0U; offset < size && submitted;
-                          offset += kDmaChunkBytes) {
-@@ -333,11 +341,10 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
-                         submitted =
-                             memory.ReadBytes(
-                                 source + offset,
--                                std::span<uint8_t>(dmaChunk).first(slice)) &&
++                    submitted = size != 0U;
++                    for (uint32_t offset = 0U; offset < size && submitted;
++                         offset += kDmaChunkBytes) {
++                        const uint32_t slice =
++                            size - offset < kDmaChunkBytes
++                                ? size - offset
++                                : kDmaChunkBytes;
++                        submitted =
++                            memory.ReadBytes(
++                                source + offset,
 +                                dmaChunk.first(slice)) &&
-                             memory.WriteBytes(
-                                 destination + offset,
--                                std::span<const uint8_t>(dmaChunk)
--                                    .first(slice));
++                            memory.WriteBytes(
++                                destination + offset,
 +                                std::span<const uint8_t>(dmaChunk.first(slice)));
-                     }
++                    }
                      if (submitted) {
                          submitted = QueueGspInterrupt(
+                             memory, static_cast<uint8_t>(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
-index 170d078..20b67c4 100644
+index 170d0788..20b67c46 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
 @@ -19,6 +19,14 @@
@@ -617,11 +778,38 @@ index 170d078..20b67c4 100644
          return WriteSized(address, static_cast<uint8_t>(sizeof(T)), value,
                            faultAddress);
      }
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_process_image.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_process_image.cpp
+index f1a959fb..7d2cc2d0 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_process_image.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_process_image.cpp
+@@ -102,9 +102,19 @@ ParseNativeA32ProcessImageManifest(const Json& document,
+         const auto& process = document.at("process");
+         const auto& thread = document.at("primary_thread");
+         NativeA32ProcessImageManifest result;
+-        result.ManifestPath = IsDevicePath(path)
+-                                  ? path.lexically_normal()
+-                                  : std::filesystem::absolute(path);
++        result.ManifestPath =
++#if defined(TRIAEVUM_PS4_HOST)
++            // Orbis implements no getcwd (ENOSYS), so std::filesystem::absolute
++            // throws for every relative path. Every real host path in the PS4
++            // port is already absolute, and the bytes overload passes only a
++            // placeholder name ("process_manifest"), so lexical normalization
++            // is sufficient and cannot fail.
++            path.lexically_normal();
++#else
++            IsDevicePath(path)
++                ? path.lexically_normal()
++                : std::filesystem::absolute(path);
++#endif
+         result.CodeBinPath = ResolvePackagedInputPath(
+             result.ManifestPath, source.at("code_bin_path").get<std::string>());
+         result.CodeBinSha256 = source.at("code_bin_sha256").get<std::string>();
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
-index ebfd3c7..1a419df 100644
+index 5f59a070..9c84472c 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
-@@ -199,6 +199,9 @@ void ApplyNativeWidescreenProjectionPolicy(
+@@ -208,6 +208,9 @@ void ApplyNativeWidescreenProjectionPolicy(
        questDrawExit()) {
      if (runtime.ObservedExitPc != nullptr)
        *runtime.ObservedExitPc = pc;
@@ -632,11 +820,11 @@ index ebfd3c7..1a419df 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 0d5af23..a7e38af 100644
+index 01026912..760287f9 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-@@ -3,10 +3,149 @@
- #include "fast/renderer3ds/pica_surface_debug.h"
+@@ -4,10 +4,149 @@
+ #include "oot3d/renderer/ui_presentation_layout.h"
  #include "oot3d_native_room_shadow_shell.h"
  
 +#if defined(__ORBIS__)
@@ -785,7 +973,7 @@ index 0d5af23..a7e38af 100644
  uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
    uint64_t hash = 14695981039346656037ULL;
    for (const uint8_t byte : bytes) {
-@@ -552,6 +691,63 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +776,63 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -849,7 +1037,7 @@ index 0d5af23..a7e38af 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1360,6 +1556,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1640,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -870,7 +1058,7 @@ index 0d5af23..a7e38af 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1382,6 +1592,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1466,6 +1676,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
            (usesCommonBackground || isOpaqueTargetInitialization);
        Oot3dNativeGame::Oot3dPicaVulkanDrawPlan plan;
        auto drawPhaseStart = std::chrono::steady_clock::now();
@@ -883,7 +1071,7 @@ index 0d5af23..a7e38af 100644
                BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
                    draw, plan, &error, &shaderSourceCache)) {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
-index 13cbace..d06490a 100644
+index 2487dd8f..6598bbcf 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
 @@ -16,6 +16,7 @@
@@ -894,7 +1082,7 @@ index 13cbace..d06490a 100644
  
  namespace Oot3dNativeGame {
  namespace {
-@@ -263,10 +264,24 @@ bool ExecuteOot3dWholeAotFunction(
+@@ -266,10 +267,24 @@ bool ExecuteOot3dWholeAotFunction(
      bool skipFirstBlockEntry, uint32_t stopPc) {
    if (const Oot3dWholeAotProgramV2 *program = WholeAotProgram();
        program != nullptr) {
@@ -923,7 +1111,7 @@ index 13cbace..d06490a 100644
    }
    const Oot3dDirectAotProgramV1 *program = DirectAotProgram();
    if (program == nullptr || result == nullptr || stats == nullptr ||
-@@ -305,6 +320,12 @@ bool ExecuteOot3dWholeAotFunction(
+@@ -308,6 +323,12 @@ bool ExecuteOot3dWholeAotFunction(
          Oot3dWholeAotTakeObservableExitSnapshot(exit.Pc, &observableExitState);
      flow = Oot3dAotBranch(exit.Pc);
    }
@@ -937,7 +1125,7 @@ index 13cbace..d06490a 100644
      state = observableExitState;
    }
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h b/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h
-index 91cbc9b..c382581 100644
+index 6854bb24..bc5c7060 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h
 @@ -30,6 +30,9 @@ inline constexpr uint32_t kOot3dOriginalSimulationRateHz = 30U;
@@ -951,20 +1139,20 @@ index 91cbc9b..c382581 100644
  // A slow Switch frame must not schedule two complete CTR refresh/render
  // passes into the following presentation. Dropping the missed refresh keeps
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_game.cpp b/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
-index e574720..e92b99d 100644
+index 932f7ba3..4f1b7d1a 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
-@@ -14,6 +14,9 @@
- #if defined(__SWITCH__) || defined(__ANDROID__)
+@@ -15,6 +15,9 @@
  #include <SDL.h>
  #endif
+ #include <filesystem>
 +#if defined(__ORBIS__)
 +#include "fast/backends/gfx_orbis.h"
 +#endif
  
  #include "oot3d_demo_host_context.h"
  #if defined(__ANDROID__)
-@@ -140,6 +143,11 @@ NativeGameArguments PrepareNativeGameArguments(int argc, char** argv) {
+@@ -175,6 +178,11 @@ NativeGameArguments PrepareNativeGameArguments(int argc, char** argv) {
  } // namespace
  
  int main(int argc, char** argv) {
@@ -973,10 +1161,10 @@ index e574720..e92b99d 100644
 +    // Orbis has no getcwd, so every relative path resolves through chdir).
 +    Fast::OrbisProcessInit();
 +#endif
-     try {
-         if (argc >= 2 && std::string_view(argv[1]) == "--prebuild-interior-sun")
-             return Oot3dNativeGame::InteriorSunToolMain(argc, argv);
-@@ -204,6 +212,44 @@ int main(int argc, char** argv) {
+ #ifdef _WIN32
+     UseRuntimeLibraryDirectory();
+ #endif
+@@ -242,6 +250,44 @@ int main(int argc, char** argv) {
              argc = static_cast<int>(homebrewArguments.size());
              argv = homebrewArguments.data();
          }
@@ -1022,10 +1210,10 @@ index e574720..e92b99d 100644
          preparedArguments = PrepareNativeGameArguments(argc, argv);
          if (!preparedArguments.Pointers.empty()) {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp b/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp
-index f030a7d..2b0e543 100644
+index 00a6f526..d87b7c52 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_game_bootstrap.cpp
-@@ -522,6 +522,13 @@ bool ParseOot3dNativeGameArgs(int argc, char** argv, Oot3dNativeGameLaunch& laun
+@@ -541,6 +541,13 @@ bool ParseOot3dNativeGameArgs(int argc, char** argv, Oot3dNativeGameLaunch& laun
          }
      }
  
@@ -1039,8 +1227,150 @@ index f030a7d..2b0e543 100644
      if (launch.Host.Renderer == "opengl") {
          launch.Host.BackendId = Fast::WindowBackend::FAST3D_SDL_OPENGL;
      } else if (launch.Host.Renderer == "nri" || launch.Host.Renderer == "vulkan") {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp
+index 151b1c06..beaa5de1 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp
+@@ -16,8 +16,17 @@ namespace Oot3dNativeGame {
+ namespace {
+ 
+ using RuntimeProfileClock = std::chrono::steady_clock;
++// Snapshot cache bounds. On PS4 the Jaguar-era homebrew heap needs headroom
++// for the title's deterministic 173 MiB svcControlMemory commit (the game's
++// heap budget) during scene transitions, so the caches stay far smaller than
++// the desktop limits; both remain LRU-evicted.
++#if defined(TRIAEVUM_PS4_HOST)
++constexpr size_t kGeometrySnapshotCacheLimit = 512U;
++constexpr size_t kMaximumTextureSnapshotCacheEntries = 4096U;
++#else
+ constexpr size_t kGeometrySnapshotCacheLimit = 4096U;
+ constexpr size_t kMaximumTextureSnapshotCacheEntries = 65536U;
++#endif
+ constexpr size_t kMaximumSnapshotResourceBytes = 64U << 20U;
+ // Bound the persisted raw-copy ownership ledger. Producers accumulate only
+ // until a newer copy takes their bytes back, so the live count tracks distinct
+@@ -281,6 +290,25 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
+     Oot3dPicaResourceKind kind, uint8_t slot, uint32_t physicalAddress,
+     uint32_t firstElement, size_t byteCount,
+     Oot3dPicaResourceSnapshot &resource, std::string *error) {
++#if defined(TRIAEVUM_PS4_HOST)
++  // PS4: a draw with garbage vertex/index data at the title transition
++  // computed a ~173 MiB capture (elementCount x stride spanning nearly the
++  // whole linear-heap region), which the console heap refuses and which
++  // killed run_frame permanently (console evidence, PKG 0.10: exactly one
++  // failed allocation of 181534720 bytes, live heap 271 MiB at the time).
++  // Real hardware would render garbage and continue; return an empty
++  // snapshot for oversized ranges so the draw survives with that resource
++  // unbound instead of faulting the frame loop.
++  constexpr size_t kPs4MaximumGeometrySnapshotBytes = 16U << 20U;
++  if (byteCount > kPs4MaximumGeometrySnapshotBytes) {
++    resource = Oot3dPicaResourceSnapshot{};
++    resource.Kind = kind;
++    resource.Slot = slot;
++    resource.PhysicalAddress = physicalAddress;
++    resource.FirstElement = firstElement;
++    return true;
++  }
++#endif
+   const auto source = mMemory.View(physicalAddress, byteCount);
+   if (!source.has_value()) {
+     SetError(error, kind == Oot3dPicaResourceKind::IndexBuffer
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp
+index 387bd3f4..50f16f2e 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp
+@@ -289,6 +289,11 @@ bool WithOot3dPicaVulkanDrawView(
+     // Immutable title-owned family: the backend selects the effective program
+     // after applying typed instrumentation, never by a scene/material identity.
+     draw.VertexArtifacts = TitleVertexArtifacts();
++    draw.VertexProgramWords = plan.VertexProgramWords;
++    draw.VertexSwizzleWords = plan.VertexSwizzleWords;
++    draw.VertexOutputSemantics = plan.VertexOutputSemantics;
++    draw.VertexMainOffset = plan.VertexMainOffset;
++    draw.VertexFlipViewport = plan.VertexFlipViewport;
+     draw.FragmentShaderSourceIdentity =
+         plan.FragmentShader.SourceIdentity;
+     if (plan.VertexShader.TemporalProgram != nullptr) {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp
+index 5a3228f1..d14c4fa3 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp
+@@ -223,6 +223,51 @@ bool BuildOot3dPicaVulkanDrawPlanImpl(
+         SetError(error, "native PICA Vulkan draw uses a geometry shader");
+         return false;
+     }
++    // CPU-vertex evaluation inputs (PS4 path; desktop backends ignore
++    // them): copy the raw program + swizzle words out of the packet and
++    // derive the output semantic table exactly like the shader generator
++    // does (registers 0x50.. map packed output registers to the 24
++    // semantic slots the generator's main() epilogue consumes).
++    plan.VertexMainOffset =
++        submission.State.ShaderInterface.VertexMainOffset;
++    plan.VertexFlipViewport = submission.State.Framebuffer.Flipped;
++    {
++        const auto& vertexShader = submission.Packet.VertexShader;
++        plan.VertexProgramWords.assign(
++            vertexShader.Program.Values().data(),
++            vertexShader.Program.Values().data() +
++            std::min<size_t>(vertexShader.ProgramWordCount,
++                             vertexShader.Program.Values().size()));
++        plan.VertexSwizzleWords.assign(
++            vertexShader.Swizzles.Values().data(),
++            vertexShader.Swizzles.Values().data() +
++            std::min<size_t>(vertexShader.SwizzleWordCount,
++                             vertexShader.Swizzles.Values().size()));
++        plan.VertexOutputSemantics = {};
++        size_t packedOutput = 0;
++        for (size_t outputRegister = 0; outputRegister < 16U;
++             ++outputRegister) {
++            if ((submission.State.ShaderInterface.OutputMask &
++                 (1U << outputRegister)) == 0U) {
++                continue;
++            }
++            if (packedOutput < 7U) {
++                const uint32_t map =
++                    submission.Packet.Registers[0x50U + packedOutput];
++                for (size_t component = 0; component < 4U; ++component) {
++                    const uint8_t semantic = static_cast<uint8_t>(
++                        (map >> (component * 8U)) & 0x1FU);
++                    if (semantic <
++                        plan.VertexOutputSemantics.size()) {
++                        plan.VertexOutputSemantics[semantic] = {
++                            1U, static_cast<uint8_t>(outputRegister),
++                            static_cast<uint8_t>(component)};
++                    }
++                }
++            }
++            ++packedOutput;
++        }
++    }
+     const auto cachedVertex =
+         shaderCache != nullptr
+             ? shaderCache->VertexSources.find(vertexShaderKey)
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.h
+index 3f387455..b0458f4e 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.h
+@@ -114,6 +114,17 @@ struct Oot3dPicaVulkanDrawPlan {
+     uint64_t GeometryIdentity = 0;
+     uint64_t GeometryContentVersion = 0;
+     bool GeometryIdentityAvailable = false;
++    // CPU-vertex evaluation inputs (PS4 path): the raw PICA vertex program
++    // words + swizzles (copied out of the submission packet so the view can
++    // outlive it), the program's main offset and the output semantic table
++    // (identical computation to the shader generator's, which remains the
++    // rendering source of truth for the compiled path).
++    std::vector<uint32_t> VertexProgramWords;
++    std::vector<uint32_t> VertexSwizzleWords;
++    std::array<Oot3d::Renderer::PicaVertexOutputSemantic, 24>
++        VertexOutputSemantics{};
++    uint16_t VertexMainOffset = 0;
++    bool VertexFlipViewport = false;
+ 
+     [[nodiscard]]
+ 
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
-index 72e298a..0996c34 100644
+index 29e449f5..1ea336bf 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
 @@ -1,3 +1,6 @@
@@ -1070,7 +1400,7 @@ index 72e298a..0996c34 100644
      mProgress.wait(lock, [&] {
          return mFailure != nullptr || (mQueue.empty() && !mBusy);
      });
-@@ -131,6 +140,9 @@ void NativeRenderCommandStream::StopWorker() {
+@@ -140,6 +149,9 @@ void NativeRenderCommandStream::StopWorker() {
  }
  
  void NativeRenderCommandStream::WorkerLoop() {
@@ -1081,7 +1411,7 @@ index 72e298a..0996c34 100644
      for (;;) {
          mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
-index a981122..a2f3a6f 100644
+index a9811221..a2f3a6fc 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 @@ -128,6 +128,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
@@ -1178,7 +1508,7 @@ index a981122..a2f3a6f 100644
  
  inline Oot3dWholeAotFlow Oot3dAotCallExternal(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp b/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp
-index fb3303a..79941fb 100644
+index fb3303a4..79941fbc 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_savestate_panel.cpp
 @@ -34,7 +34,14 @@ std::string SizeText(std::uintmax_t bytes) {
@@ -1197,7 +1527,7 @@ index fb3303a..79941fb 100644
    std::tm local{};
  #if defined(_WIN32)
 diff --git a/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp b/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp
-index 4bc9988..281f2cd 100644
+index 4bc99889..281f2cdf 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_scene_environment.cpp
 @@ -360,7 +360,16 @@ std::string SceneEnvironmentRuntime::FileStampLocked(bool night) const {
@@ -1217,3 +1547,161 @@ index 4bc9988..281f2cd 100644
    };
    auto own = stamp(ProfilePathLocked(night));
    if (own != "-") return "scene:" + own;
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_lighting_gen.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_lighting_gen.cpp
+index b029e2eb..02447581 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_lighting_gen.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_lighting_gen.cpp
+@@ -22,9 +22,28 @@ std::array<float, 4> ColorVector(const Fast::Oot3d::PicaLightingColor &color) {
+ 
+ // Exact GLSL literals: shortest round-trip decimal.
+ std::string FloatLiteral(float value) {
++  std::string literal;
++#if defined(TRIAEVUM_PS4_HOST)
++  // Orbis libc++ predates std::to_chars(float). Reproduce its contract with
++  // %g: the shortest precision whose decimal parses back to the same float.
++  for (int precision = 1; precision <= 9; ++precision) {
++    char buffer[32];
++    std::snprintf(buffer, sizeof buffer, "%.*g", precision, value);
++    if (std::strtof(buffer, nullptr) == value) {
++      literal = buffer;
++      break;
++    }
++  }
++  if (literal.empty()) {
++    char buffer[32];
++    std::snprintf(buffer, sizeof buffer, "%.9g", value);
++    literal = buffer;
++  }
++#else
+   std::array<char, 32> buffer{};
+   const auto result = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+-  std::string literal(buffer.data(), result.ptr);
++  literal.assign(buffer.data(), result.ptr);
++#endif
+   if (literal.find_first_of(".e") == std::string::npos) literal += ".0";
+   return literal;
+ }
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
+index 62b0f054..092c9f1c 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
+@@ -56,7 +56,9 @@ class CanonicalHashBuilder {
+     explicit CanonicalHashBuilder(std::string_view domain) {
+         AppendU32(kOot3dPicaProgramDescriptorSchemaVersion);
+         AppendU32(static_cast<uint32_t>(domain.size()));
+-        AppendBytes(std::as_bytes(std::span(domain)));
++        // span from (data, size) is the C++20-conformant spelling; span(range)
++        // requires the C++23 range constructor, which the PS4 libc++ lacks.
++        AppendBytes(std::as_bytes(std::span{domain.data(), domain.size()}));
+     }
+ 
+     void AppendU8(uint8_t value) {
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp
+index 19d0ada5..7edf6c5b 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp
+@@ -215,25 +215,57 @@ bool ExecuteOot3dPicaTextureCopy(
+     }
+     // Validate all ranges before mutation; keep destination gaps untouched.
+     // Source bytes are snapshotted before writes so aliases cannot invalidate
+-    // the storage used by this portable copy implementation.
+-    std::vector<uint8_t> source(plan.Size);
+-    size_t offset = 0;
+-    for (const auto& span : plan.Spans) {
+-        if (!memory.ReadBytes(span.InputAddress,
+-                              std::span<uint8_t>(source).subspan(offset, span.Size))) {
+-            SetError(error, "PICA texture copy source read failed");
+-            return false;
++    // the storage used by this portable copy implementation. Heap-clear
++    // scale copies (console evidence: a deterministic 173 MiB plan at the
++    // title transition) copy through a bounded-chunk path instead, because
++    // materializing the whole range killed the PS4 frame loop.
++    constexpr size_t kSnapshotMaximumBytes = 16U << 20U;
++    if (plan.Size <= kSnapshotMaximumBytes) {
++        std::vector<uint8_t> source(plan.Size);
++        size_t offset = 0;
++        for (const auto& span : plan.Spans) {
++            if (!memory.ReadBytes(
++                    span.InputAddress,
++                    std::span<uint8_t>(source).subspan(offset, span.Size))) {
++                SetError(error, "PICA texture copy source read failed");
++                return false;
++            }
++            offset += span.Size;
+         }
+-        offset += span.Size;
++        offset = 0;
++        for (const auto& span : plan.Spans) {
++            if (!memory.WriteBytes(
++                    span.OutputAddress,
++                    std::span<const uint8_t>(source).subspan(offset,
++                                                             span.Size))) {
++                SetError(error, "PICA texture copy destination write failed");
++                return false;
++            }
++            offset += span.Size;
++        }
++        return true;
+     }
+-    offset = 0;
++    // Every span range is validated above. Copy span by span through a
++    // bounded chunk: cross-span input/output aliasing is not preserved in
++    // this mode (the bounded snapshot preserves it), but no known title
++    // aliases spans at heap-clear scale, and the alternative is a fatal
++    // bad_alloc on the PS4.
++    constexpr size_t kCopyChunkBytes = 0x40000U; // 256 KiB
++    std::vector<uint8_t> chunk(kCopyChunkBytes);
+     for (const auto& span : plan.Spans) {
+-        if (!memory.WriteBytes(span.OutputAddress,
+-                               std::span<const uint8_t>(source).subspan(offset, span.Size))) {
+-            SetError(error, "PICA texture copy destination write failed");
+-            return false;
++        for (size_t offset = 0U; offset < span.Size;
++             offset += kCopyChunkBytes) {
++            const size_t slice = std::min(span.Size - offset, kCopyChunkBytes);
++            if (!memory.ReadBytes(
++                    span.InputAddress + static_cast<uint32_t>(offset),
++                    std::span<uint8_t>(chunk).first(slice)) ||
++                !memory.WriteBytes(
++                    span.OutputAddress + static_cast<uint32_t>(offset),
++                    std::span<const uint8_t>(chunk).first(slice))) {
++                SetError(error, "PICA texture copy chunk transfer failed");
++                return false;
++            }
+         }
+-        offset += span.Size;
+     }
+     return true;
+ }
+@@ -263,11 +295,27 @@ bool ExecuteOot3dPicaMemoryFill(const Oot3dPicaMemoryFill& fill,
+         static_cast<uint8_t>(fill.Value >> 8U),
+         static_cast<uint8_t>(fill.Value >> 16U),
+         static_cast<uint8_t>(fill.Value >> 24U)};
+-    std::vector<uint8_t> bytes(size);
+-    for (size_t offset = 0; offset < bytes.size(); ++offset) {
+-        bytes[offset] = value[offset % elementSize];
++    // Fill through a bounded pattern chunk instead of materializing the
++    // whole range: games legitimately clear large heap spans (a title
++    // transition fill of ~173 MiB exceeded the PS4 heap and killed the
++    // frame loop), and an unwritable range must always surface as the
++    // range error rather than as a failed allocation. The written bytes
++    // are identical to the previous whole-range buffer.
++    constexpr size_t kFillChunkBytes = 0x40000U; // 256 KiB
++    std::vector<uint8_t> chunk(std::min(size, kFillChunkBytes));
++    for (size_t index = 0; index < chunk.size(); ++index) {
++        chunk[index] = value[index % elementSize];
+     }
+-    return memory.WriteBytes(fill.StartAddress, bytes);
++    for (size_t offset = 0U; offset < size; offset += chunk.size()) {
++        const size_t slice = std::min(size - offset, chunk.size());
++        if (!memory.WriteBytes(
++                fill.StartAddress + static_cast<uint32_t>(offset),
++                std::span<const uint8_t>(chunk).first(slice))) {
++            SetError(error, "PICA memory fill write failed");
++            return false;
++        }
++    }
++    return true;
+ }
+ 
+ bool ExecuteOot3dPicaDisplayTransfer(
