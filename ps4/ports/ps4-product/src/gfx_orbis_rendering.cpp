@@ -216,6 +216,7 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
         for (auto& image : mRetiredImages) mVk->DestroyImage(image);
         mRetiredImages.clear();
         ReportPerformance();
+        PublishOverlay();
         if (++mFramesSinceCacheSave >= 600U) {
             mFramesSinceCacheSave = 0;
             mPica->SavePipelineCache();
@@ -501,6 +502,43 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
     // Presentation counters, logged every five seconds: frame rate, and per
     // frame the backend's draws, GPU submissions and the time spent waiting
     // for the GPU and for the previous flip.
+    // The performance overlay's half-second window: presented frames, the
+    // interval between them (frametime) and the GPU time (each flush submits
+    // and waits for the fence, so the wait is the GPU's work).
+    struct OverlayWindow {
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point lastFrame = start;
+        uint32_t frames = 0;
+        double maxFrameMs = 0.0;
+        uint64_t gpuWaitUs = 0;
+    } mOverlay;
+
+    void PublishOverlay() {
+        const auto now = std::chrono::steady_clock::now();
+        const double frameMs =
+            std::chrono::duration<double, std::milli>(now - mOverlay.lastFrame).count();
+        mOverlay.lastFrame = now;
+        ++mOverlay.frames;
+        mOverlay.maxFrameMs = std::max(mOverlay.maxFrameMs, frameMs);
+        const double seconds = std::chrono::duration<double>(now - mOverlay.start).count();
+        if (seconds < 0.5) return;
+        const uint64_t gpuWaitUs = mPica->Stats().gpuWaitUs;
+        const double frames = mOverlay.frames;
+        const double gpuMs = static_cast<double>(gpuWaitUs - mOverlay.gpuWaitUs) / 1000.0;
+        auto& out = gOrbisPerformanceRender;
+        out.Fps.store(static_cast<float>(frames / seconds), std::memory_order_relaxed);
+        out.FrameMsAverage.store(static_cast<float>(seconds * 1000.0 / frames),
+                                 std::memory_order_relaxed);
+        out.FrameMsMaximum.store(static_cast<float>(mOverlay.maxFrameMs), std::memory_order_relaxed);
+        out.GpuMs.store(static_cast<float>(gpuMs / frames), std::memory_order_relaxed);
+        out.GpuPercent.store(static_cast<float>(std::min(100.0, gpuMs / (seconds * 10.0))),
+                             std::memory_order_relaxed);
+        mOverlay.start = now;
+        mOverlay.frames = 0;
+        mOverlay.maxFrameMs = 0.0;
+        mOverlay.gpuWaitUs = gpuWaitUs;
+    }
+
     struct PerfWindow {
         std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
         std::chrono::steady_clock::duration flipWait{};

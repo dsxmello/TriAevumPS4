@@ -43,7 +43,7 @@ include(${DOLPHINPS4}/toolchain/ps4-love-style.cmake)
 # compiled library and the third-party headers of this build root. fmt 10
 # (bundled with spdlog) trips clang's consteval checks; its runtime-checked
 # format strings are what the desktop gets with MSVC anyway.
-set(TRIAEVUM_PS4_BUILD_VERSION "1.27")
+set(TRIAEVUM_PS4_BUILD_VERSION "1.28")
 add_compile_definitions(TRIAEVUM_PS4_HOST=1 SPDLOG_COMPILED_LIB=1 FMT_CONSTEVAL=)
 include_directories(SYSTEM
     "${SPDLOG_ROOT}/include"
@@ -54,6 +54,11 @@ include_directories(SYSTEM
     "${PS4_SYSROOT}/glslang/include"
     "${PS4_PORT_ROOT}/src/tinyxml2-10.0.0"
     "${PS4_SYSROOT}/libzip/include")
+
+# DolphinPS4's malloc wrappers check the heap's control block on every
+# operation (shared counters every thread writes); a debugging aid.
+set_source_files_properties(${PS4_RUNTIME_SOURCES} PROPERTIES
+    COMPILE_DEFINITIONS PS4_HEAP_CHECKS=0)
 
 # Profile-guided optimization (tools/build-product.sh PGO=generate|use): the
 # game thread is CPU-bound in thousands of generated AOT functions, the

@@ -39,6 +39,8 @@ extern "C" int TriaevumPthreadSetaffinity(OrbisPthread thread, uint64_t mask) __
 namespace Fast {
 
 std::atomic<uint64_t> gOrbisFrameHeartbeat{0};
+OrbisPerformanceGame gOrbisPerformanceGame;
+OrbisPerformanceRender gOrbisPerformanceRender;
 std::atomic<const char*> gOrbisWaitSite{nullptr};
 
 namespace {

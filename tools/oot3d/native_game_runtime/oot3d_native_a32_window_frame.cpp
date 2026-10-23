@@ -301,7 +301,13 @@ bool NativeA32WindowSession::RunFrame() {
   // frame rate (docs/TRIAEVUM_PARALLEL_PRESENTATION.md).
   // TRIAEVUM_INPUT_ADMISSION=1 keeps only the wait for the previous frame and
   // =0 restores the early sampling, for comparisons.
+#if defined(__ORBIS__)
+  // PS4: the game thread is the limit, and waiting for the previous frame
+  // puts the renderer (its CPU work and the GPU, ~16 ms) in series with it.
+  static const char *inputAdmissionMode = "0";
+#else
   static const char *inputAdmissionMode = std::getenv("TRIAEVUM_INPUT_ADMISSION");
+#endif
   static const bool inputAdmission =
       inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
   static const bool lateInputSample =
@@ -777,6 +783,38 @@ bool NativeA32WindowSession::RunFrame() {
   ++presentationFrameCount;
   ++runFrameCount;
 #if defined(__ORBIS__)
+  // PS4: the performance overlay's game numbers, every half second.
+  {
+    static auto overlayStart = std::chrono::steady_clock::now();
+    static uint64_t overlayGuestFrames = frameCount;
+    static uint64_t overlayHostFrames = runFrameCount;
+    static uint64_t overlayDspFrames = dspStats.FramesMixed;
+    static double overlayGuestSeconds = phaseTiming.GuestSeconds;
+    const auto now = std::chrono::steady_clock::now();
+    const double seconds = std::chrono::duration<double>(now - overlayStart).count();
+    if (seconds >= 0.5) {
+      const double hostFrames = static_cast<double>(runFrameCount - overlayHostFrames);
+      auto &out = Fast::gOrbisPerformanceGame;
+      out.SpeedPercent.store(
+          static_cast<float>(static_cast<double>(dspStats.FramesMixed - overlayDspFrames) /
+                             seconds / 204.5 * 100.0),
+          std::memory_order_relaxed);
+      out.GuestFps.store(
+          static_cast<float>(static_cast<double>(frameCount - overlayGuestFrames) / seconds),
+          std::memory_order_relaxed);
+      out.GameCpuMs.store(
+          hostFrames > 0.0
+              ? static_cast<float>((phaseTiming.GuestSeconds - overlayGuestSeconds) * 1000.0 /
+                                   hostFrames)
+              : 0.0F,
+          std::memory_order_relaxed);
+      overlayStart = now;
+      overlayGuestFrames = frameCount;
+      overlayHostFrames = runFrameCount;
+      overlayDspFrames = dspStats.FramesMixed;
+      overlayGuestSeconds = phaseTiming.GuestSeconds;
+    }
+  }
   // PS4: the game thread's rate and where its time goes, every five
   // seconds - guest frames are what the player sees advance; presentations
   // can repeat one.

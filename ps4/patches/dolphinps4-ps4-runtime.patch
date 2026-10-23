@@ -555,3 +555,115 @@ new mode 100755
 diff --git a/toolchain/prepare-sysroot.sh b/toolchain/prepare-sysroot.sh
 old mode 100644
 new mode 100755
+diff --git a/port/ps4_sampler.cpp b/port/ps4_sampler.cpp
+index aa89572..959e7c0 100644
+--- a/port/ps4_sampler.cpp
++++ b/port/ps4_sampler.cpp
+@@ -26,6 +26,7 @@
+ #include <atomic>
+ 
+ extern "C" char __text_start[];  // defined by the OpenOrbis link.x at the start of .text
++extern "C" char __eh_frame_hdr_end[];  // link.x: end of the text/rodata/eh_frame segment
+ extern "C" int pthread_getthreadid_np(void);  // libkernel (FreeBSD libthr)
+ extern "C" void ps4_boot_trace(const char* stage);
+ 
+@@ -47,8 +48,44 @@ struct ThreadSamples {
+     const char* name = nullptr;
+     uint64_t samples[kMaxSamples];
+     std::atomic<int> count{0};
++    // Samples inside memcpy/memmove/memset/memcmp (ps4_string.c, frameless leaves): the eboot
++    // call site, read from the return address on top of the stack ("mem<-" lines).
++    uint64_t mem_callers[kMaxSamples];
++    std::atomic<int> mem_caller_count{0};
+ };
+ 
++// The call site of a sample in one of ps4_string.c's leaf functions. They keep the frame pointer
++// (push %rbp; memmove also pushes %rbx), so the return address sits at [rsp], [rsp+8] or
++// [rsp+16]: the first slot that follows a `call rel32` whose target is that function, with the
++// sample within its first 1 KiB. 0 otherwise.
++uint64_t memCaller(uint64_t rip, uint64_t rsp) {
++    const uintptr_t text = reinterpret_cast<uintptr_t>(__text_start);
++    const uintptr_t text_end = reinterpret_cast<uintptr_t>(__eh_frame_hdr_end);
++    static const uintptr_t kTargets[] = {
++        reinterpret_cast<uintptr_t>(&memcpy), reinterpret_cast<uintptr_t>(&memmove),
++        reinterpret_cast<uintptr_t>(&memset), reinterpret_cast<uintptr_t>(&memcmp)};
++    uintptr_t target = 0;
++    for (const uintptr_t candidate : kTargets) {
++        if (rip >= candidate && rip < candidate + 0x400)
++            target = candidate;
++    }
++    if (target == 0 || rsp == 0 || (rsp & 7) != 0)
++        return 0;
++    for (int slot = 0; slot < 3; slot++) {
++        const uint64_t ret = reinterpret_cast<const uint64_t*>(rsp)[slot];
++        if (ret < text + 5 || ret >= text_end)
++            continue;
++        const auto* call = reinterpret_cast<const uint8_t*>(ret - 5);
++        if (call[0] != 0xE8)
++            continue;
++        int32_t rel;
++        memcpy(&rel, call + 1, sizeof(rel));
++        if (static_cast<uintptr_t>(static_cast<int64_t>(ret) + rel) == target)
++            return ret - 5 - text;
++    }
++    return 0;
++}
++
+ ThreadSamples g_threads[kMaxThreads];
+ std::atomic<int> g_thread_count{0};
+ 
+@@ -71,6 +108,13 @@ void profHandler(int, siginfo_t*, void* context) {
+                 sample |= kCallerTag;
+             t.samples[n] = sample;
+             t.count.store(n + 1, std::memory_order_release);
++            if (const uint64_t caller = memCaller(regs[kRipIndex], regs[kRspIndex])) {
++                const int m = t.mem_caller_count.load(std::memory_order_relaxed);
++                if (m < kMaxSamples) {
++                    t.mem_callers[m] = caller;
++                    t.mem_caller_count.store(m + 1, std::memory_order_release);
++                }
++            }
+         }
+         return;
+     }
+@@ -93,9 +137,13 @@ void noteHotJit(uint64_t address, int count);
+ void report(int fd, ThreadSamples& t, double window_start) {
+     // Copy first: the handler keeps writing into t.samples once count is reset.
+     static uint64_t s[kMaxSamples];
++    static uint64_t callers[kMaxSamples];
+     const int n = std::min(t.count.load(std::memory_order_acquire), kMaxSamples);
+     memcpy(s, t.samples, sizeof(uint64_t) * n);
+     t.count.store(0, std::memory_order_release);
++    const int callers_n = std::min(t.mem_caller_count.load(std::memory_order_acquire), kMaxSamples);
++    memcpy(callers, t.mem_callers, sizeof(uint64_t) * callers_n);
++    t.mem_caller_count.store(0, std::memory_order_release);
+     if (n == 0)
+         return;
+     const uintptr_t text = reinterpret_cast<uintptr_t>(__text_start);
+@@ -148,6 +196,26 @@ void report(int fd, ThreadSamples& t, double window_start) {
+                      static_cast<unsigned long long>(entries[i].key));
+         writeLine(fd, line);
+     }
++
++    // memcpy/memmove/memset/memcmp call sites (ELF virtual addresses, like "elf").
++    if (callers_n > 0) {
++        std::sort(callers, callers + callers_n);
++        int distinct = 0;
++        for (int i = 0; i < callers_n;) {
++            int j = i;
++            while (j < callers_n && callers[j] == callers[i])
++                j++;
++            entries[distinct++] = {callers[i], j - i};
++            i = j;
++        }
++        std::sort(entries, entries + distinct,
++                  [](const Entry& a, const Entry& b) { return a.count > b.count; });
++        for (int i = 0; i < distinct && i < 200 && entries[i].count >= 2; i++) {
++            snprintf(line, sizeof(line), "  %5.1f%% mem<- 0x%llx\n", 100.0 * entries[i].count / n,
++                     static_cast<unsigned long long>(entries[i].key));
++            writeLine(fd, line);
++        }
++    }
+ }
+ 
+ // 64 KiB chunks of JIT code sampled since the last dump (dumpJitCode).

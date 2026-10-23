@@ -245,7 +245,7 @@ void Fast3dGui::Init(GuiWindowInitData windowImpl) {
     }
 #endif
 #if defined(__ORBIS__)
-    // PS4: the same consolidated settings window, opened by L3+R3.
+    // PS4: the same consolidated settings window (no pad shortcut; F1).
     if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
         Oot3d::InstallGraphicsSettingsPersistencePort(
             std::make_shared<Oot3dGraphicsSettingsPersistence>());
@@ -391,6 +391,11 @@ void Fast3dGui::ToggleOot3dGraphicsWindow() {
 
 void Fast3dGui::DrawMenu() {
     Ship::Gui::DrawMenu();
+#if defined(__ORBIS__)
+    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
+        OrbisDrawPerformanceOverlay();
+    }
+#endif
 #ifdef ENABLE_OOT3D_VULKAN
     if (mImpl.Backend == WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
         const bool hostUiVisible = GetAnyGuiWindowVisible();

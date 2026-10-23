@@ -12,10 +12,10 @@ index 04968b59..056d04ca 100644
  class Fast3dWindow : public Ship::Window {
 diff --git a/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
 new file mode 100644
-index 00000000..be025cd3
+index 00000000..f73ca319
 --- /dev/null
 +++ b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,90 @@
 +#pragma once
 +
 +// PlayStation 4 (OpenOrbis) Fast3D backends. The window backend (VideoOut +
@@ -51,9 +51,28 @@ index 00000000..be025cd3
 +};
 +
 +// ImGui platform side: display size, timing and gamepad navigation from the
-+// DualShock.
++// DualShock. L3+R3 shows or hides the performance overlay.
 +void OrbisImGuiPlatformInit();
 +void OrbisImGuiPlatformNewFrame();
++
++// Performance overlay (top-left corner, drawn inside the ImGui frame). The
++// game thread and the rendering API each publish their numbers every half
++// second; the overlay shows the latest.
++struct OrbisPerformanceGame {
++    std::atomic<float> SpeedPercent{0.0F};  // DSP frames against real time (204.5/s)
++    std::atomic<float> GuestFps{0.0F};      // game frames per second (60 = full speed)
++    std::atomic<float> GameCpuMs{0.0F};     // game thread time per presented frame
++};
++struct OrbisPerformanceRender {
++    std::atomic<float> Fps{0.0F};           // frames presented per second
++    std::atomic<float> FrameMsAverage{0.0F};
++    std::atomic<float> FrameMsMaximum{0.0F};
++    std::atomic<float> GpuMs{0.0F};         // GPU time per frame (submit to fence)
++    std::atomic<float> GpuPercent{0.0F};    // share of wall time the GPU was busy
++};
++extern OrbisPerformanceGame gOrbisPerformanceGame;
++extern OrbisPerformanceRender gOrbisPerformanceRender;
++void OrbisDrawPerformanceOverlay();
 +
 +// Process start (before main's work): system modules, boot log on
 +// /data/triaevum_boot.log, chdir to /data/triaevum, the DualShock mapping.
@@ -186,7 +205,7 @@ index f67d3d97..70984094 100644
  };
  } // namespace Ship
 diff --git a/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp b/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
-index b49d215c..716ede21 100644
+index b49d215c..721e6ebb 100644
 --- a/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
 +++ b/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
 @@ -11,10 +11,13 @@
@@ -238,7 +257,7 @@ index b49d215c..716ede21 100644
      }
 +#endif
 +#if defined(__ORBIS__)
-+    // PS4: the same consolidated settings window, opened by L3+R3.
++    // PS4: the same consolidated settings window (no pad shortcut; F1).
 +    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
 +        Oot3d::InstallGraphicsSettingsPersistencePort(
 +            std::make_shared<Oot3dGraphicsSettingsPersistence>());
@@ -274,7 +293,19 @@ index b49d215c..716ede21 100644
  #ifdef ENABLE_OOT3D_VULKAN
      if (mImpl.Backend != WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
          return;
-@@ -383,6 +414,11 @@ void Fast3dGui::DrawMenu() {
+@@ -360,6 +391,11 @@ void Fast3dGui::ToggleOot3dGraphicsWindow() {
+ 
+ void Fast3dGui::DrawMenu() {
+     Ship::Gui::DrawMenu();
++#if defined(__ORBIS__)
++    if (mImpl.Backend == WindowBackend::FAST3D_ORBIS_VULKAN) {
++        OrbisDrawPerformanceOverlay();
++    }
++#endif
+ #ifdef ENABLE_OOT3D_VULKAN
+     if (mImpl.Backend == WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
+         const bool hostUiVisible = GetAnyGuiWindowVisible();
+@@ -383,6 +419,11 @@ void Fast3dGui::DrawMenu() {
  
  void Fast3dGui::ImGuiWMInit() {
      switch (mImpl.Backend) {
@@ -286,7 +317,7 @@ index b49d215c..716ede21 100644
          case WindowBackend::FAST3D_SDL_OPENGL:
              SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
              if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
-@@ -444,6 +480,16 @@ void Fast3dGui::ImGuiWMShutdown() {
+@@ -444,6 +485,16 @@ void Fast3dGui::ImGuiWMShutdown() {
  void Fast3dGui::ImGuiBackendInit() {
      auto window = Ship::Context::GetRawInstance()->GetWindow();
      mInterpreter = std::dynamic_pointer_cast<Fast3dWindow>(window)->GetInterpreterWeak();
@@ -303,7 +334,7 @@ index b49d215c..716ede21 100644
      switch (mImpl.Backend) {
  #ifdef ENABLE_OPENGL
          case WindowBackend::FAST3D_SDL_OPENGL:
-@@ -485,6 +531,16 @@ void Fast3dGui::ImGuiBackendInit() {
+@@ -485,6 +536,16 @@ void Fast3dGui::ImGuiBackendInit() {
  }
  
  void Fast3dGui::ImGuiBackendShutdown() {
@@ -320,7 +351,7 @@ index b49d215c..716ede21 100644
  #ifdef ENABLE_OOT3D_VULKAN
      if (mImpl.Backend == WindowBackend::FAST3D_SDL_OOT3D_VULKAN) {
          if (auto interpreter = mInterpreter.lock()) {
-@@ -533,6 +589,29 @@ std::shared_ptr<ImDrawData> CloneImGuiDrawData(const ImDrawData* source) {
+@@ -533,6 +594,29 @@ std::shared_ptr<ImDrawData> CloneImGuiDrawData(const ImDrawData* source) {
  } // namespace
  
  void Fast3dGui::ImGuiBackendNewFrame() {
@@ -350,7 +381,7 @@ index b49d215c..716ede21 100644
      switch (mImpl.Backend) {
  #ifdef ENABLE_OPENGL
          case WindowBackend::FAST3D_SDL_OPENGL:
-@@ -592,6 +671,12 @@ void Fast3dGui::SyncOot3dVulkanMousePosition() {
+@@ -592,6 +676,12 @@ void Fast3dGui::SyncOot3dVulkanMousePosition() {
  
  void Fast3dGui::ImGuiWMNewFrame() {
      switch (mImpl.Backend) {
@@ -363,7 +394,7 @@ index b49d215c..716ede21 100644
          case WindowBackend::FAST3D_SDL_OPENGL:
          case WindowBackend::FAST3D_SDL_METAL:
  #ifdef ENABLE_OOT3D_VULKAN
-@@ -622,6 +707,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
+@@ -622,6 +712,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
  }
  
  void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
@@ -620,6 +651,188 @@ index f7498800..fdbcaf55 100644
        throw std::runtime_error("save root is invalid");
      }
      return std::unique_ptr<RootedFilesystemBackendV1>(
+diff --git a/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_ops.cpp b/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_ops.cpp
+index 4bdfc850..a60db74d 100644
+--- a/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_ops.cpp
++++ b/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_ops.cpp
+@@ -5,8 +5,127 @@
+ // AOT code without changing the provenance-checked snapshot.
+ #include "upstream/recomp/a32_vfp_scalar.cpp"
+ 
++#include <bit>
++#include <cmath>
++
+ namespace oot3d::recomp::a32 {
+ 
++namespace {
++
++// Host-float fast paths with the authoritative result and flags (the same
++// bounds as oot3d_native_a32_vfp_fast.h): round-to-nearest where the
++// operation rounds, operands +/-0 or normal with a biased exponent of at
++// least 24, nonzero results normal with a biased exponent of at least 2.
++// Everything else takes the software implementation.
++constexpr std::uint32_t kFastRoundingModeMask = 0x00C00000U;
++
++constexpr std::uint32_t FastExponent(std::uint32_t bits) noexcept {
++    return (bits >> 23U) & 0xFFU;
++}
++
++constexpr bool FastOperand(std::uint32_t bits) noexcept {
++    const std::uint32_t exponent = FastExponent(bits);
++    return (exponent >= 24U && exponent != 0xFFU) || (bits & 0x7FFFFFFFU) == 0U;
++}
++
++constexpr bool FastNonzeroResult(std::uint32_t bits) noexcept {
++    const std::uint32_t exponent = FastExponent(bits);
++    return exponent >= 2U && exponent != 0xFFU;
++}
++
++bool FastDivide(std::uint32_t left, std::uint32_t right, std::uint32_t fpscr,
++                VfpBinary32Result& result) noexcept {
++    if ((fpscr & kFastRoundingModeMask) != 0U || !FastOperand(left) ||
++        !FastOperand(right) || (right & 0x7FFFFFFFU) == 0U) {
++        return false;
++    }
++    const float numerator = std::bit_cast<float>(left);
++    const float denominator = std::bit_cast<float>(right);
++    const float quotient = numerator / denominator;
++    const std::uint32_t bits = std::bit_cast<std::uint32_t>(quotient);
++    if ((left & 0x7FFFFFFFU) == 0U) {
++        result = {bits, 0U};
++        return true;
++    }
++    if (!FastNonzeroResult(bits)) {
++        return false;
++    }
++    // Exact in double: 24 x 24 significand bits.
++    const bool exact = static_cast<double>(quotient) * static_cast<double>(denominator) ==
++                       static_cast<double>(numerator);
++    result = {bits, exact ? 0U : kFpscrIxc};
++    return true;
++}
++
++bool FastSquareRoot(std::uint32_t value, std::uint32_t fpscr,
++                    VfpBinary32Result& result) noexcept {
++    if ((fpscr & kFastRoundingModeMask) != 0U || !FastOperand(value)) {
++        return false;
++    }
++    if ((value & 0x7FFFFFFFU) == 0U) {
++        result = {value, 0U};  // sqrt(+/-0) = +/-0
++        return true;
++    }
++    if ((value & kSignBit) != 0U) {
++        return false;
++    }
++    const float operand = std::bit_cast<float>(value);
++    const float root = std::sqrt(operand);
++    const bool exact = static_cast<double>(root) * static_cast<double>(root) ==
++                       static_cast<double>(operand);
++    result = {std::bit_cast<std::uint32_t>(root), exact ? 0U : kFpscrIxc};
++    return true;
++}
++
++// VCVT to integer rounds toward zero whatever FPSCR says; only the
++// flush-to-zero of a denormal input depends on it (left to the fallback).
++bool FastToSigned(std::uint32_t value, VfpBinary32Result& result) noexcept {
++    const std::uint32_t exponent = FastExponent(value);
++    if (exponent == 0U) {
++        if ((value & 0x7FFFFFFFU) != 0U) return false;
++        result = {0U, 0U};
++        return true;
++    }
++    if (exponent >= 127U + 31U) {
++        return false;
++    }
++    const float operand = std::bit_cast<float>(value);
++    const auto integer = static_cast<std::int32_t>(operand);
++    result = {static_cast<std::uint32_t>(integer),
++              static_cast<float>(integer) == operand ? 0U : kFpscrIxc};
++    return true;
++}
++
++bool FastToUnsigned(std::uint32_t value, VfpBinary32Result& result) noexcept {
++    const std::uint32_t exponent = FastExponent(value);
++    if (exponent == 0U) {
++        if ((value & 0x7FFFFFFFU) != 0U) return false;
++        result = {0U, 0U};
++        return true;
++    }
++    if ((value & kSignBit) != 0U || exponent >= 127U + 32U) {
++        return false;
++    }
++    const float operand = std::bit_cast<float>(value);
++    const auto integer = static_cast<std::uint32_t>(operand);
++    result = {integer,
++              static_cast<double>(integer) == static_cast<double>(operand) ? 0U : kFpscrIxc};
++    return true;
++}
++
++bool FastFromUnsigned(std::uint32_t value, std::uint32_t fpscr,
++                      VfpBinary32Result& result) noexcept {
++    if ((fpscr & kFastRoundingModeMask) != 0U) {
++        return false;
++    }
++    const float converted = static_cast<float>(value);
++    result = {std::bit_cast<std::uint32_t>(converted),
++              static_cast<double>(converted) == static_cast<double>(value) ? 0U : kFpscrIxc};
++    return true;
++}
++
++} // namespace
++
+ VfpBinary32Result VfpBinary32Add(
+     std::uint32_t left,
+     std::uint32_t right,
+@@ -27,6 +146,9 @@ VfpBinary32Result VfpBinary32Divide(
+     std::uint32_t left,
+     std::uint32_t right,
+     std::uint32_t fpscr) noexcept {
++    if (VfpBinary32Result fast{}; FastDivide(left, right, fpscr, fast)) [[likely]] {
++        return fast;
++    }
+     const Result result = F32Div(left, right, ControlFromFpscr(fpscr));
+     return {result.value, result.flags & kExceptionFlags};
+ }
+@@ -72,6 +194,9 @@ VfpBinary32Result VfpBinary32NegativeMultiply(
+ VfpBinary32Result VfpBinary32SquareRoot(
+     std::uint32_t value,
+     std::uint32_t fpscr) noexcept {
++    if (VfpBinary32Result fast{}; FastSquareRoot(value, fpscr, fast)) [[likely]] {
++        return fast;
++    }
+     const Result result = F32Sqrt(value, ControlFromFpscr(fpscr));
+     return {result.value, result.flags & kExceptionFlags};
+ }
+@@ -79,6 +204,9 @@ VfpBinary32Result VfpBinary32SquareRoot(
+ VfpBinary32Result VfpBinary32FromUnsigned(
+     std::uint32_t value,
+     std::uint32_t fpscr) noexcept {
++    if (VfpBinary32Result fast{}; FastFromUnsigned(value, fpscr, fast)) [[likely]] {
++        return fast;
++    }
+     const Result result = F32FromUnsigned(value, ControlFromFpscr(fpscr));
+     return {result.value, result.flags & kExceptionFlags};
+ }
+@@ -86,6 +214,9 @@ VfpBinary32Result VfpBinary32FromUnsigned(
+ VfpBinary32Result VfpBinary32ToUnsigned(
+     std::uint32_t value,
+     std::uint32_t fpscr) noexcept {
++    if (VfpBinary32Result fast{}; FastToUnsigned(value, fast)) [[likely]] {
++        return fast;
++    }
+     const Result result = F32ToInteger(
+         value, false, ControlFromFpscr(fpscr));
+     return {result.value, result.flags & kExceptionFlags};
+@@ -94,6 +225,9 @@ VfpBinary32Result VfpBinary32ToUnsigned(
+ VfpBinary32Result VfpBinary32ToSigned(
+     std::uint32_t value,
+     std::uint32_t fpscr) noexcept {
++    if (VfpBinary32Result fast{}; FastToSigned(value, fast)) [[likely]] {
++        return fast;
++    }
+     const Result result = F32ToInteger(
+         value, true, ControlFromFpscr(fpscr));
+     return {result.value, result.flags & kExceptionFlags};
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
 index 571e4752..eb393c6f 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
@@ -818,7 +1031,7 @@ index 5f59a070..9c84472c 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..760287f9 100644
+index 01026912..c594965b 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 @@ -4,10 +4,149 @@
@@ -971,11 +1184,57 @@ index 01026912..760287f9 100644
  uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
    uint64_t hash = 14695981039346656037ULL;
    for (const uint8_t byte : bytes) {
-@@ -637,6 +776,63 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -162,7 +301,13 @@ bool NativeA32WindowSession::RunFrame() {
+   // frame rate (docs/TRIAEVUM_PARALLEL_PRESENTATION.md).
+   // TRIAEVUM_INPUT_ADMISSION=1 keeps only the wait for the previous frame and
+   // =0 restores the early sampling, for comparisons.
++#if defined(__ORBIS__)
++  // PS4: the game thread is the limit, and waiting for the previous frame
++  // puts the renderer (its CPU work and the GPU, ~16 ms) in series with it.
++  static const char *inputAdmissionMode = "0";
++#else
+   static const char *inputAdmissionMode = std::getenv("TRIAEVUM_INPUT_ADMISSION");
++#endif
+   static const bool inputAdmission =
+       inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
+   static const bool lateInputSample =
+@@ -637,6 +782,95 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
 +#if defined(__ORBIS__)
++  // PS4: the performance overlay's game numbers, every half second.
++  {
++    static auto overlayStart = std::chrono::steady_clock::now();
++    static uint64_t overlayGuestFrames = frameCount;
++    static uint64_t overlayHostFrames = runFrameCount;
++    static uint64_t overlayDspFrames = dspStats.FramesMixed;
++    static double overlayGuestSeconds = phaseTiming.GuestSeconds;
++    const auto now = std::chrono::steady_clock::now();
++    const double seconds = std::chrono::duration<double>(now - overlayStart).count();
++    if (seconds >= 0.5) {
++      const double hostFrames = static_cast<double>(runFrameCount - overlayHostFrames);
++      auto &out = Fast::gOrbisPerformanceGame;
++      out.SpeedPercent.store(
++          static_cast<float>(static_cast<double>(dspStats.FramesMixed - overlayDspFrames) /
++                             seconds / 204.5 * 100.0),
++          std::memory_order_relaxed);
++      out.GuestFps.store(
++          static_cast<float>(static_cast<double>(frameCount - overlayGuestFrames) / seconds),
++          std::memory_order_relaxed);
++      out.GameCpuMs.store(
++          hostFrames > 0.0
++              ? static_cast<float>((phaseTiming.GuestSeconds - overlayGuestSeconds) * 1000.0 /
++                                   hostFrames)
++              : 0.0F,
++          std::memory_order_relaxed);
++      overlayStart = now;
++      overlayGuestFrames = frameCount;
++      overlayHostFrames = runFrameCount;
++      overlayDspFrames = dspStats.FramesMixed;
++      overlayGuestSeconds = phaseTiming.GuestSeconds;
++    }
++  }
 +  // PS4: the game thread's rate and where its time goes, every five
 +  // seconds - guest frames are what the player sees advance; presentations
 +  // can repeat one.
@@ -1035,7 +1294,7 @@ index 01026912..760287f9 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1444,6 +1640,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1678,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -1056,7 +1315,7 @@ index 01026912..760287f9 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1466,6 +1676,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1466,6 +1714,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
            (usesCommonBackground || isOpaqueTargetInitialization);
        Oot3dNativeGame::Oot3dPicaVulkanDrawPlan plan;
        auto drawPhaseStart = std::chrono::steady_clock::now();
@@ -1609,6 +1868,44 @@ index b029e2eb..02447581 100644
    if (literal.find_first_of(".e") == std::string::npos) literal += ".0";
    return literal;
  }
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
+index 7cc1eeec..9b432cab 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
+@@ -38,6 +38,23 @@ constexpr uint16_t kPicaProcTexLutDataEnd = 0x0B7U;
+ constexpr uint16_t kPicaLightingLutConfig = 0x1C5U;
+ constexpr uint16_t kPicaLightingLutDataBegin = 0x1C8U;
+ constexpr uint16_t kPicaLightingLutDataEnd = 0x1CFU;
++// Registers ApplyShaderRegisterSideEffects acts on: the LUT data ports, the
++// default attribute ports and the two shader units. Every other write (most
++// of a command list) returns at the first test.
++constexpr std::array<bool, kPicaRegisterCount> kShaderSideEffectRegisters = [] {
++    std::array<bool, kPicaRegisterCount> table{};
++    const auto mark = [&](size_t begin, size_t end) {
++        for (size_t id = begin; id <= end; ++id) table[id] = true;
++    };
++    mark(kPicaLightingLutDataBegin, kPicaLightingLutDataEnd);
++    mark(kPicaProcTexLutDataBegin, kPicaProcTexLutDataEnd);
++    mark(kPicaFogLutDataBegin, kPicaFogLutDataEnd);
++    mark(kPicaDefaultAttributeIndex, kPicaDefaultAttributeDataEnd);
++    mark(kPicaGeometryShaderBase, kPicaGeometryShaderBase + 0x2FU);
++    mark(kPicaVertexShaderBase, kPicaVertexShaderBase + 0x2FU);
++    return table;
++}();
++
+ constexpr std::array<uint32_t, 16> kExpandedParameterMasks{
+     0x00000000U, 0x000000FFU, 0x0000FF00U, 0x0000FFFFU,
+     0x00FF0000U, 0x00FF00FFU, 0x00FFFF00U, 0x00FFFFFFU,
+@@ -311,6 +328,9 @@ void Oot3dNativePicaFrontend::ApplyShaderStageRegisterSideEffects(
+ 
+ void Oot3dNativePicaFrontend::ApplyShaderRegisterSideEffects(
+     uint16_t registerId, uint32_t writeValue) {
++    if (registerId >= kPicaRegisterCount || !kShaderSideEffectRegisters[registerId]) {
++        return;
++    }
+     if (registerId >= kPicaLightingLutDataBegin &&
+         registerId <= kPicaLightingLutDataEnd) {
+         const uint32_t config = mPicaRegisters[kPicaLightingLutConfig];
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
 index 62b0f054..092c9f1c 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp

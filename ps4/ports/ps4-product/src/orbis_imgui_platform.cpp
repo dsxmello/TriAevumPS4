@@ -17,6 +17,8 @@ namespace {
 
 SDL_GameController* gController = nullptr;
 std::chrono::steady_clock::time_point gLastFrame{};
+bool gOverlayVisible = true;
+bool gOverlayComboHeld = false;
 
 SDL_GameController* Controller() {
     if (gController != nullptr && SDL_GameControllerGetAttached(gController)) {
@@ -101,6 +103,40 @@ void OrbisImGuiPlatformNewFrame() {
     Analog(io, pad, ImGuiKey_GamepadRStickRight, SDL_CONTROLLER_AXIS_RIGHTX, kDeadZone, 1.0F);
     Analog(io, pad, ImGuiKey_GamepadRStickUp, SDL_CONTROLLER_AXIS_RIGHTY, -kDeadZone, -1.0F);
     Analog(io, pad, ImGuiKey_GamepadRStickDown, SDL_CONTROLLER_AXIS_RIGHTY, kDeadZone, 1.0F);
+
+    const bool combo = SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSTICK) &&
+                       SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
+    if (combo && !gOverlayComboHeld) gOverlayVisible = !gOverlayVisible;
+    gOverlayComboHeld = combo;
+}
+
+void OrbisDrawPerformanceOverlay() {
+    if (!gOverlayVisible) return;
+    const auto load = [](const std::atomic<float>& value) {
+        return value.load(std::memory_order_relaxed);
+    };
+    const auto& game = gOrbisPerformanceGame;
+    const auto& render = gOrbisPerformanceRender;
+    ImGui::SetNextWindowPos(ImVec2(16.0F, 16.0F), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.55F);
+    constexpr ImGuiWindowFlags kFlags =
+        ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove;
+    if (ImGui::Begin("##triaevum_performance", nullptr, kFlags)) {
+        ImGui::SetWindowFontScale(1.6F);
+        const float speed = load(game.SpeedPercent);
+        const ImVec4 speedColor = speed >= 97.0F ? ImVec4(0.45F, 1.0F, 0.45F, 1.0F)
+                                  : speed >= 75.0F ? ImVec4(1.0F, 0.85F, 0.3F, 1.0F)
+                                                   : ImVec4(1.0F, 0.45F, 0.4F, 1.0F);
+        ImGui::Text("FPS %5.1f   frametime %5.1f ms (max %5.1f)", load(render.Fps),
+                    load(render.FrameMsAverage), load(render.FrameMsMaximum));
+        ImGui::TextColored(speedColor, "Velocidade %3.0f%%   jogo %4.1f quadros/s", speed,
+                           load(game.GuestFps));
+        ImGui::Text("CPU jogo %5.1f ms/quadro", load(game.GameCpuMs));
+        ImGui::Text("GPU %3.0f%%   %5.1f ms/quadro", load(render.GpuPercent), load(render.GpuMs));
+    }
+    ImGui::End();
 }
 
 } // namespace Fast

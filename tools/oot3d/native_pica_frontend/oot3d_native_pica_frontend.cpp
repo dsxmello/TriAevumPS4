@@ -38,6 +38,23 @@ constexpr uint16_t kPicaProcTexLutDataEnd = 0x0B7U;
 constexpr uint16_t kPicaLightingLutConfig = 0x1C5U;
 constexpr uint16_t kPicaLightingLutDataBegin = 0x1C8U;
 constexpr uint16_t kPicaLightingLutDataEnd = 0x1CFU;
+// Registers ApplyShaderRegisterSideEffects acts on: the LUT data ports, the
+// default attribute ports and the two shader units. Every other write (most
+// of a command list) returns at the first test.
+constexpr std::array<bool, kPicaRegisterCount> kShaderSideEffectRegisters = [] {
+    std::array<bool, kPicaRegisterCount> table{};
+    const auto mark = [&](size_t begin, size_t end) {
+        for (size_t id = begin; id <= end; ++id) table[id] = true;
+    };
+    mark(kPicaLightingLutDataBegin, kPicaLightingLutDataEnd);
+    mark(kPicaProcTexLutDataBegin, kPicaProcTexLutDataEnd);
+    mark(kPicaFogLutDataBegin, kPicaFogLutDataEnd);
+    mark(kPicaDefaultAttributeIndex, kPicaDefaultAttributeDataEnd);
+    mark(kPicaGeometryShaderBase, kPicaGeometryShaderBase + 0x2FU);
+    mark(kPicaVertexShaderBase, kPicaVertexShaderBase + 0x2FU);
+    return table;
+}();
+
 constexpr std::array<uint32_t, 16> kExpandedParameterMasks{
     0x00000000U, 0x000000FFU, 0x0000FF00U, 0x0000FFFFU,
     0x00FF0000U, 0x00FF00FFU, 0x00FFFF00U, 0x00FFFFFFU,
@@ -311,6 +328,9 @@ void Oot3dNativePicaFrontend::ApplyShaderStageRegisterSideEffects(
 
 void Oot3dNativePicaFrontend::ApplyShaderRegisterSideEffects(
     uint16_t registerId, uint32_t writeValue) {
+    if (registerId >= kPicaRegisterCount || !kShaderSideEffectRegisters[registerId]) {
+        return;
+    }
     if (registerId >= kPicaLightingLutDataBegin &&
         registerId <= kPicaLightingLutDataEnd) {
         const uint32_t config = mPicaRegisters[kPicaLightingLutConfig];

@@ -33,9 +33,28 @@ class ImGuiRenderHooks {
 };
 
 // ImGui platform side: display size, timing and gamepad navigation from the
-// DualShock.
+// DualShock. L3+R3 shows or hides the performance overlay.
 void OrbisImGuiPlatformInit();
 void OrbisImGuiPlatformNewFrame();
+
+// Performance overlay (top-left corner, drawn inside the ImGui frame). The
+// game thread and the rendering API each publish their numbers every half
+// second; the overlay shows the latest.
+struct OrbisPerformanceGame {
+    std::atomic<float> SpeedPercent{0.0F};  // DSP frames against real time (204.5/s)
+    std::atomic<float> GuestFps{0.0F};      // game frames per second (60 = full speed)
+    std::atomic<float> GameCpuMs{0.0F};     // game thread time per presented frame
+};
+struct OrbisPerformanceRender {
+    std::atomic<float> Fps{0.0F};           // frames presented per second
+    std::atomic<float> FrameMsAverage{0.0F};
+    std::atomic<float> FrameMsMaximum{0.0F};
+    std::atomic<float> GpuMs{0.0F};         // GPU time per frame (submit to fence)
+    std::atomic<float> GpuPercent{0.0F};    // share of wall time the GPU was busy
+};
+extern OrbisPerformanceGame gOrbisPerformanceGame;
+extern OrbisPerformanceRender gOrbisPerformanceRender;
+void OrbisDrawPerformanceOverlay();
 
 // Process start (before main's work): system modules, boot log on
 // /data/triaevum_boot.log, chdir to /data/triaevum, the DualShock mapping.
