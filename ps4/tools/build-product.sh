@@ -46,6 +46,9 @@ if [ ! -f "$build/CMakeCache.txt" ]; then
         -DPS4_MALLOC_REPLACE=ON -DPS4_PAID=0x3800000000000035 \
         -DPS4_MESA_BUILD="$PS4_BUILD_ROOT/build/mesa" \
         -DPS4_PGO="$PGO" -DPS4_PGO_PROFILE="${PGO_PROFILE:-}" >/dev/null
+elif [ -n "${PGO_PROFILE:-}" ]; then
+    # The tree is configured once; a new profile still has to reach it.
+    cmake -S "$PRODUCT" -B "$build" -DPS4_PGO_PROFILE="$PGO_PROFILE" >/dev/null
 fi
 ninja -C "$build" -k 0 "${@:2}"
 

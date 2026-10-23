@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <exception>
 #include <mutex>
 #include <thread>
 #endif
@@ -55,6 +56,7 @@ public:
     mPlans = &plans;
     mNext.store(0, std::memory_order_relaxed);
     mFailedIndex = SIZE_MAX;
+    mFailedException = nullptr;
     {
       std::lock_guard lock(mMutex);
       ++mGeneration;
@@ -63,11 +65,15 @@ public:
     mWake.notify_all();
     Run(ownCache);
     {
+      Fast::OrbisWaitScope wait("the PICA plan helpers");
       std::unique_lock lock(mMutex);
       mDone.wait(lock, [&] { return mBusy == 0; });
     }
     if (mFailedIndex == SIZE_MAX) {
       return true;
+    }
+    if (mFailedException != nullptr) {
+      std::rethrow_exception(std::exchange(mFailedException, nullptr));
     }
     error = mFailedError;
     return false;
@@ -83,12 +89,22 @@ private:
         return;
       }
       std::string error;
-      if (!Oot3dNativeGame::BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
-              draws[index], plans[index], &error, &cache)) {
+      std::exception_ptr exception;
+      bool built = false;
+      // A helper must always come back to its loop: one that died here
+      // would leave the game thread waiting for it forever.
+      try {
+        built = Oot3dNativeGame::BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
+            draws[index], plans[index], &error, &cache);
+      } catch (...) {
+        exception = std::current_exception();
+      }
+      if (!built) {
         std::lock_guard lock(mMutex);
         if (index < mFailedIndex) {
           mFailedIndex = index;
           mFailedError = std::move(error);
+          mFailedException = exception;
         }
       }
     }
@@ -127,6 +143,7 @@ private:
   std::atomic<size_t> mNext{0};
   size_t mFailedIndex = SIZE_MAX;
   std::string mFailedError;
+  std::exception_ptr mFailedException;
 };
 #endif
 

@@ -3,12 +3,14 @@
 
 #include "fast/backends/gfx_orbis.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
 
 #include <fcntl.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -35,6 +37,36 @@ extern "C" int TriaevumPthreadSetaffinity(OrbisPthread thread, uint64_t mask) __
 
 
 namespace Fast {
+
+std::atomic<uint64_t> gOrbisFrameHeartbeat{0};
+std::atomic<const char*> gOrbisWaitSite{nullptr};
+
+namespace {
+
+void* WatchStalls(void*) {
+    uint64_t lastBeat = gOrbisFrameHeartbeat.load(std::memory_order_relaxed);
+    unsigned stalledSeconds = 0;
+    for (;;) {
+        sleep(2);
+        const uint64_t beat = gOrbisFrameHeartbeat.load(std::memory_order_relaxed);
+        if (beat != lastBeat) {
+            if (stalledSeconds >= 10) std::printf("[triaevum] stall: frames resumed\n");
+            lastBeat = beat;
+            stalledSeconds = 0;
+            continue;
+        }
+        stalledSeconds += 2;
+        if (stalledSeconds % 10 == 0) {
+            const char* site = gOrbisWaitSite.load(std::memory_order_relaxed);
+            std::printf("[triaevum] stall: no frame for %u s, game thread %s%s\n", stalledSeconds,
+                        site != nullptr ? "waiting at " : "not in a named wait",
+                        site != nullptr ? site : "");
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
 
 void OrbisProcessInit() {
     // stdout/stderr carry the boot log (spdlog's console sink and every
@@ -83,6 +115,8 @@ void OrbisProcessInit() {
 
     // The game (guest code, AOT) runs on this thread.
     OrbisRegisterThread("main");
+    pthread_t watchdog;
+    if (pthread_create(&watchdog, nullptr, WatchStalls, nullptr) == 0) pthread_detach(watchdog);
 #if defined(TRIAEVUM_PS4_PGO_GENERATE)
     TriaevumPs4StartProfileWriter();
 #endif

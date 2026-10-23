@@ -7,6 +7,9 @@
 // the shared window/GUI code calls under __ORBIS__.
 #if defined(__ORBIS__)
 
+#include <atomic>
+#include <cstdint>
+
 struct ImDrawData;
 
 namespace Fast {
@@ -43,6 +46,25 @@ void OrbisProcessInit();
 // (DolphinPS4's, /data/DolphinPS4/samples.log) follows it when
 // /data/triaevum/profile exists.
 void OrbisRegisterThread(const char* name);
+
+// Stall report: every frame the rendering API bumps the heartbeat, and the
+// game thread's blocking waits name themselves while they block. When the
+// heartbeat stops for 10 s a watchdog logs the named wait (1.23: the game
+// froze with every thread asleep and nothing said where).
+extern std::atomic<uint64_t> gOrbisFrameHeartbeat;
+extern std::atomic<const char*> gOrbisWaitSite;
+
+class OrbisWaitScope final {
+  public:
+    explicit OrbisWaitScope(const char* site) noexcept
+        : mPrevious(gOrbisWaitSite.exchange(site, std::memory_order_relaxed)) {}
+    ~OrbisWaitScope() { gOrbisWaitSite.store(mPrevious, std::memory_order_relaxed); }
+    OrbisWaitScope(const OrbisWaitScope&) = delete;
+    OrbisWaitScope& operator=(const OrbisWaitScope&) = delete;
+
+  private:
+    const char* mPrevious;
+};
 
 } // namespace Fast
 

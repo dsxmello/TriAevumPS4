@@ -74,6 +74,9 @@ void NativeRenderCommandStream::Enqueue(Command command, bool endsFrame,
     std::unique_lock lock(mMutex);
     RethrowPendingFailureLocked(lock);
     if (endsFrame) {
+#if defined(__ORBIS__)
+        Fast::OrbisWaitScope wait("the render worker (frames in flight)");
+#endif
         mProgress.wait(lock, [&] {
             return mFailure != nullptr || mFramesQueued < mMaxFramesInFlight;
         });
@@ -99,6 +102,9 @@ void NativeRenderCommandStream::Run(Command command) {
 void NativeRenderCommandStream::Drain() {
     if (mMode == Mode::Inline || !mWorker.joinable()) return;
     std::unique_lock lock(mMutex);
+#if defined(__ORBIS__)
+    Fast::OrbisWaitScope wait("the render worker (drain)");
+#endif
     mProgress.wait(lock, [&] {
         return mFailure != nullptr || (mQueue.empty() && !mBusy);
     });

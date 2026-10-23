@@ -12,10 +12,10 @@ index 2bec3a7..e73468c 100644
  class Fast3dWindow : public Ship::Window {
 diff --git a/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
 new file mode 100644
-index 0000000..0dd0124
+index 0000000..0105caf
 --- /dev/null
 +++ b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,71 @@
 +#pragma once
 +
 +// PlayStation 4 (OpenOrbis) Fast3D backends. The window backend (VideoOut +
@@ -24,6 +24,9 @@ index 0000000..0dd0124
 +// (triaevum-ps4-vk ports/ps4-product), not by this tree; these are the hooks
 +// the shared window/GUI code calls under __ORBIS__.
 +#if defined(__ORBIS__)
++
++#include <atomic>
++#include <cstdint>
 +
 +struct ImDrawData;
 +
@@ -61,6 +64,25 @@ index 0000000..0dd0124
 +// (DolphinPS4's, /data/DolphinPS4/samples.log) follows it when
 +// /data/triaevum/profile exists.
 +void OrbisRegisterThread(const char* name);
++
++// Stall report: every frame the rendering API bumps the heartbeat, and the
++// game thread's blocking waits name themselves while they block. When the
++// heartbeat stops for 10 s a watchdog logs the named wait (1.23: the game
++// froze with every thread asleep and nothing said where).
++extern std::atomic<uint64_t> gOrbisFrameHeartbeat;
++extern std::atomic<const char*> gOrbisWaitSite;
++
++class OrbisWaitScope final {
++  public:
++    explicit OrbisWaitScope(const char* site) noexcept
++        : mPrevious(gOrbisWaitSite.exchange(site, std::memory_order_relaxed)) {}
++    ~OrbisWaitScope() { gOrbisWaitSite.store(mPrevious, std::memory_order_relaxed); }
++    OrbisWaitScope(const OrbisWaitScope&) = delete;
++    OrbisWaitScope& operator=(const OrbisWaitScope&) = delete;
++
++  private:
++    const char* mPrevious;
++};
 +
 +} // namespace Fast
 +
@@ -610,10 +632,10 @@ index ebfd3c7..1a419df 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 0d5af23..c8c0f8c 100644
+index 0d5af23..a7e38af 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-@@ -3,10 +3,132 @@
+@@ -3,10 +3,149 @@
  #include "fast/renderer3ds/pica_surface_debug.h"
  #include "oot3d_native_room_shadow_shell.h"
  
@@ -622,6 +644,7 @@ index 0d5af23..c8c0f8c 100644
 +
 +#include <atomic>
 +#include <condition_variable>
++#include <exception>
 +#include <mutex>
 +#include <thread>
 +#endif
@@ -668,6 +691,7 @@ index 0d5af23..c8c0f8c 100644
 +    mPlans = &plans;
 +    mNext.store(0, std::memory_order_relaxed);
 +    mFailedIndex = SIZE_MAX;
++    mFailedException = nullptr;
 +    {
 +      std::lock_guard lock(mMutex);
 +      ++mGeneration;
@@ -676,11 +700,15 @@ index 0d5af23..c8c0f8c 100644
 +    mWake.notify_all();
 +    Run(ownCache);
 +    {
++      Fast::OrbisWaitScope wait("the PICA plan helpers");
 +      std::unique_lock lock(mMutex);
 +      mDone.wait(lock, [&] { return mBusy == 0; });
 +    }
 +    if (mFailedIndex == SIZE_MAX) {
 +      return true;
++    }
++    if (mFailedException != nullptr) {
++      std::rethrow_exception(std::exchange(mFailedException, nullptr));
 +    }
 +    error = mFailedError;
 +    return false;
@@ -696,12 +724,22 @@ index 0d5af23..c8c0f8c 100644
 +        return;
 +      }
 +      std::string error;
-+      if (!Oot3dNativeGame::BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
-+              draws[index], plans[index], &error, &cache)) {
++      std::exception_ptr exception;
++      bool built = false;
++      // A helper must always come back to its loop: one that died here
++      // would leave the game thread waiting for it forever.
++      try {
++        built = Oot3dNativeGame::BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
++            draws[index], plans[index], &error, &cache);
++      } catch (...) {
++        exception = std::current_exception();
++      }
++      if (!built) {
 +        std::lock_guard lock(mMutex);
 +        if (index < mFailedIndex) {
 +          mFailedIndex = index;
 +          mFailedError = std::move(error);
++          mFailedException = exception;
 +        }
 +      }
 +    }
@@ -740,13 +778,14 @@ index 0d5af23..c8c0f8c 100644
 +  std::atomic<size_t> mNext{0};
 +  size_t mFailedIndex = SIZE_MAX;
 +  std::string mFailedError;
++  std::exception_ptr mFailedException;
 +};
 +#endif
 +
  uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
    uint64_t hash = 14695981039346656037ULL;
    for (const uint8_t byte : bytes) {
-@@ -552,6 +674,63 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -552,6 +691,63 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -810,7 +849,7 @@ index 0d5af23..c8c0f8c 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1360,6 +1539,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1360,6 +1556,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -831,7 +870,7 @@ index 0d5af23..c8c0f8c 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1382,6 +1575,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1382,6 +1592,11 @@ void NativeA32WindowSession::RunGuestRefresh() {
            (usesCommonBackground || isOpaqueTargetInitialization);
        Oot3dNativeGame::Oot3dPicaVulkanDrawPlan plan;
        auto drawPhaseStart = std::chrono::steady_clock::now();
@@ -1001,7 +1040,7 @@ index f030a7d..2b0e543 100644
          launch.Host.BackendId = Fast::WindowBackend::FAST3D_SDL_OPENGL;
      } else if (launch.Host.Renderer == "nri" || launch.Host.Renderer == "vulkan") {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
-index 72e298a..066b2d0 100644
+index 72e298a..0996c34 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
 @@ -1,3 +1,6 @@
@@ -1011,7 +1050,27 @@ index 72e298a..066b2d0 100644
  #include "oot3d_native_render_command_stream.h"
  
  #include <stdexcept>
-@@ -131,6 +134,9 @@ void NativeRenderCommandStream::StopWorker() {
+@@ -71,6 +74,9 @@ void NativeRenderCommandStream::Enqueue(Command command, bool endsFrame,
+     std::unique_lock lock(mMutex);
+     RethrowPendingFailureLocked(lock);
+     if (endsFrame) {
++#if defined(__ORBIS__)
++        Fast::OrbisWaitScope wait("the render worker (frames in flight)");
++#endif
+         mProgress.wait(lock, [&] {
+             return mFailure != nullptr || mFramesQueued < mMaxFramesInFlight;
+         });
+@@ -96,6 +102,9 @@ void NativeRenderCommandStream::Run(Command command) {
+ void NativeRenderCommandStream::Drain() {
+     if (mMode == Mode::Inline || !mWorker.joinable()) return;
+     std::unique_lock lock(mMutex);
++#if defined(__ORBIS__)
++    Fast::OrbisWaitScope wait("the render worker (drain)");
++#endif
+     mProgress.wait(lock, [&] {
+         return mFailure != nullptr || (mQueue.empty() && !mBusy);
+     });
+@@ -131,6 +140,9 @@ void NativeRenderCommandStream::StopWorker() {
  }
  
  void NativeRenderCommandStream::WorkerLoop() {

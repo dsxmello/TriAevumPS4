@@ -193,10 +193,14 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
 
     // ---- frame ----------------------------------------------------------
     void StartFrame() override {
+        gOrbisFrameHeartbeat.fetch_add(1, std::memory_order_relaxed);
         if (!mInitialized) return;
         auto& display = triaevum::ps4::Ps4Display::Instance();
         const auto flipWaitStart = std::chrono::steady_clock::now();
-        display.WaitPendingFlip();
+        {
+            OrbisWaitScope wait("the scanout flip");
+            display.WaitPendingFlip();
+        }
         mPerf.flipWait += std::chrono::steady_clock::now() - flipWaitStart;
         mPica->BeginFrame(display.NextBuffer());
         mFrameActive = true;

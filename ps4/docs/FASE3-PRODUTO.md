@@ -448,3 +448,13 @@ harness cobre só a parte PICA). Primeiro boot no console é o teste.
   código gerado. Qualquer mudança no runtime header/gerador pede nova
   coleta PGO. Pacote da 1.23 com perfil velho guardado como
   out/...-1.23-perfil-velho.pkg (não usar); nova coleta com PGO=generate.
+- Coleta PGO da 1.23 (pgo/product-123.profdata, 1.0e11 contagens). Zero
+  throws no log: as saídas observáveis já não usam exceção.
+- Na coleta o jogo travou num pulo do Link: sem crash; o gravador de perfil
+  seguiu vivo e as quatro threads (main, render, 2x pica plan) ficaram 100%
+  no mesmo ponto de espera do libkernel por >1 min - um impasse.
+  Suspeito: um ajudante de planos que morre numa exceção deixa a thread do
+  jogo esperando para sempre. Agora: exceções nos ajudantes são capturadas
+  e relançadas na thread do jogo; e um vigia (ps4_process_init.cpp) escreve
+  "[triaevum] stall: ..." com a espera nomeada (OrbisWaitScope: ajudantes
+  de plano, render worker, flip) quando 10 s passam sem quadro.
