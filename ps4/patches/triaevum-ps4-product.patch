@@ -12,7 +12,7 @@ index 04968b59..056d04ca 100644
  class Fast3dWindow : public Ship::Window {
 diff --git a/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
 new file mode 100644
-index 00000000..0105cafa
+index 00000000..be025cd3
 --- /dev/null
 +++ b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
 @@ -0,0 +1,71 @@
@@ -51,9 +51,9 @@ index 00000000..0105cafa
 +};
 +
 +// ImGui platform side: display size, timing and gamepad navigation from the
-+// DualShock. NewFrame returns true on the L3+R3 press that stands in for F1.
++// DualShock.
 +void OrbisImGuiPlatformInit();
-+bool OrbisImGuiPlatformNewFrame();
++void OrbisImGuiPlatformNewFrame();
 +
 +// Process start (before main's work): system modules, boot log on
 +// /data/triaevum_boot.log, chdir to /data/triaevum, the DualShock mapping.
@@ -186,7 +186,7 @@ index f67d3d97..70984094 100644
  };
  } // namespace Ship
 diff --git a/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp b/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
-index b49d215c..518a2ab8 100644
+index b49d215c..716ede21 100644
 --- a/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
 +++ b/runtime/three_ds_recomp/src/fast/Fast3dGui.cpp
 @@ -11,10 +11,13 @@
@@ -350,22 +350,20 @@ index b49d215c..518a2ab8 100644
      switch (mImpl.Backend) {
  #ifdef ENABLE_OPENGL
          case WindowBackend::FAST3D_SDL_OPENGL:
-@@ -592,6 +671,14 @@ void Fast3dGui::SyncOot3dVulkanMousePosition() {
+@@ -592,6 +671,12 @@ void Fast3dGui::SyncOot3dVulkanMousePosition() {
  
  void Fast3dGui::ImGuiWMNewFrame() {
      switch (mImpl.Backend) {
 +#if defined(__ORBIS__)
 +        case WindowBackend::FAST3D_ORBIS_VULKAN:
-+            // L3+R3 is the controller's F1.
-+            if (OrbisImGuiPlatformNewFrame()) {
-+                ToggleOot3dGraphicsWindow();
-+            }
++            // No pad shortcut for F1: the touch pad opens the in-game menu.
++            OrbisImGuiPlatformNewFrame();
 +            break;
 +#endif
          case WindowBackend::FAST3D_SDL_OPENGL:
          case WindowBackend::FAST3D_SDL_METAL:
  #ifdef ENABLE_OOT3D_VULKAN
-@@ -622,6 +709,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
+@@ -622,6 +707,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
  }
  
  void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
@@ -1071,21 +1069,16 @@ index 01026912..760287f9 100644
                BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
                    draw, plan, &error, &shaderSourceCache)) {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp
-index bddcb6b9..a3878df1 100644
+index bddcb6b9..7205000f 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_input.cpp
-@@ -214,7 +214,17 @@ PollNativeA32Input(Fast::Fast3dWindow &window,
+@@ -214,7 +214,12 @@ PollNativeA32Input(Fast::Fast3dWindow &window,
      menu.Back = key(Ship::KbScancode::LUS_KB_BACKSPACE) || padButton(SDL_CONTROLLER_BUTTON_B);
      menu.TabPrevious = key(Ship::KbScancode::LUS_KB_Q) || padButton(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
      menu.TabNext = key(Ship::KbScancode::LUS_KB_E) || padButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
 +#if defined(__ORBIS__)
-+    const bool rightStick = padButton(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
-+    if (rightStick && padButton(SDL_CONTROLLER_BUTTON_LEFTSTICK)) pollingState.MenuStickChorded = true;
-+    const bool rightStickReleased = pollingState.MenuStickHeld && !rightStick;
-+    menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) ||
-+                  (rightStickReleased && !pollingState.MenuStickChorded);
-+    if (!rightStick) pollingState.MenuStickChorded = false;
-+    pollingState.MenuStickHeld = rightStick;
++    // PS4: the touch pad click opens the menu (it is not a game button there).
++    menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) || padButton(SDL_CONTROLLER_BUTTON_TOUCHPAD);
 +#else
      menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) || padButton(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
 +#endif
@@ -1093,22 +1086,18 @@ index bddcb6b9..a3878df1 100644
      // picture the menu is drawn in, the left button, and the wheel while a
      // host surface is up (gameplay never sees it then). The window's wheel
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
-index 8071a191..80ecc298 100644
+index 8071a191..f5b254c9 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
-@@ -693,6 +693,12 @@ struct NativeControlPollingState {
-   // The in-game menu's controls (Esc / R3, D-pad, A/B, shoulders), from the
+@@ -690,7 +690,7 @@ struct NativeControlPollingState {
+   std::array<float, 2> DevPadRightStick{};
+   bool DevPadLeftShoulder = false;
+   bool DevPadRightShoulder = false;
+-  // The in-game menu's controls (Esc / R3, D-pad, A/B, shoulders), from the
++  // The in-game menu's controls (Esc / R3, PS4 touch pad; D-pad, A/B, shoulders), from the
    // raw devices every poll.
    Oot3dNativeGame::InGameMenuHostInput Menu;
-+#if defined(__ORBIS__)
-+  // PS4: L3+R3 opens the full settings window, so R3 opens this menu on its
-+  // release, and only when L3 stayed up for the whole press.
-+  bool MenuStickHeld = false;
-+  bool MenuStickChorded = false;
-+#endif
  };
- 
- bool ExecuteProductTopScreenHook(uint32_t pc, oot3d::recomp::a32::GuestState &state,
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
 index 2487dd8f..6598bbcf 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp

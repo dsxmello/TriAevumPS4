@@ -673,10 +673,8 @@ void Fast3dGui::ImGuiWMNewFrame() {
     switch (mImpl.Backend) {
 #if defined(__ORBIS__)
         case WindowBackend::FAST3D_ORBIS_VULKAN:
-            // L3+R3 is the controller's F1.
-            if (OrbisImGuiPlatformNewFrame()) {
-                ToggleOot3dGraphicsWindow();
-            }
+            // No pad shortcut for F1: the touch pad opens the in-game menu.
+            OrbisImGuiPlatformNewFrame();
             break;
 #endif
         case WindowBackend::FAST3D_SDL_OPENGL:

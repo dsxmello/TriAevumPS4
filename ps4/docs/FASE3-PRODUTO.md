@@ -494,3 +494,25 @@ harness cobre só a parte PICA). Primeiro boot no console é o teste.
 - Log da 1.25 (sem PGO): 23–45 quadros do jogo/s (35–70% do tempo real),
   CPU do jogo 22–50 ms por quadro. A 1.24 com PGO fazia ~72% na vila. Nova
   coleta PGO fica para depois que o runtime estabilizar.
+
+## 1.27 — só o menu novo, no touchpad (2026-10-23)
+
+- Correção do registro da 1.26: o log do console dizia "build 1.23" porque
+  `TRIAEVUM_PS4_BUILD_VERSION` (CMake) e o `PRODUCT_VERSION` do SFO ficaram
+  parados em 1.23 desde a coleta PGO; o log das 12:00 era da 1.25. Os dois
+  agora dizem 1.27.
+- Pedido do Daniel: deixar só o menu in-game novo e abri-lo no touchpad.
+  - O clique do touchpad agora é o botão `touchpad` do SDL (mapeamento
+    `touchpad:b6` em `ps4_process_init.cpp`, antes `back:b6` = SELECT do 3DS).
+    Nenhum binding do jogo lê esse botão, então ele não vaza para o jogo; o
+    `menu.Toggle` do PS4 é `Esc || touchpad` (borda tratada pelo próprio menu).
+  - R3 volta a ser só botão do jogo (o R3 sozinho não abre mais nada).
+  - L3+R3 não abre mais a janela de configurações completa (F1/ImGui):
+    `OrbisImGuiPlatformNewFrame` não detecta mais o combo e `Fast3dGui` não
+    chama `ToggleOot3dGraphicsWindow` no PS4. As opções finas que o menu novo
+    manda procurar "no F1" ficam inacessíveis pelo controle.
+  - Efeito colateral: o SELECT do 3DS fica sem botão no controle (o binding
+    `select` → `back` em `oot3d_controls.json` não tem mais quem o aperte).
+    O OoT3D quase não usa SELECT; se alguma ação do TopScreen ligada ao
+    SELECT fizer falta, dá para religar em outro botão no menu.
+- PKG `out/...-1.27.pkg` (sem PGO), enviado para `/data/pkg`.

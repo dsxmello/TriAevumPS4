@@ -17,7 +17,6 @@ namespace {
 
 SDL_GameController* gController = nullptr;
 std::chrono::steady_clock::time_point gLastFrame{};
-bool gComboHeld = false;
 
 SDL_GameController* Controller() {
     if (gController != nullptr && SDL_GameControllerGetAttached(gController)) {
@@ -61,7 +60,7 @@ void OrbisImGuiPlatformInit() {
     gLastFrame = std::chrono::steady_clock::now();
 }
 
-bool OrbisImGuiPlatformNewFrame() {
+void OrbisImGuiPlatformNewFrame() {
     ImGuiIO& io = ImGui::GetIO();
     const auto& display = triaevum::ps4::Ps4Display::Instance();
     io.DisplaySize = ImVec2(static_cast<float>(display.Width()),
@@ -75,10 +74,7 @@ bool OrbisImGuiPlatformNewFrame() {
 
     SDL_GameControllerUpdate();
     SDL_GameController* pad = Controller();
-    if (pad == nullptr) {
-        gComboHeld = false;
-        return false;
-    }
+    if (pad == nullptr) return;
     // Sony layout: cross confirms (FaceDown), circle cancels (FaceRight).
     Button(io, pad, ImGuiKey_GamepadStart, SDL_CONTROLLER_BUTTON_START);
     Button(io, pad, ImGuiKey_GamepadBack, SDL_CONTROLLER_BUTTON_BACK);
@@ -105,12 +101,6 @@ bool OrbisImGuiPlatformNewFrame() {
     Analog(io, pad, ImGuiKey_GamepadRStickRight, SDL_CONTROLLER_AXIS_RIGHTX, kDeadZone, 1.0F);
     Analog(io, pad, ImGuiKey_GamepadRStickUp, SDL_CONTROLLER_AXIS_RIGHTY, -kDeadZone, -1.0F);
     Analog(io, pad, ImGuiKey_GamepadRStickDown, SDL_CONTROLLER_AXIS_RIGHTY, kDeadZone, 1.0F);
-
-    const bool combo = SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSTICK) &&
-                       SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSTICK);
-    const bool pressed = combo && !gComboHeld;
-    gComboHeld = combo;
-    return pressed;
 }
 
 } // namespace Fast

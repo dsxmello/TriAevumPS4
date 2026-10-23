@@ -33,9 +33,9 @@ class ImGuiRenderHooks {
 };
 
 // ImGui platform side: display size, timing and gamepad navigation from the
-// DualShock. NewFrame returns true on the L3+R3 press that stands in for F1.
+// DualShock.
 void OrbisImGuiPlatformInit();
-bool OrbisImGuiPlatformNewFrame();
+void OrbisImGuiPlatformNewFrame();
 
 // Process start (before main's work): system modules, boot log on
 // /data/triaevum_boot.log, chdir to /data/triaevum, the DualShock mapping.

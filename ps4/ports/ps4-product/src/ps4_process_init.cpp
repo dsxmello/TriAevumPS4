@@ -104,10 +104,11 @@ void OrbisProcessInit() {
     // SDL's PS4 joystick driver names the pad "Sony DualShock 4 V2" (its
     // GUID is the first 16 bytes of the name) and maps OPTIONS to back and
     // the touch-pad click to start. Give the game controller the console's
-    // convention: OPTIONS is start, the touch pad is back (3DS SELECT).
+    // convention: OPTIONS is start; the touch pad is SDL's touchpad button,
+    // which no game binding reads, and it opens the in-game menu.
     SDL_SetHint(SDL_HINT_GAMECONTROLLERCONFIG,
                 "536f6e79204475616c53686f636b2034,PS4 Controller,"
-                "a:b0,b:b1,x:b2,y:b3,start:b4,guide:b5,back:b6,leftstick:b7,"
+                "a:b0,b:b1,x:b2,y:b3,start:b4,guide:b5,touchpad:b6,leftstick:b7,"
                 "rightstick:b8,leftshoulder:b9,rightshoulder:b10,dpup:b11,"
                 "dpdown:b12,dpleft:b13,dpright:b14,leftx:a0,lefty:a1,rightx:a2,"
                 "righty:a3,lefttrigger:a4,righttrigger:a5,");

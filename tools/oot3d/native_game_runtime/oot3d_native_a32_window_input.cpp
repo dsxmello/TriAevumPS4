@@ -215,13 +215,8 @@ PollNativeA32Input(Fast::Fast3dWindow &window,
     menu.TabPrevious = key(Ship::KbScancode::LUS_KB_Q) || padButton(SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
     menu.TabNext = key(Ship::KbScancode::LUS_KB_E) || padButton(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
 #if defined(__ORBIS__)
-    const bool rightStick = padButton(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
-    if (rightStick && padButton(SDL_CONTROLLER_BUTTON_LEFTSTICK)) pollingState.MenuStickChorded = true;
-    const bool rightStickReleased = pollingState.MenuStickHeld && !rightStick;
-    menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) ||
-                  (rightStickReleased && !pollingState.MenuStickChorded);
-    if (!rightStick) pollingState.MenuStickChorded = false;
-    pollingState.MenuStickHeld = rightStick;
+    // PS4: the touch pad click opens the menu (it is not a game button there).
+    menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) || padButton(SDL_CONTROLLER_BUTTON_TOUCHPAD);
 #else
     menu.Toggle = key(Ship::KbScancode::LUS_KB_ESCAPE) || padButton(SDL_CONTROLLER_BUTTON_RIGHTSTICK);
 #endif
