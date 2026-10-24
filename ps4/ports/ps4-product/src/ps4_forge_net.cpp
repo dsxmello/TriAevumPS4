@@ -12,6 +12,7 @@
 
 #include <orbis/Http.h>
 #include <orbis/Net.h>
+#include <orbis/NetCtl.h>
 #include <orbis/Ssl.h>
 #include <orbis/Sysmodule.h>
 
@@ -28,6 +29,12 @@ using forge::ForgeError;
 
 constexpr uint32_t kHttpsFlagServerVerify = 0x01U;  // SCE_HTTPS_FLAG_SERVER_VERIFY
 constexpr uint32_t kSecond = 1000000U;
+
+std::string Hex(int32_t code) {
+    char text[16];
+    std::snprintf(text, sizeof(text), "%#x", static_cast<unsigned>(code));
+    return text;
+}
 
 struct HttpContext {
     int32_t Net = -1, Ssl = -1, Http = -1;
@@ -47,6 +54,30 @@ const HttpContext& Context() {
         context.Http = sceHttpInit(context.Net, context.Ssl, 512 * 1024);
         std::printf("[forge] network: net pool %d, ssl %d, http %d\n", context.Net, context.Ssl,
                     context.Http);
+        // The system's network configuration, for the log.
+        sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NETCTL);
+        sceNetCtlInit();
+        auto text = [](int32_t code) {
+            OrbisNetCtlInfo info{};
+            const int32_t result = sceNetCtlGetInfo(code, &info);
+            return result < 0 ? "(" + Hex(result) + ")" : std::string(info.ip_address);
+        };
+        OrbisNetCtlInfo proxy{};
+        sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_HTTP_PROXY_CONFIG, &proxy);
+        const uint32_t proxyConfig = proxy.http_proxy_config;
+        std::string proxyServer;
+        if (proxyConfig != 0) {
+            OrbisNetCtlInfo server{}, port{};
+            sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_HTTP_PROXY_SERVER, &server);
+            sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_HTTP_PROXY_PORT, &port);
+            proxyServer = std::string(server.http_proxy_server) + ":" + std::to_string(port.http_proxy_port);
+        }
+        std::printf("[forge] network: ip %s, netmask %s, gateway %s, dns %s / %s, http proxy %s\n",
+                    text(ORBIS_NET_CTL_INFO_IP_ADDRESS).c_str(), text(ORBIS_NET_CTL_INFO_NETMASK).c_str(),
+                    text(ORBIS_NET_CTL_INFO_DEFAULT_ROUTE).c_str(),
+                    text(ORBIS_NET_CTL_INFO_PRIMARY_DNS).c_str(),
+                    text(ORBIS_NET_CTL_INFO_SECONDARY_DNS).c_str(),
+                    proxyConfig != 0 ? proxyServer.c_str() : "off");
     });
     if (context.Net < 0 || context.Ssl < 0 || context.Http < 0) {
         throw ForgeError("the console's network libraries did not start");
@@ -54,11 +85,6 @@ const HttpContext& Context() {
     return context;
 }
 
-std::string Hex(int32_t code) {
-    char text[16];
-    std::snprintf(text, sizeof(text), "%#x", static_cast<unsigned>(code));
-    return text;
-}
 
 // The host's IPv4 address from the console's DNS, for the log and to tell a
 // DNS that blocks the internet (common on consoles kept off PSN: every name
@@ -205,6 +231,42 @@ bool Attempt(const std::string& url, const fs::path& destination, const forge::I
     return true;
 }
 
+// After a failed download: does plain HTTP to the same host get an answer?
+// Tells "no Internet" (it times out too) from an HTTPS-only problem.
+std::string Probe(const std::string& url) {
+    const std::string probe = "http://" + HostOf(url) + "/";
+    try {
+        Handles http;
+        http.Template = sceHttpCreateTemplate(Context().Http, "TriAevum-Forge", ORBIS_HTTP_VERSION_1_1, 1);
+        if (http.Template < 0) return "probe template " + Hex(http.Template);
+        TriaevumHttpSetAutoRedirect(http.Template, 0);
+        sceHttpSetConnectTimeOut(http.Template, 10 * kSecond);
+        TriaevumHttpSetRecvTimeOut(http.Template, 10 * kSecond);
+        http.Connection = sceHttpCreateConnectionWithURL(http.Template, probe.c_str(), false);
+        if (http.Connection < 0) return "probe connection " + Hex(http.Connection);
+        http.Request = sceHttpCreateRequestWithURL(http.Connection, ORBIS_METHOD_GET, probe.c_str(), 0);
+        if (http.Request < 0) return "probe request " + Hex(http.Request);
+        const auto started = std::chrono::steady_clock::now();
+        const int32_t sent = sceHttpSendRequest(http.Request, nullptr, 0);
+        const double seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        char text[160];
+        if (sent < 0) {
+            std::snprintf(text, sizeof(text), "plain HTTP to %s also failed (%s after %.0f s)",
+                          probe.c_str(), Hex(sent).c_str(), seconds);
+        } else {
+            int32_t status = 0;
+            sceHttpGetStatusCode(http.Request, &status);
+            std::snprintf(text, sizeof(text), "plain HTTP to %s answered %d in %.1f s",
+                          probe.c_str(), status, seconds);
+        }
+        std::printf("[forge] probe: %s\n", text);
+        return text;
+    } catch (const std::exception& error) {
+        return error.what();
+    }
+}
+
 } // namespace
 
 void DownloadVerified(const std::string& url, const fs::path& destination,
@@ -213,8 +275,16 @@ void DownloadVerified(const std::string& url, const fs::path& destination,
     std::error_code error;
     fs::create_directories(destination.parent_path(), error);
     const auto started = std::chrono::steady_clock::now();
-    if (!Attempt(url, destination, expected, progress, cancel, true)) {
-        Attempt(url, destination, expected, progress, cancel, false);
+    try {
+        if (!Attempt(url, destination, expected, progress, cancel, true)) {
+            Attempt(url, destination, expected, progress, cancel, false);
+        }
+    } catch (const ForgeError& error) {
+        const std::string probe = Probe(url);
+        const bool online = probe.find("answered") != std::string::npos;
+        throw ForgeError(std::string(error.what()) + " [" + probe + (online
+            ? ": the console reaches the Internet, only HTTPS failed"
+            : ": the console does not reach the Internet") + "]");
     }
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();

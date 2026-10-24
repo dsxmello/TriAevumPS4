@@ -43,7 +43,7 @@ include(${DOLPHINPS4}/toolchain/ps4-love-style.cmake)
 # compiled library and the third-party headers of this build root. fmt 10
 # (bundled with spdlog) trips clang's consteval checks; its runtime-checked
 # format strings are what the desktop gets with MSVC anyway.
-set(TRIAEVUM_PS4_BUILD_VERSION "1.38")
+set(TRIAEVUM_PS4_BUILD_VERSION "1.39")
 add_compile_definitions(TRIAEVUM_PS4_HOST=1 SPDLOG_COMPILED_LIB=1 FMT_CONSTEVAL=)
 include_directories(SYSTEM
     "${SPDLOG_ROOT}/include"
@@ -195,7 +195,7 @@ target_link_libraries(triaevum_product PRIVATE
     "${PS4_SDL2}/lib/libSDL2.a"
     "${PS4_SYSROOT}/libzip/lib/libzip.a"
     z SceSysmodule SceSystemService SceUserService SceVideoOut ScePad SceAudioOut
-    SceNet SceSsl SceHttp pthread)
+    SceNet SceNetCtl SceSsl SceHttp pthread)
 # The kernel's path calls only take absolute paths (src/ps4_paths.cpp).
 target_link_options(triaevum_product PRIVATE
     "LINKER:--wrap=open,--wrap=stat,--wrap=lstat,--wrap=mkdir,--wrap=rmdir"
