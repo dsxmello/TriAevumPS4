@@ -31,6 +31,14 @@ class Ps4Display {
     bool Flip();
     uint64_t Flips() const { return mFlips; }
 
+    // With asynchronous GPU frames (Ps4VkPicaRenderBackend::SetAsyncFrames)
+    // a frame is still drawing when Flip is called for it: Flip then shows
+    // the frame before (finished: the backend's EndFrame waited for it) and
+    // keeps this one for the next call. One frame of added latency; the
+    // buffer a frame renders into must be neither on screen nor queued, so
+    // WaitPendingFlip allows one flip fewer in flight.
+    void SetDeferredFlips(bool deferred) { mDeferred = deferred; }
+
   private:
     Ps4Display() = default;
     int mHandle = -1;
@@ -41,6 +49,11 @@ class Ps4Display {
     uint32_t mWidth = 1920;
     uint32_t mHeight = 1080;
     uint64_t mFlips = 0;
+    bool mDeferred = false;
+    bool mHasDeferred = false;
+    uint32_t mDeferredBuffer = 0;
+
+    bool SubmitFlip(uint32_t buffer);
 };
 
 } // namespace triaevum::ps4

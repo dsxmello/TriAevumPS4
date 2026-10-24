@@ -124,10 +124,28 @@ struct Ps4VkPicaRenderBackend::Impl {
     bool depthHasStencil = false;
 
     // -- recording --
+    // The current frame slot's objects (SelectSlot); asynchronous frames
+    // alternate between two slots.
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer uploadCb = VK_NULL_HANDLE;  // texture/LUT uploads, run first
     VkCommandBuffer mainCb = VK_NULL_HANDLE;    // ordered PICA work
     VkFence fence = VK_NULL_HANDLE;
+    struct FrameSlot {
+        VkCommandPool commandPool = VK_NULL_HANDLE;
+        VkCommandBuffer uploadCb = VK_NULL_HANDLE;
+        VkCommandBuffer mainCb = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
+        VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+        bool inFlight = false;
+    };
+    FrameSlot slots[2];
+    uint32_t slot = 0;
+    bool asyncFrames = false;
+    void SelectSlot(uint32_t index);
+    // Ends and submits the slot's recording; waits for it unless `async`.
+    void Submit(bool async);
+    // Resets the current slot (its submission finished) and records again.
+    void Recycle();
     bool recording = false;
     bool uploadsRecorded = false;
     bool workRecorded = false;
@@ -137,6 +155,8 @@ struct Ps4VkPicaRenderBackend::Impl {
     VkDeviceMemory ringMemory = VK_NULL_HANDLE;
     uint8_t *ringPointer = nullptr;
     VkDeviceSize ringHead = 0;
+    VkDeviceSize ringBase = 0;    // the current slot's half of the ring
+    VkDeviceSize ringLimit = 0;
 
     // -- readback --
     VkBuffer readback = VK_NULL_HANDLE;

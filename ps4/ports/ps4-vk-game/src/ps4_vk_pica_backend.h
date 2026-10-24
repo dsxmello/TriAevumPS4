@@ -103,7 +103,7 @@ class Ps4VkPicaRenderBackend final : public Oot3d::Renderer::PicaRenderBackend {
     // GPU work targets them (status page, HUD strip).
     // Scanout buffers: the module host flips two, the product three
     // (rendering continues while a flip waits for vblank).
-    static constexpr uint32_t kScanoutCount = 3;
+    static constexpr uint32_t kScanoutCount = 4;
     void *ScanoutPixels(uint32_t index) const;
     uint32_t ScanoutPitchPixels() const;
 
@@ -145,6 +145,14 @@ class Ps4VkPicaRenderBackend final : public Oot3d::Renderer::PicaRenderBackend {
     // (FitUiPresentationViewport), so the HUD and ImGui recorded after it
     // land on top. The default (module host) composes at EndFrame instead.
     void SetImmediatePresentation(bool immediate);
+
+    // Product mode: EndFrame submits the frame without waiting for it and
+    // waits for the one before instead, so the GPU draws frame N while the
+    // CPU records N+1 (two sets of command buffers, descriptor pools and
+    // ring halves). The host must then flip a frame only after the next
+    // EndFrame (Ps4Display deferred flips). Mid-frame flushes (readbacks, a
+    // full ring) still wait.
+    void SetAsyncFrames(bool async);
 
     // HD texture replacements (the product's Azahar pack runtime: Forge's HD
     // UI texture pack and the user's own pack; gfx_vulkan_pica_textures.cpp

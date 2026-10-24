@@ -55,6 +55,8 @@ using Oot3d::Renderer::PicaVertexFormat;
 constexpr const char *kSpirvCacheDir = "/data/triaevum/spv-cache";
 constexpr const char *kPipelineCachePath = "/data/triaevum/vk-pipeline-cache.bin";
 constexpr VkDeviceSize kRingBytes = 64ULL << 20;
+// Each frame slot streams into its own half (asynchronous frames).
+constexpr VkDeviceSize kRingSlotBytes = kRingBytes / 2U;
 constexpr VkDeviceSize kPoolChunkBytes = 64ULL << 20;
 constexpr uint32_t kMaxSetsPerFlush = 4096;
 constexpr uint32_t kLightingLutBinding = 13;
@@ -513,22 +515,26 @@ bool Ps4VkPicaRenderBackend::Impl::Initialize(uint32_t width, uint32_t height) {
 }
 
 bool Ps4VkPicaRenderBackend::Impl::CreateDeviceObjects() {
-    VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-    poolInfo.queueFamilyIndex = 0;
-    if (!Check(vk.vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool),
-               "vkCreateCommandPool"))
-        return false;
-    VkCommandBuffer buffers[2] = {};
-    VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-    allocate.commandPool = commandPool;
-    allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocate.commandBufferCount = 2;
-    if (!Check(vk.vkAllocateCommandBuffers(device, &allocate, buffers), "vkAllocateCommandBuffers"))
-        return false;
-    uploadCb = buffers[0];
-    mainCb = buffers[1];
-    VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    if (!Check(vk.vkCreateFence(device, &fenceInfo, nullptr, &fence), "vkCreateFence")) return false;
+    for (FrameSlot &frame : slots) {
+        VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
+        poolInfo.queueFamilyIndex = 0;
+        if (!Check(vk.vkCreateCommandPool(device, &poolInfo, nullptr, &frame.commandPool),
+                   "vkCreateCommandPool"))
+            return false;
+        VkCommandBuffer buffers[2] = {};
+        VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+        allocate.commandPool = frame.commandPool;
+        allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocate.commandBufferCount = 2;
+        if (!Check(vk.vkAllocateCommandBuffers(device, &allocate, buffers),
+                   "vkAllocateCommandBuffers"))
+            return false;
+        frame.uploadCb = buffers[0];
+        frame.mainCb = buffers[1];
+        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        if (!Check(vk.vkCreateFence(device, &fenceInfo, nullptr, &frame.fence), "vkCreateFence"))
+            return false;
+    }
 
     // Garlic (DEVICE_LOCAL | HOST_VISIBLE) suits the ring: the CPU only
     // streams sequential writes into it and the GPU reads it at full speed.
@@ -590,9 +596,12 @@ bool Ps4VkPicaRenderBackend::Impl::CreateDeviceObjects() {
     descriptorInfo.maxSets = kMaxSetsPerFlush;
     descriptorInfo.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes));
     descriptorInfo.pPoolSizes = poolSizes;
-    if (!Check(vk.vkCreateDescriptorPool(device, &descriptorInfo, nullptr, &descriptorPool),
-               "vkCreateDescriptorPool"))
-        return false;
+    for (FrameSlot &frame : slots) {
+        if (!Check(vk.vkCreateDescriptorPool(device, &descriptorInfo, nullptr, &frame.descriptorPool),
+                   "vkCreateDescriptorPool"))
+            return false;
+    }
+    SelectSlot(0);
 
     // Render passes: everything lives in GENERAL (v1), LOAD/STORE always.
     VkAttachmentDescription attachments[2] = {};
@@ -999,41 +1008,75 @@ void Ps4VkPicaRenderBackend::Impl::EndRenderPass() {
     }
 }
 
-// Submits the uploads, then the ordered work, and waits. Every per-flush
-// resource (ring space, descriptor sets) is recycled afterwards.
-void Ps4VkPicaRenderBackend::Impl::Flush() {
+void Ps4VkPicaRenderBackend::Impl::SelectSlot(uint32_t index) {
+    slot = index;
+    FrameSlot &frame = slots[index];
+    commandPool = frame.commandPool;
+    uploadCb = frame.uploadCb;
+    mainCb = frame.mainCb;
+    fence = frame.fence;
+    descriptorPool = frame.descriptorPool;
+    ringBase = kRingSlotBytes * index;
+    ringLimit = ringBase + kRingSlotBytes;
+    ringHead = ringBase;
+}
+
+void Ps4VkPicaRenderBackend::Impl::Submit(bool async) {
     if (!recording) return;
     EndRenderPass();
     FullBarrier(uploadCb);
     vk.vkEndCommandBuffer(uploadCb);
     vk.vkEndCommandBuffer(mainCb);
     recording = false;
-    if (uploadsRecorded || workRecorded) {
-        const VkCommandBuffer buffers[2] = {uploadCb, mainCb};
-        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-        submit.commandBufferCount = 2;
-        submit.pCommandBuffers = buffers;
-        const uint64_t start = NowUs();
-        if (Check(vk.vkQueueSubmit(queue, 1, &submit, fence), "vkQueueSubmit")) {
+    if (!uploadsRecorded && !workRecorded) return;
+    const VkCommandBuffer buffers[2] = {uploadCb, mainCb};
+    VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submit.commandBufferCount = 2;
+    submit.pCommandBuffers = buffers;
+    const uint64_t start = NowUs();
+    if (Check(vk.vkQueueSubmit(queue, 1, &submit, fence), "vkQueueSubmit")) {
+        if (async) {
+            slots[slot].inFlight = true;
+        } else {
             Check(vk.vkWaitForFences(device, 1, &fence, VK_TRUE, 5ULL * 1000000000ULL),
                   "vkWaitForFences");
             vk.vkResetFences(device, 1, &fence);
         }
+    }
+    stats.gpuWaitUs += NowUs() - start;
+    ++stats.submits;
+}
+
+void Ps4VkPicaRenderBackend::Impl::Recycle() {
+    FrameSlot &frame = slots[slot];
+    if (frame.inFlight) {
+        const uint64_t start = NowUs();
+        Check(vk.vkWaitForFences(device, 1, &frame.fence, VK_TRUE, 5ULL * 1000000000ULL),
+              "vkWaitForFences");
+        vk.vkResetFences(device, 1, &frame.fence);
+        frame.inFlight = false;
         stats.gpuWaitUs += NowUs() - start;
-        ++stats.submits;
     }
     vk.vkResetCommandPool(device, commandPool, 0);
     vk.vkResetDescriptorPool(device, descriptorPool, 0);
     setsAllocated = 0;
-    ringHead = 0;
+    ringHead = ringBase;
     EnsureRecording();
+}
+
+// Submits the uploads, then the ordered work, and waits. Every per-flush
+// resource (ring space, descriptor sets) is recycled afterwards.
+void Ps4VkPicaRenderBackend::Impl::Flush() {
+    if (!recording) return;
+    Submit(false);
+    Recycle();
 }
 
 bool Ps4VkPicaRenderBackend::Impl::RingReserve(VkDeviceSize bytes) {
     // Worst-case alignment slack per allocation is folded into the caller's
     // estimate; 1 KiB more covers the rounding of the reservation itself.
-    if (bytes + 1024U > kRingBytes) return false;
-    if (ringHead + bytes + 1024U > kRingBytes) Flush();
+    if (bytes + 1024U > kRingSlotBytes) return false;
+    if (ringHead + bytes + 1024U > ringLimit) Flush();
     return true;
 }
 
@@ -2718,9 +2761,21 @@ void Ps4VkPicaRenderBackend::BeginFrame(uint32_t scanoutIndex) {
 bool Ps4VkPicaRenderBackend::EndFrame() {
     auto &impl = *mImpl;
     if (impl.presentedThisFrame && !impl.immediatePresent) impl.ComposeScanout();
-    impl.Flush();
+    if (impl.asyncFrames) {
+        // This frame runs on the GPU while the next one records in the
+        // other slot, once that slot's previous frame has finished.
+        impl.Submit(true);
+        impl.SelectSlot(impl.slot ^ 1U);
+        impl.Recycle();
+    } else {
+        impl.Flush();
+    }
     impl.frameActive = false;
     return impl.presentedThisFrame;
+}
+
+void Ps4VkPicaRenderBackend::SetAsyncFrames(bool async) {
+    mImpl->asyncFrames = async;
 }
 
 void Ps4VkPicaRenderBackend::SetPresentOptions(const PresentOptions &options) {

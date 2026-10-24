@@ -56,7 +56,9 @@ void Ps4Display::WaitPendingFlip() {
     // NextBuffer() was last shown by the flip mBufferCount flips ago; it is
     // free once at most mBufferCount - 2 flips are still queued. Flip events
     // coalesce, so the queue only wakes the check; the status counts.
-    const int32_t allowed = static_cast<int32_t>(mBufferCount) - 2;
+    // Deferred flips keep one more buffer out of the picture: the frame the
+    // GPU is drawing (not yet queued).
+    const int32_t allowed = static_cast<int32_t>(mBufferCount) - (mDeferred ? 3 : 2);
     for (;;) {
         OrbisVideoOutFlipStatus status{};
         if (sceVideoOutGetFlipStatus(mHandle, &status) != 0 || status.numFlipPending <= allowed)
@@ -68,10 +70,8 @@ void Ps4Display::WaitPendingFlip() {
     }
 }
 
-bool Ps4Display::Flip() {
-    if (!mRegistered) return false;
-    WaitPendingFlip();
-    const int flipped = sceVideoOutSubmitFlip(mHandle, static_cast<int32_t>(mNextBuffer),
+bool Ps4Display::SubmitFlip(uint32_t buffer) {
+    const int flipped = sceVideoOutSubmitFlip(mHandle, static_cast<int32_t>(buffer),
                                               ORBIS_VIDEO_OUT_FLIP_VSYNC,
                                               static_cast<int64_t>(mFlips));
     if (flipped != 0) {
@@ -79,8 +79,22 @@ bool Ps4Display::Flip() {
         return false;
     }
     ++mFlips;
-    mNextBuffer = (mNextBuffer + 1U) % mBufferCount;
     return true;
+}
+
+bool Ps4Display::Flip() {
+    if (!mRegistered) return false;
+    WaitPendingFlip();
+    bool flipped = true;
+    if (mDeferred) {
+        if (mHasDeferred) flipped = SubmitFlip(mDeferredBuffer);
+        mDeferredBuffer = mNextBuffer;
+        mHasDeferred = true;
+    } else {
+        flipped = SubmitFlip(mNextBuffer);
+    }
+    mNextBuffer = (mNextBuffer + 1U) % mBufferCount;
+    return flipped;
 }
 
 } // namespace triaevum::ps4

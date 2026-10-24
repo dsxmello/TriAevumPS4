@@ -208,3 +208,41 @@ Ordem: 1 (testar já), 2, 4–7, 3, 8, e o PGO no fim.
 - Na vila a thread do jogo continua em ~50 ms por quadro apresentado; o que
   sobra visível: mem* 7,2%, frontend PICA 5,3%, VFP 3%; ~70% na cauda do
   código gerado (acesso à memória do guest: próximo passo do item 8).
+
+## Medição da 1.45 com profiler (2026-10-24)
+
+Meta (Daniel): ~16 ms de CPU e de GPU por quadro apresentado (jogo a 30 Hz
+interpolado para 60; GPU em 4K: 14–17 ms).
+
+| | Interiores | Vila |
+|---|---|---|
+| Quadros apresentados | 25–32/s | 15–21/s |
+| Thread do jogo | ~27 ms/quadro, 17% parada no kernel | ~50 ms/quadro, sem espera |
+| Thread de render | 67% parada: ~40% esperando a GPU, ~23% esperando trabalho | parecido |
+| GPU | 15–18 ms | 16–18 ms |
+
+- Interiores: o limite é o envio síncrono. O backend submetia o quadro e
+  esperava a fence (`gpu wait` 15–17 ms) antes de gravar o próximo: CPU de
+  render (~11 ms) + GPU (~17 ms) em série, ~31 fps; a thread do jogo espera
+  a de render.
+- Vila: o limite é a thread do jogo (mem* ~9%, frontend PICA/plano ~6,6%,
+  VFP ~3,4%, o resto no código AOT).
+
+## 1.46 — GPU em paralelo com a CPU de render
+
+- `Ps4VkPicaRenderBackend::SetAsyncFrames`: dois slots de quadro (command
+  pool e buffers, fence, descriptor pool, metade do ring de 64 MiB cada). O
+  `EndFrame` submete sem esperar, troca de slot e espera só o quadro
+  anterior daquele slot. Flushes no meio do quadro (leitura de
+  materialização, ring cheio, troca de render scale) continuam síncronos;
+  a GPU executa em ordem numa fila só, então render targets e texturas não
+  precisam de duplicação.
+- `Ps4Display::SetDeferredFlips`: o flip de um quadro sai no `Flip` do
+  quadro seguinte (quando o `EndFrame` já esperou por ele); 4 buffers de
+  scanout (era 3) e `WaitPendingFlip` permite um flip a menos em voo.
+  +1 quadro de latência (aceito pelo Daniel).
+- Texturas de UI descartadas são destruídas um quadro depois.
+- O `gpu wait` do log/overlay passa a medir só a espera da CPU, não o tempo
+  da GPU.
+- Estimativa nos interiores: ~28 ms (CPU+GPU em série) -> ~17 ms (o maior
+  dos dois); o limite passa a ser a thread do jogo.

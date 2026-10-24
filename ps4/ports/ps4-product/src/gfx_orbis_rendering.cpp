@@ -168,6 +168,10 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
             throw std::runtime_error("PS4 Vulkan renderer initialization failed");
         }
         mPica->SetImmediatePresentation(true);
+        // The GPU draws frame N while the CPU records N+1; the display then
+        // shows a frame one flip later (Ps4Display deferred flips).
+        mPica->SetAsyncFrames(true);
+        display.SetDeferredFlips(true);
         mVk = mPica->Internal();
         void* buffers[triaevum::ps4::Ps4VkPicaRenderBackend::kScanoutCount];
         for (uint32_t index = 0; index < std::size(buffers); ++index)
@@ -261,8 +265,10 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
         if (!mInitialized || !mFrameActive) return;
         mPica->EndFrame();
         mFrameActive = false;
-        // Images replaced or deleted this frame are idle after the flush.
-        for (auto& image : mRetiredImages) mVk->DestroyImage(image);
+        // Images replaced or deleted last frame are idle now: EndFrame waited
+        // for that frame (this frame's may still be drawing).
+        for (auto& image : mRetiredLastFrame) mVk->DestroyImage(image);
+        mRetiredLastFrame = std::move(mRetiredImages);
         mRetiredImages.clear();
         ReportPerformance();
         PublishOverlay();
@@ -703,6 +709,7 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
     std::array<uint32_t, 3> mSelected{};
     uint32_t mCurrentUnit = 0;
     std::vector<Impl::Image> mRetiredImages;
+    std::vector<Impl::Image> mRetiredLastFrame;
 
     VkViewport mViewport{0.0F, 0.0F, 1920.0F, 1080.0F, 0.0F, 1.0F};
     VkRect2D mScissor{{0, 0}, {1920, 1080}};
