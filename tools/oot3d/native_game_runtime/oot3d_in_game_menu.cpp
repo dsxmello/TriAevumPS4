@@ -854,8 +854,8 @@ void InGameMenu::BuildGameTab(Menu::Document &document) {
     row.Key = "Open TriAevum Forge";
     row.Kind = RowKind::Action;
     row.Help = (mOwners.ForgeStatus ? mOwners.ForgeStatus() + " " : std::string()) +
-               "Forge installs the HD textures and mods and prepares the game. TriAevum restarts "
-               "into it: progress since your last save is lost.";
+               "Forge prepares the game from your ROM. TriAevum restarts into it: progress since "
+               "your last save is lost.";
     row.Activate = [this] {
       mOwners.OpenForge();
       return WriteResult{"Restarting into TriAevum Forge", false};

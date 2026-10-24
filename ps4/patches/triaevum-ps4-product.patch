@@ -863,7 +863,7 @@ index 4bdfc850..a60db74d 100644
          value, true, ControlFromFpscr(fpscr));
      return {result.value, result.flags & kExceptionFlags};
 diff --git a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp
-index 6c029b63..fc2804d8 100644
+index 6c029b63..b0d7da0c 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp
 @@ -834,6 +834,34 @@ void InGameMenu::BuildGameTab(Menu::Document &document) {
@@ -890,8 +890,8 @@ index 6c029b63..fc2804d8 100644
 +    row.Key = "Open TriAevum Forge";
 +    row.Kind = RowKind::Action;
 +    row.Help = (mOwners.ForgeStatus ? mOwners.ForgeStatus() + " " : std::string()) +
-+               "Forge installs the HD textures and mods and prepares the game. TriAevum restarts "
-+               "into it: progress since your last save is lost.";
++               "Forge prepares the game from your ROM. TriAevum restarts into it: progress since "
++               "your last save is lost.";
 +    row.Activate = [this] {
 +      mOwners.OpenForge();
 +      return WriteResult{"Restarting into TriAevum Forge", false};
@@ -902,7 +902,7 @@ index 6c029b63..fc2804d8 100644
  }
  
 diff --git a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.h b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.h
-index fd373ef8..d8966007 100644
+index fd373ef8..c16378de 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.h
 @@ -23,6 +23,7 @@
@@ -932,8 +932,8 @@ index fd373ef8..d8966007 100644
    std::shared_ptr<SavestateLibrary> Savestates;
    std::shared_ptr<DevFreeCamera> FreeCamera;
    std::shared_ptr<PhotoModeState> PhotoMode;
-+  // The PS4's console Forge (HD textures, mods, the game): when set, the
-+  // Game tab offers it; it restarts the app into Forge.
++  // The PS4's console Forge: when set, the Game tab offers it; it restarts
++  // the app into Forge.
 +  std::function<void()> OpenForge;
 +  // One line on what Forge installed, shown beside that action.
 +  std::function<std::string()> ForgeStatus;

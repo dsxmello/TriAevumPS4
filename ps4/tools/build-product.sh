@@ -69,9 +69,6 @@ cp -r "$PS4_PORT_ROOT/../TriAevum/runtime/triaevum_resources/." "$stage/resource
 mkdir -p "$stage/forge/topscreen"
 cp -r "$PS4_PORT_ROOT/forge/recipes" "$stage/forge/"
 cp "$PS4_PORT_ROOT/../TriAevum/config/topscreen_ui.example.json" "$stage/forge/"
-# The HD UI texture pack catalog, from the desktop Forge's own catalog.
-python3 -I -B "$PS4_PORT_ROOT/tools/forge_catalogs.py" "$PS4_PORT_ROOT/../TriAevum" \
-    "$PS4_PORT_ROOT/forge/recipes/oot3d.json" "$stage/forge"
 # The Forge screen's font (Apache 2.0, from the vendored Dear ImGui).
 cp "$PS4_PORT_ROOT/src/deps/imgui/misc/fonts/DroidSans.ttf" "$stage/forge/"
 ( cd "$PS4_PORT_ROOT/../TriAevum" && python3 -I -B -c '
@@ -82,5 +79,5 @@ atlas = Path("runtime/triaevum_resources/topscreen/singlescreen-3.0/custom_ui01.
 Path(sys.argv[1]).write_bytes(build_texture_pack(singlescreen_ui_atlas=atlas))
 ' "$stage/forge/topscreen/atlas_overrides.o3tu" )
 pkg="$(SFO_STYLE=plain NO_PIGLET_MODULES=1 "$HERE/make-pkg.sh" "$stage" "${PRODUCT_TITLE_ID:-TRIA00005}" \
-    "TriAevum PS4" "${PRODUCT_VERSION:-01.44}" TRIAEVUMPRODUCT0 "$PS4_BUILD_ROOT/out" | tail -1)"
+    "TriAevum PS4" "${PRODUCT_VERSION:-01.45}" TRIAEVUMPRODUCT0 "$PS4_BUILD_ROOT/out" | tail -1)"
 echo "product: $(basename "$pkg")"

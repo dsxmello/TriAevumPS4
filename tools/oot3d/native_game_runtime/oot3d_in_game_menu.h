@@ -70,8 +70,8 @@ struct InGameMenuOwners {
   std::shared_ptr<SavestateLibrary> Savestates;
   std::shared_ptr<DevFreeCamera> FreeCamera;
   std::shared_ptr<PhotoModeState> PhotoMode;
-  // The PS4's console Forge (HD textures, mods, the game): when set, the
-  // Game tab offers it; it restarts the app into Forge.
+  // The PS4's console Forge: when set, the Game tab offers it; it restarts
+  // the app into Forge.
   std::function<void()> OpenForge;
   // One line on what Forge installed, shown beside that action.
   std::function<std::string()> ForgeStatus;

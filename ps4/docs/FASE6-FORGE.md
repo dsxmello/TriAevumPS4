@@ -224,3 +224,21 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
   `source.json` do pack. No PC: 76 arquivos, 435 -> 179 MiB, 18 s. O jogo usa
   a cópia quando existe; "Prepare and install" a faz depois de instalar o
   pack, ou sozinha para quem já tem o pack.
+
+## Decisão (2026-10-24) e 1.45
+
+- Daniel: o pack Vanilla UI/HUD só cobre a UI; fica para o futuro, junto
+  com um pack que cubra o jogo inteiro (o do HenrikoMagnifico) e o suporte a
+  mods. O foco volta para as otimizações (meta: ~16 ms de CPU e de GPU por
+  quadro apresentado; o jogo roda a 30 Hz com interpolação para 60).
+- Console: apagados `/data/triaevum/mods/ui-textures` (pack e cópia PS4) e
+  `/data/triaevum/downloads` (zip de 451 MB); criado `/data/triaevum/profile`
+  para a medição.
+- 1.45: a tela do Forge e o menu do jogo não têm mais as opções de textura
+  nem a seção de mods; o jogo não recebe argumentos de pack; o PKG não leva
+  o catálogo. Ficam no repositório, para a volta: `src/forge/forge_textures`
+  (verificação, extração, cópia reduzida), `src/ps4_forge_net` (download
+  HTTPS), `tools/forge_catalogs.py`, a substituição de texturas no backend
+  (`SetTextureReplacements`) e o `Configure()` do runtime de texturas. O
+  menu mantém "Diagnostic logs" e "Open TriAevum Forge".
+- O início anterior fica em `/data/triaevum_boot.previous.log`.

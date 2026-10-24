@@ -19,7 +19,7 @@ clang++ -std=c++20 -O2 -Wall -Wextra -I"$src/src" -I"$PORT/ports/ps4-vk-game/thi
 rm -rf "$work/work" "$work/game"
 "$work/forge_host_test" "$rom" "$PORT/forge/recipes/oot3d.json" "$PORT/forge" \
     "$work/work" "$work/game" > "$work/report.json"
-( cd "$TRIAEVUM" && python3 -I - "$work/game" "$work/report.json" "$PORT/forge/recipes/oot3d.json" <<'E'
+( cd "$TRIAEVUM" && python3 -I -B - "$work/game" "$work/report.json" "$PORT/forge/recipes/oot3d.json" <<'E'
 import json, sys
 sys.path.insert(0, '.')
 from pathlib import Path

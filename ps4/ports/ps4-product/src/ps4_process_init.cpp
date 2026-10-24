@@ -86,6 +86,12 @@ void OrbisProcessInit() {
     // stdout/stderr carry the boot log (spdlog's console sink and every
     // printf diagnostic), the evidence channel since phase 1. With the logs
     // off they go nowhere (Mesa's and the runtime's lines included).
+    // The previous start's log stays beside it: a restart into Forge or the
+    // game would otherwise overwrite the session that needs looking at.
+    if (gOrbisDiagnosticLogs) rename("/data/triaevum_boot.log", "/data/triaevum_boot.previous.log");
+    // The previous start's log stays beside it: a restart into Forge or the
+    // game would otherwise overwrite the session that needs looking at.
+    if (gOrbisDiagnosticLogs) rename("/data/triaevum_boot.log", "/data/triaevum_boot.previous.log");
     const int bootLog = gOrbisDiagnosticLogs
                             ? open("/data/triaevum_boot.log", O_WRONLY | O_CREAT | O_TRUNC, 0644)
                             : open("/dev/null", O_WRONLY);
