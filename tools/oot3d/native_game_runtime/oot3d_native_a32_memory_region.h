@@ -37,7 +37,7 @@ class NativeA32UnobservedMemory final {
     }
 
     void Commit() noexcept {
-        mMemory.mWriteGeneration += mWrites;
+        mMemory.mRangeGeneration += mWrites;
         mWrites = 0;
     }
 

@@ -376,3 +376,54 @@ interpolado para 60; GPU em 4K: 14–17 ms).
 - Perfil: `FindDispatchEntry` 1,3% -> 0,12%; `Mtx3x4Multiply` 0,15%;
   `Oot3dAotNotifyBlock` ainda 1,1% (com `ObserveBlockEntry` 0,6%): hooks de
   verdade, a investigar. Código gerado 54% da thread.
+
+## 1.51 — acesso à memória do guest mais curto
+
+O `ReadFast`/`WriteFast` inline no código gerado (1.50, `BgCheck_LineTestImpl`):
+leitura ~17 instruções e 5 loads, escrita ~24 instruções, 7 loads e 4 stores.
+Três cortes, mesma semântica:
+
+- Leitura: o caminho lento preenche um valor próprio. Antes o endereço do
+  valor do chamador ia para a chamada lenta, e o resultado de toda leitura
+  rápida passava pela pilha (store + reload).
+- Trace (só no PS4, `kFastPagesMayBeTraced = false`): com o trace ligado
+  nenhuma página fica rápida (`RebuildPageTable`, `ReleaseDeferredPageTraps`;
+  `EnableWriteTraceFingerprint` refaz a tabela quando muda), e todo acesso
+  vai pelo caminho checado, que já registra o trace. O inline não testa mais
+  a flag (um load + desvio por acesso). Fora do PS4 a leitura traçada
+  continua conferida contra o caminho checado.
+- Geração: `mRangeGeneration` (= geração arquitetural + época dos
+  certificados) é o único contador que a escrita inline incrementa; a
+  arquitetural (exclusivos, save state, fingerprint) vira
+  `mRangeGeneration - mRangeGenerationBias`. Antes: incremento de
+  `mWriteGeneration` + load do bias + soma.
+
+Teste no PC (diferencial): a memória antiga (git), a nova e a nova com a
+regra do trace do PS4 compiladas lado a lado, 60 sementes x 60 mil operações
+aleatórias (leituras/escritas de 1–8 bytes com divisas de página, LDM/STM,
+`WriteBytes`, exclusivos, `RangeWriteGeneration`, cópia, move, save/restore
+de estado, trace, watch, observadores, escritas adiadas): ~9,9 milhões de
+resultados idênticos. Única diferença, esperada: com a regra do PS4, depois
+de ligar o trace, `RangeWriteGeneration` devolve gerações mais novas (a
+tabela refeita marca as páginas como escritas agora; caches só invalidam a
+mais).
+
+Binário: eboot 193 -> 173 MB; `BgCheck_LineTestImpl` 15.105 -> 12.949
+instruções (-14%: 245 testes de trace, 96 somas de bias e as idas à pilha
+saíram). Só o runtime muda; recompila todos os shards.
+
+## Medição da 1.51 (2026-10-24)
+
+Duas sessões (a primeira curta, quase toda na vila). Métrica: CPU da thread
+do jogo por quadro do jogo (ms por quadro do host x quadros do host/s /
+quadros do jogo/s), só janelas com >= 40 quadros do jogo/s e >= 20 draws:
+
+| Draws | 1.48 | 1.50 | 1.51 (2ª sessão) | fps 1.50 -> 1.51 |
+|---|---|---|---|---|
+| 100–140 | 13,2 ms | 12,6 ms (11 jan.) | **11,7 ms** (17 jan.) | 46,0 -> 52,6 |
+| 180–250 | 16,9 ms | 16,3 ms (22 jan.) | **14,5 ms** (10 jan., 224 draws em média contra 203) | 25,6 -> 29,7 |
+| >= 250 | — | 17,9 ms (3 jan.) | **16,4 ms** (17 jan.) | 23,2 -> 24,7 |
+
+- -7% a -11% de CPU por quadro do jogo nas áreas pesadas, mesmo com mais
+  draws em média. Sem erros no log.
+- 140–180 draws quase não apareceu nas sessões da 1.51.
