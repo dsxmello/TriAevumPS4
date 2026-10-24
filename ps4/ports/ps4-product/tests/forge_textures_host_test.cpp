@@ -24,6 +24,12 @@ int main(int argc, char** argv) {
         std::printf("prepared %s in %.1f s: %s\n", pack.Title().c_str(), seconds, prepared.c_str());
         std::printf("  %s prepared (full hashes)\n",
                     UiTexturePackPrepared(pack, argv[3], true) ? "ok  " : "FAIL");
+        const auto reduceStarted = std::chrono::steady_clock::now();
+        const fs::path reduced = ReduceUiTexturePack(pack, argv[3], {});
+        std::printf("  %s reduced for PS4 in %.1f s: %s\n",
+                    UiTexturePackReduced(pack, argv[3]) ? "ok  " : "FAIL",
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - reduceStarted).count(),
+                    reduced.c_str());
         if (argc == 5) {
             size_t same = 0, total = 0;
             for (const auto& member : pack.Catalog["members"]) {

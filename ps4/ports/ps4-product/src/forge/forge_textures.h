@@ -23,6 +23,9 @@ struct UiTexturePack {
     std::filesystem::path Directory(const std::filesystem::path& dataRoot) const;
     // The pack's HD SingleScreen UI atlas inside a prepared pack.
     std::filesystem::path UiAtlasHd(const std::filesystem::path& dataRoot) const;
+    // The PS4 copy (ReduceUiTexturePack): <Directory>-ps4.
+    std::filesystem::path ReducedDirectory(const std::filesystem::path& dataRoot) const;
+    std::filesystem::path ReducedUiAtlasHd(const std::filesystem::path& dataRoot) const;
 };
 
 // The prepared pack is complete: its receipt names this pack, and every
@@ -41,5 +44,16 @@ std::filesystem::path ExtractUiTexturePack(const UiTexturePack& pack,
                                            const std::filesystem::path& archive,
                                            const std::filesystem::path& dataRoot,
                                            const ProgressFn& progress);
+
+// The console's copy of a prepared pack: every texture larger than
+// `maxSide` on a side halved with a 2x2 box filter until it fits (PNG, fast
+// compression), the others copied. The PS4 scans out 1080p; its texture
+// pack runtime decodes each replacement on the CPU, and the pack's 4096
+// texel textures took it seconds each and four times the memory.
+constexpr uint32_t kUiTextureMaxSide = 2048;
+bool UiTexturePackReduced(const UiTexturePack& pack, const std::filesystem::path& dataRoot);
+std::filesystem::path ReduceUiTexturePack(const UiTexturePack& pack,
+                                          const std::filesystem::path& dataRoot,
+                                          const ProgressFn& progress);
 
 } // namespace triaevum::forge

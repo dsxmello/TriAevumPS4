@@ -224,6 +224,7 @@ constexpr Stage kStages[] = {
     {"textures-download", "Downloading the HD textures"},
     {"textures-verify", "Verifying the HD texture archive"},
     {"textures-extract", "Installing the HD textures"},
+    {"textures-optimize", "Optimizing the HD textures for PS4"},
 };
 
 // What one run does (the desktop Forge's "Prepare and install" and
@@ -306,7 +307,12 @@ class ForgeJob final {
     std::string InstallTextures(bool download) {
         const forge::UiTexturePack* pack = TexturePack();
         if (pack == nullptr) throw forge::ForgeError("the HD UI texture catalog is missing from the PKG");
-        if (forge::UiTexturePackPrepared(*pack, kData, false)) return "";
+        if (forge::UiTexturePackPrepared(*pack, kData, false)) {
+            if (forge::UiTexturePackReduced(*pack, kData)) return "";
+            forge::ReduceUiTexturePack(*pack, kData,
+                                       [this](std::string_view stage, double fraction) { Report(stage, fraction); });
+            return pack->Title() + " optimized for PS4.";
+        }
         std::optional<fs::path> archive = StoredTextureArchive(*pack);
         if (!archive && !download) {
             return "The HD textures are not stored: the game uses the native textures.";
@@ -330,6 +336,8 @@ class ForgeJob final {
         }
         forge::ExtractUiTexturePack(*pack, *archive, kData,
                                     [this](std::string_view stage, double fraction) { Report(stage, fraction); });
+        forge::ReduceUiTexturePack(*pack, kData,
+                                   [this](std::string_view stage, double fraction) { Report(stage, fraction); });
         return pack->Title() + " installed: the game uses the HD textures.";
     }
     void Run(const Plan& plan) {
@@ -435,6 +443,7 @@ struct ScreenState {
     std::string DeleteResult;
     // The HD textures, refreshed with the folder scan.
     bool TexturesPrepared = false;
+    bool TexturesReduced = false;
     std::optional<fs::path> TextureArchive;
     bool DownloadWithPrepare = DownloadTexturesWithPrepare();
     bool UseHdTextures = HdTexturesEnabled();
@@ -504,6 +513,7 @@ void DrawForge(ScreenState& screen, ForgeJob& job, ImFont* title) {
         screen.Rom = FindRom();
         screen.LastScan = now;
         screen.TexturesPrepared = pack != nullptr && forge::UiTexturePackPrepared(*pack, kData, false);
+        screen.TexturesReduced = screen.TexturesPrepared && forge::UiTexturePackReduced(*pack, kData);
         screen.TextureArchive = pack != nullptr ? StoredTextureArchive(*pack) : std::nullopt;
     }
 
@@ -581,6 +591,9 @@ void DrawForge(ScreenState& screen, ForgeJob& job, ImFont* title) {
         ImGui::EndDisabled();
         if (pack == nullptr) {
             ImGui::TextDisabled("The HD UI texture catalog is missing from this TriAevum PKG.");
+        } else if (screen.TexturesPrepared && !screen.TexturesReduced) {
+            ImGui::TextDisabled("Installed, not optimized for PS4 yet: \"Prepare and install\" makes a "
+                                "copy at most 2048 texels a side, which loads much faster.");
         } else if (screen.TexturesPrepared) {
             ImGui::TextDisabled(screen.UseHdTextures ? "Installed: the game uses the HD textures."
                                                      : "Installed, turned off: the game uses the native textures.");
@@ -636,8 +649,9 @@ void DrawForge(ScreenState& screen, ForgeJob& job, ImFont* title) {
     // Prepare the ROM when it is new (or there is no game), and the HD
     // textures when they are stored or may be downloaded.
     const bool romWork = screen.Rom && (!GameReady() || !RomPrepared(*screen.Rom));
-    const bool textureWork = pack != nullptr && !screen.TexturesPrepared &&
-                             (screen.TextureArchive || screen.DownloadWithPrepare);
+    const bool textureWork = pack != nullptr &&
+                             ((screen.TexturesPrepared && !screen.TexturesReduced) ||
+                              (!screen.TexturesPrepared && (screen.TextureArchive || screen.DownloadWithPrepare)));
     ImGui::BeginDisabled(running || (!romWork && !(GameReady() && textureWork)));
     if (ImGui::Button("Prepare and install", ImVec2(buttonWidth, 0))) {
         screen.LaunchError.clear();
@@ -864,10 +878,16 @@ std::vector<std::string> OrbisForgeLaunchArguments() {
     std::vector<std::string> arguments;
     const forge::UiTexturePack* pack = TexturePack();
     if (pack != nullptr && HdTexturesEnabled() && forge::UiTexturePackPrepared(*pack, kData, false)) {
-        arguments = {"--ui-texture-pack", pack->Directory(kData).string(),
-                     "--topscreen-ui-atlas-hd", pack->UiAtlasHd(kData).string()};
+        // The PS4 copy when Forge made it (much faster to load), else the pack.
+        if (forge::UiTexturePackReduced(*pack, kData)) {
+            arguments = {"--ui-texture-pack", pack->ReducedDirectory(kData).string(),
+                         "--topscreen-ui-atlas-hd", pack->ReducedUiAtlasHd(kData).string()};
+        } else {
+            arguments = {"--ui-texture-pack", pack->Directory(kData).string(),
+                         "--topscreen-ui-atlas-hd", pack->UiAtlasHd(kData).string()};
+        }
     }
-    triaevum::ps4::ForgeLog("HD UI textures: %s\n", !arguments.empty() ? "on"
+    triaevum::ps4::ForgeLog("HD UI textures: %s\n", !arguments.empty() ? arguments[1].c_str()
                             : HdTexturesEnabled() ? "not installed" : "turned off");
     return arguments;
 }

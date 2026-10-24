@@ -43,7 +43,7 @@ include(${DOLPHINPS4}/toolchain/ps4-love-style.cmake)
 # compiled library and the third-party headers of this build root. fmt 10
 # (bundled with spdlog) trips clang's consteval checks; its runtime-checked
 # format strings are what the desktop gets with MSVC anyway.
-set(TRIAEVUM_PS4_BUILD_VERSION "1.43")
+set(TRIAEVUM_PS4_BUILD_VERSION "1.44")
 add_compile_definitions(TRIAEVUM_PS4_HOST=1 SPDLOG_COMPILED_LIB=1 FMT_CONSTEVAL=)
 include_directories(SYSTEM
     "${SPDLOG_ROOT}/include"
@@ -157,6 +157,7 @@ target_compile_definitions(ps4_platform PRIVATE ${tri_oot3d_native_game_DEFINES}
     IMGUI_IMPL_VULKAN_NO_PROTOTYPES=1)
 target_include_directories(ps4_platform PRIVATE
     src "${PS4_VK_GAME_SRC}" "${PS4_VK_GAME_SRC}/../third_party" "${PS4_SYSROOT}/libzip/include"
+    "${PS4_DEPS}/stb"
     ${tri_oot3d_native_game_INCLUDES}
     ${tri_three_ds_recomp_runtime_INCLUDES}
     "${PS4_DEPS}/imgui" "${PS4_DEPS}/imgui/backends")

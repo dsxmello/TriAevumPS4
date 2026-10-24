@@ -210,3 +210,17 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
     (`Fast::gOrbisDiagnosticLogs`).
   - Diagnóstico: cada substituição HD aparece uma vez no boot log (arquivo
     do pack, tamanho e formato da textura nativa, tamanho final).
+
+## 1.43 no console / 1.44 (2026-10-24)
+
+- 1.43 (intro + 1 min na vila): 14 substituições HD, todas pelo caminho
+  assíncrono ("loaded"): a nativa aparece primeiro e a HD entra quando o PNG
+  termina de decodificar (o "pisca" do menu inicial). Upload sem repetição
+  (no máximo 168 KiB/quadro em média). O gargalo é decodificar PNGs de até
+  4096x4096 no Jaguar, para depois o backend reduzir a 2048.
+- 1.44: o Forge gera `vanilla_ui_hud-3.2-ps4/`, cópia do pack com cada
+  textura reduzida (caixa 2x2) até no máximo 2048 de lado, PNG com compressão
+  rápida (`stb_image_write`, do SDK), recibo `ps4-reduced.json` ligado ao
+  `source.json` do pack. No PC: 76 arquivos, 435 -> 179 MiB, 18 s. O jogo usa
+  a cópia quando existe; "Prepare and install" a faz depois de instalar o
+  pack, ou sozinha para quem já tem o pack.

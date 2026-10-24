@@ -4,6 +4,13 @@
 
 #include <zip.h>
 
+// stb_image is compiled once in the product (src/deps/stb/stb_impl.c);
+// stb_image_write only here.
+#include <stb_image.h>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_STATIC
+#include <stb/stb_image_write.h>
+
 #include <memory>
 
 #include <fcntl.h>
@@ -78,6 +85,12 @@ fs::path UiTexturePack::Directory(const fs::path& dataRoot) const {
 }
 fs::path UiTexturePack::UiAtlasHd(const fs::path& dataRoot) const {
     return Directory(dataRoot) / SafeRelative(Catalog.at("ui_atlas_hd"));
+}
+fs::path UiTexturePack::ReducedDirectory(const fs::path& dataRoot) const {
+    return Directory(dataRoot).string() + "-ps4";
+}
+fs::path UiTexturePack::ReducedUiAtlasHd(const fs::path& dataRoot) const {
+    return ReducedDirectory(dataRoot) / SafeRelative(Catalog.at("ui_atlas_hd"));
 }
 
 bool UiTexturePackPrepared(const UiTexturePack& pack, const fs::path& dataRoot, bool hashes) {
@@ -205,6 +218,131 @@ fs::path ExtractUiTexturePack(const UiTexturePack& pack, const fs::path& archive
     }
     if (!UiTexturePackPrepared(pack, dataRoot, false)) {
         throw ForgeError(pack.Title() + ": the extracted files changed while they were stored");
+    }
+    return destination;
+}
+
+namespace {
+
+constexpr const char* kReducedReceipt = "ps4-reduced.json";
+
+json ReducedIdentity(const UiTexturePack& pack, const fs::path& dataRoot) {
+    const auto receipt = ReadFile(pack.Directory(dataRoot) / kReceipt);
+    return {{"format", "triaevum_ps4_reduced_ui_texture_pack_v1"},
+            {"source_receipt_sha256", Sha256::Of(receipt.data(), receipt.size())},
+            {"max_side", kUiTextureMaxSide}};
+}
+
+void WritePngFile(const fs::path& path, int width, int height, const uint8_t* rgba) {
+    struct Sink {
+        int Fd;
+        bool Failed = false;
+    } sink{::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644)};
+    if (sink.Fd < 0) throw ForgeError("cannot create " + path.string());
+    // Fast compression: the console decodes it, and inflating is what costs.
+    stbi_write_png_compression_level = 1;
+    const int written = stbi_write_png_to_func(
+        [](void* context, void* data, int size) {
+            auto* out = static_cast<Sink*>(context);
+            const auto* bytes = static_cast<const uint8_t*>(data);
+            while (size > 0 && !out->Failed) {
+                const ssize_t put = ::write(out->Fd, bytes, static_cast<size_t>(size));
+                if (put <= 0) out->Failed = true;
+                else { bytes += put; size -= static_cast<int>(put); }
+            }
+        },
+        &sink, width, height, 4, rgba, width * 4);
+    ::fsync(sink.Fd);
+    ::close(sink.Fd);
+    if (!written || sink.Failed) throw ForgeError("cannot write " + path.string());
+}
+
+} // namespace
+
+bool UiTexturePackReduced(const UiTexturePack& pack, const fs::path& dataRoot) {
+    try {
+        const fs::path receipt = pack.ReducedDirectory(dataRoot) / kReducedReceipt;
+        if (FileSize(receipt) == UINT64_MAX) return false;
+        const auto bytes = ReadFile(receipt);
+        if (json::parse(bytes.begin(), bytes.end()) != ReducedIdentity(pack, dataRoot)) return false;
+        for (const json& member : pack.Catalog["members"]) {
+            if (FileSize(pack.ReducedDirectory(dataRoot) / SafeRelative(member.at("prepared"))) == UINT64_MAX)
+                return false;
+        }
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+fs::path ReduceUiTexturePack(const UiTexturePack& pack, const fs::path& dataRoot,
+                             const ProgressFn& progress) {
+    if (!UiTexturePackPrepared(pack, dataRoot, false)) {
+        throw ForgeError(pack.Title() + " is not installed");
+    }
+    const fs::path source = pack.Directory(dataRoot);
+    const fs::path destination = pack.ReducedDirectory(dataRoot);
+    const fs::path staging = destination.string() + ".partial";
+    RemoveTree(staging);
+    CreateDirectories(staging);
+    try {
+        const size_t count = pack.Catalog["members"].size();
+        size_t index = 0;
+        for (const json& member : pack.Catalog["members"]) {
+            const fs::path relative = SafeRelative(member.at("prepared"));
+            const fs::path from = source / relative, to = staging / relative;
+            CreateDirectories(to.parent_path());
+            int width = 0, height = 0, channels = 0;
+            if (!stbi_info(from.c_str(), &width, &height, &channels)) {
+                throw ForgeError("cannot read " + from.string());
+            }
+            if (width <= static_cast<int>(kUiTextureMaxSide) && height <= static_cast<int>(kUiTextureMaxSide)) {
+                CopyFile(from, to);
+            } else {
+                uint8_t* decoded = stbi_load(from.c_str(), &width, &height, &channels, 4);
+                if (decoded == nullptr) throw ForgeError("cannot decode " + from.string());
+                std::vector<uint8_t> pixels(decoded, decoded + size_t(width) * height * 4U);
+                stbi_image_free(decoded);
+                while ((width > static_cast<int>(kUiTextureMaxSide) || height > static_cast<int>(kUiTextureMaxSide)) &&
+                       width > 1 && height > 1) {
+                    const int w = width / 2, h = height / 2;
+                    std::vector<uint8_t> next(size_t(w) * h * 4U);
+                    for (int y = 0; y < h; ++y) {
+                        const uint8_t* row0 = pixels.data() + size_t(y) * 2U * width * 4U;
+                        const uint8_t* row1 = row0 + size_t(width) * 4U;
+                        uint8_t* out = next.data() + size_t(y) * w * 4U;
+                        for (int x = 0; x < w; ++x) {
+                            for (int c = 0; c < 4; ++c) {
+                                out[x * 4 + c] = static_cast<uint8_t>(
+                                    (row0[x * 8 + c] + row0[x * 8 + 4 + c] + row1[x * 8 + c] +
+                                     row1[x * 8 + 4 + c] + 2) / 4);
+                            }
+                        }
+                    }
+                    pixels = std::move(next);
+                    width = w;
+                    height = h;
+                }
+                WritePngFile(to, width, height, pixels.data());
+            }
+            if (progress) progress("textures-optimize", static_cast<double>(++index) / static_cast<double>(count));
+        }
+        // The pack's own files the runtime reads (pack.json, if any).
+        for (const char* extra : {"pack.json"}) {
+            for (const char* folder : {"common"}) {
+                const fs::path from = source / folder / extra;
+                if (FileSize(from) != UINT64_MAX) CopyFile(from, staging / folder / extra);
+            }
+        }
+        WriteFileAtomic(staging / kReducedReceipt, ReducedIdentity(pack, dataRoot).dump(2) + "\n");
+        RemoveTree(destination);
+        fs::rename(staging, destination);
+    } catch (...) {
+        try {
+            RemoveTree(staging);
+        } catch (...) {
+        }
+        throw;
     }
     return destination;
 }
