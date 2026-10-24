@@ -90,3 +90,12 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
   navegação por controle age na janela focada). Depois de instalar, um
   diálogo pergunta se a ROM deve ser apagada de `/data/triaevum/forge/`
   ("Delete ROM" / "Keep ROM").
+
+## 1.36 (2026-10-24)
+
+- 1.35 achava o DualShock no boot mas lia L1+R1 soltos: os primeiros
+  estados depois de abrir o pad vêm vazios. A checagem acompanha o pad por
+  até 1 s e registra o que viu (`[forge] L1+R1: ...`).
+- Confirmado no console (Daniel): L1+R1 abre o Forge, o controle navega a
+  tela, a preparação conclui, o diálogo de apagar a ROM aparece e "Launch
+  game" abre o jogo. Fase 1 concluída.
