@@ -60,6 +60,11 @@ void OrbisDrawPerformanceOverlay();
 // /data/triaevum_boot.log, chdir to /data/triaevum, the DualShock mapping.
 void OrbisProcessInit();
 
+// The console Forge (ps4 product, src/ps4_forge.cpp): a decrypted ROM sent
+// to /data/triaevum/forge becomes the game in /data/triaevum/game. False when
+// there is no game to run (the user was told how to provide one).
+bool OrbisPrepareGame();
+
 // The game's busy threads ("main", "render", "pica plan") register: each is
 // kept on its cores of the CPU's first cluster, and the sampling profiler
 // (DolphinPS4's, /data/DolphinPS4/samples.log) follows it when

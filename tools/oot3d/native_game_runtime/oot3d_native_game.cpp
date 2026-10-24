@@ -254,6 +254,11 @@ int main(int argc, char** argv) {
         // PS4 layout (triaevum-ps4-vk docs/FASE3-PRODUTO.md): the user's own
         // Forge-prepared game, configs and TopScreen pack under /data/triaevum
         // (staged over FTP, never inside the PKG); resources in /app0.
+        // The console Forge first: a new ROM in /data/triaevum/forge becomes
+        // the game; without a game there is nothing to launch.
+        if (!Fast::OrbisPrepareGame()) {
+            return 1;
+        }
         launch.ControlConfig = Oot3dNativeGame::NativeControlPreset(
             Oot3dNativeGame::NativeControlProfile::Controller);
         auto homebrewArguments = std::to_array<char*>({

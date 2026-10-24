@@ -12,10 +12,10 @@ index 04968b59..056d04ca 100644
  class Fast3dWindow : public Ship::Window {
 diff --git a/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
 new file mode 100644
-index 00000000..f73ca319
+index 00000000..7963f500
 --- /dev/null
 +++ b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,95 @@
 +#pragma once
 +
 +// PlayStation 4 (OpenOrbis) Fast3D backends. The window backend (VideoOut +
@@ -77,6 +77,11 @@ index 00000000..f73ca319
 +// Process start (before main's work): system modules, boot log on
 +// /data/triaevum_boot.log, chdir to /data/triaevum, the DualShock mapping.
 +void OrbisProcessInit();
++
++// The console Forge (ps4 product, src/ps4_forge.cpp): a decrypted ROM sent
++// to /data/triaevum/forge becomes the game in /data/triaevum/game. False when
++// there is no game to run (the user was told how to provide one).
++bool OrbisPrepareGame();
 +
 +// The game's busy threads ("main", "render", "pica plan") register: each is
 +// kept on its cores of the CPU's first cluster, and the sampling profiler
@@ -1447,7 +1452,7 @@ index 6854bb24..bc5c7060 100644
  // A slow Switch frame must not schedule two complete CTR refresh/render
  // passes into the following presentation. Dropping the missed refresh keeps
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_game.cpp b/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
-index 932f7ba3..4f1b7d1a 100644
+index 932f7ba3..08708e77 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_game.cpp
 @@ -15,6 +15,9 @@
@@ -1472,7 +1477,7 @@ index 932f7ba3..4f1b7d1a 100644
  #ifdef _WIN32
      UseRuntimeLibraryDirectory();
  #endif
-@@ -242,6 +250,44 @@ int main(int argc, char** argv) {
+@@ -242,6 +250,49 @@ int main(int argc, char** argv) {
              argc = static_cast<int>(homebrewArguments.size());
              argv = homebrewArguments.data();
          }
@@ -1480,6 +1485,11 @@ index 932f7ba3..4f1b7d1a 100644
 +        // PS4 layout (triaevum-ps4-vk docs/FASE3-PRODUTO.md): the user's own
 +        // Forge-prepared game, configs and TopScreen pack under /data/triaevum
 +        // (staged over FTP, never inside the PKG); resources in /app0.
++        // The console Forge first: a new ROM in /data/triaevum/forge becomes
++        // the game; without a game there is nothing to launch.
++        if (!Fast::OrbisPrepareGame()) {
++            return 1;
++        }
 +        launch.ControlConfig = Oot3dNativeGame::NativeControlPreset(
 +            Oot3dNativeGame::NativeControlProfile::Controller);
 +        auto homebrewArguments = std::to_array<char*>({

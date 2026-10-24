@@ -63,6 +63,19 @@ mkdir -p "$stage/sce_sys" "$stage/resources"
 cp "$eboot" "$stage/"
 cp "$PS4_PORT_ROOT/sce_sys/icon0.png" "$stage/sce_sys/"
 cp -r "$PS4_PORT_ROOT/../TriAevum/runtime/triaevum_resources/." "$stage/resources/"
+# The console Forge (src/ps4_forge.cpp): the revision recipes, the default
+# TopScreen configuration and the TopScreen texture pack, built from the
+# packaged SingleScreen atlas by the desktop Forge's own builder.
+mkdir -p "$stage/forge/topscreen"
+cp -r "$PS4_PORT_ROOT/forge/recipes" "$stage/forge/"
+cp "$PS4_PORT_ROOT/../TriAevum/config/topscreen_ui.example.json" "$stage/forge/"
+( cd "$PS4_PORT_ROOT/../TriAevum" && python3 -I -c '
+import sys; sys.path.insert(0, ".")
+from pathlib import Path
+from tools.oot3d.decomp_support.scripts.build_topscreen_texture_override_pack import build_texture_pack
+atlas = Path("runtime/triaevum_resources/topscreen/singlescreen-3.0/custom_ui01.ctxb").read_bytes()
+Path(sys.argv[1]).write_bytes(build_texture_pack(singlescreen_ui_atlas=atlas))
+' "$stage/forge/topscreen/atlas_overrides.o3tu" )
 pkg="$(SFO_STYLE=plain NO_PIGLET_MODULES=1 "$HERE/make-pkg.sh" "$stage" "${PRODUCT_TITLE_ID:-TRIA00005}" \
-    "TriAevum PS4" "${PRODUCT_VERSION:-01.32}" TRIAEVUMPRODUCT0 "$PS4_BUILD_ROOT/out" | tail -1)"
+    "TriAevum PS4" "${PRODUCT_VERSION:-01.33}" TRIAEVUMPRODUCT0 "$PS4_BUILD_ROOT/out" | tail -1)"
 echo "product: $(basename "$pkg")"
