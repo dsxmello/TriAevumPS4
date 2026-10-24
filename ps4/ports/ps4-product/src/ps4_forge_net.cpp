@@ -33,12 +33,14 @@ void ForgeLog(const char* format, ...) {
     va_start(arguments, format);
     std::vsnprintf(text, sizeof(text), format, arguments);
     va_end(arguments);
-    ForgeLog("%s", text);
+    std::printf("[forge] %s", text);
+    std::fflush(stdout);
+    // Seconds since the epoch: localtime needs the libc's time zone data,
+    // which crashed TriAevum at start on the console (1.40).
+    char stamp[32];
+    std::snprintf(stamp, sizeof(stamp), "%lld ", static_cast<long long>(std::time(nullptr)));
     const int fd = ::open("/data/triaevum/forge/forge.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) return;
-    char stamp[32];
-    const std::time_t now = std::time(nullptr);
-    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S ", std::localtime(&now));
     (void)!::write(fd, stamp, std::strlen(stamp));
     (void)!::write(fd, text, std::strlen(text));
     ::close(fd);

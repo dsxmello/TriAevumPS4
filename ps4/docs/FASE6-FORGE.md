@@ -164,3 +164,11 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
     `/data/triaevum/forge/open-forge` e reinicia o app direto no Forge.
   - O Forge também escreve em `/data/triaevum/forge/forge.log` (o boot log é
     sobrescrito no reinício para o jogo); o download registra MB/s.
+
+## 1.40 no console / 1.41 (2026-10-24)
+
+- 1.40 fechou ao iniciar logo depois de detectar o controle, antes da linha
+  `[forge] L1+R1`, a primeira que passa pelo `ForgeLog` novo (que formatava
+  a hora com `localtime`). Sem registro no crash.log.
+- 1.41: `ForgeLog` sem `localtime` (segundos desde a época) e com `fflush`
+  a cada linha, para o boot log mostrar até onde o app chegou.
