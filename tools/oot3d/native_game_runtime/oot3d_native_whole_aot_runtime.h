@@ -112,9 +112,12 @@ constexpr Oot3dAotBlockEntryFilter Oot3dAotFullBlockEntryFilter() noexcept {
 // resolves it (it passes every pc, so that block takes the slow path)...
 inline constexpr Oot3dAotBlockEntryFilter kOot3dAotUnresolvedBlockEntryFilter =
     Oot3dAotFullBlockEntryFilter();
-// ...and after, when a hook runs for every listed pc without a filter.
+// ...and after, when a hook runs for every listed pc without a filter, or
+// when no hook can run (an empty filter: every block tests a bit, never a
+// null pointer first).
 inline constexpr Oot3dAotBlockEntryFilter kOot3dAotEveryBlockEntryFilter =
     Oot3dAotFullBlockEntryFilter();
+inline constexpr Oot3dAotBlockEntryFilter kOot3dAotNoBlockEntryFilter{};
 #endif
 
 inline thread_local bool gOot3dWholeAotExecutionActive = false;
@@ -214,9 +217,14 @@ struct Oot3dWholeAotContext {
     uint32_t BlocksRemaining = 0;
     uint32_t BlocksConsumed = 0;
 #if defined(__ORBIS__)
+    // The budget the context started with. Every consumer of blocks takes
+    // them from BlocksRemaining, so the consumed count is the difference
+    // (Oot3dAotBlocksConsumed) and a block entry steps one counter, not two;
+    // BlocksConsumed is not kept up to date here.
+    uint32_t BlockBudget = BlocksRemaining;
     // What every block tests, resolved from the hook fields above at the
-    // first block: null when no hook can run, else a filter that passes at
-    // least every pc the hook runs for.
+    // first block: a filter that passes at least every pc the hook runs for
+    // (empty when no hook can run).
     const Oot3dAotBlockEntryFilter* ActiveBlockEntryFilter =
         &kOot3dAotUnresolvedBlockEntryFilter;
 #endif
@@ -275,8 +283,18 @@ OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& contex
         return false;
     }
     --context.BlocksRemaining;
+#if !defined(__ORBIS__)
     ++context.BlocksConsumed;
+#endif
     return true;
+}
+
+inline uint32_t Oot3dAotBlocksConsumed(const Oot3dWholeAotContext& context) noexcept {
+#if defined(__ORBIS__)
+    return context.BlockBudget - context.BlocksRemaining;
+#else
+    return context.BlocksConsumed;
+#endif
 }
 
 // The inline part of Oot3dAotShouldNotifyBlock: false when no hook can run
@@ -321,8 +339,7 @@ OOT3D_AOT_BLOCK_FAST_PATH Oot3dAotBlockEntryStep Oot3dAotBeginBlock(
     if (!Oot3dAotConsumeBlock(context)) {
         return Oot3dAotBlockEntryStep::Stop;
     }
-    const Oot3dAotBlockEntryFilter* filter = context.ActiveBlockEntryFilter;
-    return filter != nullptr && filter->MayContain(pc)
+    return context.ActiveBlockEntryFilter->MayContain(pc)
                ? Oot3dAotBlockEntryStep::Notify
                : Oot3dAotBlockEntryStep::Proceed;
 #else
@@ -347,12 +364,12 @@ inline bool Oot3dAotBlockEntryResolved(
         return true;
     }
     context.ActiveBlockEntryFilter =
-        context.BlockEntry == nullptr ? nullptr
+        context.BlockEntry == nullptr ? &kOot3dAotNoBlockEntryFilter
         : context.BlockEntryPcCount == 0U || context.BlockEntryFilter == nullptr
             ? &kOot3dAotEveryBlockEntryFilter
             : context.BlockEntryFilter;
     // This block was already consumed.
-    return Oot3dAotMayNotifyBlock(context, pc, context.BlocksConsumed == 1U);
+    return Oot3dAotMayNotifyBlock(context, pc, Oot3dAotBlocksConsumed(context) == 1U);
 #else
     (void)context;
     (void)pc;

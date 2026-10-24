@@ -427,3 +427,55 @@ quadros do jogo/s), só janelas com >= 40 quadros do jogo/s e >= 20 draws:
 - -7% a -11% de CPU por quadro do jogo nas áreas pesadas, mesmo com mais
   draws em média. Sem erros no log.
 - 140–180 draws quase não apareceu nas sessões da 1.51.
+
+## 1.52 — entrada de bloco com um contador só
+
+A entrada de cada bloco do guest no PS4 (1.51): lê e grava `BlocksRemaining`,
+incrementa `BlocksConsumed` na memória (ler-modificar-gravar), lê o filtro
+ativo, testa se é nulo e testa o bit. Os dois contadores não ficam em
+registrador porque toda escrita na memória do guest pode apelidar o contexto.
+
+- `BlocksConsumed` derivado: todo consumidor de blocos tira de
+  `BlocksRemaining` (entrada de bloco, regiões de memória, laços de região do
+  gerador), então consumido = orçamento inicial - restante. O contexto
+  guarda o orçamento (`BlockBudget`, inicializador padrão que copia
+  `BlocksRemaining`: os pontos que constroem o contexto não mudam) e quem lê
+  usa `Oot3dAotBlocksConsumed(context)`. A entrada de bloco deixa de
+  incrementar `BlocksConsumed` no PS4.
+- Sem hook, o filtro resolvido é um filtro vazio em vez de nulo: cada bloco
+  testa só o bit.
+- O orçamento continua exato (quantum dos workers em segundo plano, saída
+  `BlockLimit` com a contagem).
+- Código gerado: `ps4/tools/aot_blocks_consumed.py` troca as leituras de
+  `context.BlocksConsumed` em `oot3d_whole_aot_generated.cpp` (idempotente,
+  `--check`); o gerador já emite assim. Os shards não leem os contadores.
+- Perfil da 1.51 (hooks de entrada de bloco): `NotifyBlock` 1,1%, rastreador
+  de composição PICA 0,8%, sonda de iluminação 0,2%, mais o despacho:
+  ~3% da thread do jogo em hooks que fazem trabalho de verdade. Fica para
+  um item próprio.
+
+## Medição da 1.52/1.53 (2026-10-24)
+
+- 1.52: sem diferença clara contra a 1.51 pela contagem de draws, mas a
+  sessão foi quase toda em Hyrule Field e as da 1.51 na Floresta Kokiri:
+  áreas diferentes com draws parecidos não se comparam. O ruído entre
+  sessões da mesma versão também é grande (três sessões da 1.51: 16,7–17,3
+  ms estimados em 300 draws).
+- 1.53 = 1.52 + ID da cena no fim de cada `[triaevum] game:` (`| scene N`,
+  `PlayState + 0x104` como a scene view lê; -1 antes do primeiro
+  PlayState). A partir daqui as comparações são por cena.
+- A/B por cena com o mesmo roteiro: 1.51s (a 1.51 com só o log da cena;
+  pkg `...-1.51s.pkg`) contra a 1.53. Dentro da cena os draws variam muito
+  com a câmera (Kokiri: média 372 contra 293), então a comparação é pela
+  reta ms x draws da cena:
+
+| Cena | 1.51s | 1.53 |
+|---|---|---|
+| 85 Floresta Kokiri, 250 / 300 draws | 16,5 / 17,2 ms | **15,6 / 16,4 ms (-5%)** |
+| 81 Hyrule Field, 250 / 300 draws | 16,9 / 17,3 ms | 15,3 / 16,3 ms (inclinações bem diferentes: inconclusivo) |
+
+- Kokiri tem a mesma inclinação nas duas (custo por draw), então os -5%
+  valem na faixa toda. Fica.
+- Ferramenta: `perscene.sh`-style (scratch) = CPU da thread do jogo por
+  quadro do jogo por cena; para A/B, reta por cena e comparação no mesmo
+  número de draws.

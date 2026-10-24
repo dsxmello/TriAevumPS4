@@ -335,8 +335,8 @@ bool ExecuteOot3dWholeAotFunction(
   ++stats->Calls;
   state.r[15] = flow.Pc;
   if (blocksConsumed != nullptr) {
-    *blocksConsumed =
-        context.BlocksConsumed != 0U ? context.BlocksConsumed : 1U;
+    const uint32_t consumed = Oot3dAotBlocksConsumed(context);
+    *blocksConsumed = consumed != 0U ? consumed : 1U;
   }
   switch (flow.Kind) {
   case Oot3dWholeAotFlowKind::Returned:
@@ -349,7 +349,7 @@ bool ExecuteOot3dWholeAotFunction(
     return true;
   case Oot3dWholeAotFlowKind::BlockLimit:
     *result = {a32::ExitKind::BlockLimit, flow.Pc, a32::FallbackReason::None,
-               context.BlocksConsumed};
+               Oot3dAotBlocksConsumed(context)};
     return true;
   case Oot3dWholeAotFlowKind::MemoryFault:
     *result = {a32::ExitKind::MemoryFault, flow.Pc, a32::FallbackReason::None,

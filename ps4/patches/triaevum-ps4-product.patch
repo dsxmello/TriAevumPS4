@@ -863,7 +863,7 @@ index 4bdfc850..a60db74d 100644
          value, true, ControlFromFpscr(fpscr));
      return {result.value, result.flags & kExceptionFlags};
 diff --git a/tools/oot3d/native_a32_runtime/whole_aot_cpp.py b/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
-index 42f991d1..dcec3e5c 100644
+index 42f991d1..e0e924b7 100644
 --- a/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
 +++ b/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
 @@ -1074,11 +1074,17 @@ def _emit_block_transfer(item: Instruction) -> list[str]:
@@ -987,7 +987,28 @@ index 42f991d1..dcec3e5c 100644
              "    switch (pc) {",
          ]
      )
-@@ -2312,7 +2343,7 @@ def _render_internal_header() -> str:
+@@ -2252,8 +2283,8 @@ def _render_source(
+             "    ++stats->Calls;",
+             "    state.r[15] = flow.Pc;",
+             "    if (blocksConsumed != nullptr) {",
+-            "        *blocksConsumed = context.BlocksConsumed != 0U",
+-            "                              ? context.BlocksConsumed : 1U;",
++            "        const uint32_t consumed = Oot3dAotBlocksConsumed(context);",
++            "        *blocksConsumed = consumed != 0U ? consumed : 1U;",
+             "    }",
+             "    switch (flow.Kind) {",
+             "    case Oot3dWholeAotFlowKind::Returned:",
+@@ -2267,7 +2298,8 @@ def _render_source(
+             "        return true;",
+             "    case Oot3dWholeAotFlowKind::BlockLimit:",
+             "        *result = {a32::ExitKind::BlockLimit, flow.Pc,",
+-            "                   a32::FallbackReason::None, context.BlocksConsumed};",
++            "                   a32::FallbackReason::None,",
++            "                   Oot3dAotBlocksConsumed(context)};",
+             "        return true;",
+             "    case Oot3dWholeAotFlowKind::MemoryFault:",
+             "        *result = {a32::ExitKind::MemoryFault, flow.Pc,",
+@@ -2312,7 +2344,7 @@ def _render_internal_header() -> str:
          "",
          "Oot3dWholeAotFlow ExecuteOot3dWholeAotIndirect(",
          "    uint32_t pc, Oot3dWholeAotFrame& frame,",
@@ -996,7 +1017,7 @@ index 42f991d1..dcec3e5c 100644
          "",
      ]
      lines.extend(["} // namespace Oot3dNativeGame::GeneratedWholeAot", ""])
-@@ -2327,7 +2358,7 @@ def _render_function_declarations(functions: Iterable[Function]) -> list[str]:
+@@ -2327,7 +2359,7 @@ def _render_function_declarations(functions: Iterable[Function]) -> list[str]:
              [
                  f"Oot3dWholeAotFlow Execute_{symbol}(",
                  "    Oot3dWholeAotFrame& frame, Oot3dWholeAotContext& context,",
@@ -1005,7 +1026,7 @@ index 42f991d1..dcec3e5c 100644
                  "    uint32_t entryPc);",
              ]
          )
-@@ -2439,7 +2470,7 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
+@@ -2439,7 +2471,7 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
          [
              "}};",
              "",
@@ -1014,7 +1035,7 @@ index 42f991d1..dcec3e5c 100644
              "    const uint32_t page = pc >> kDispatchPageShift;",
              "    if (page < kDispatchBasePage || page > kDispatchLastPage) {",
                  "        return nullptr;",
-@@ -2459,9 +2490,39 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
+@@ -2459,9 +2491,39 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
              "               : nullptr;",
              "}",
              "",
@@ -1055,7 +1076,28 @@ index 42f991d1..dcec3e5c 100644
              "    const DispatchEntry* entry = FindDispatchEntry(pc);",
              "    if (entry == nullptr) {",
              "        return Oot3dAotCallExternal(context, pc, frame, state);",
-@@ -2740,7 +2801,7 @@ def _existing_shard_assignments(
+@@ -2526,8 +2588,8 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
+             "    ++stats->Calls;",
+             "    state.r[15] = flow.Pc;",
+             "    if (blocksConsumed != nullptr) {",
+-            "        *blocksConsumed = context.BlocksConsumed != 0U",
+-            "                              ? context.BlocksConsumed : 1U;",
++            "        const uint32_t consumed = Oot3dAotBlocksConsumed(context);",
++            "        *blocksConsumed = consumed != 0U ? consumed : 1U;",
+             "    }",
+             "    switch (flow.Kind) {",
+             "    case Oot3dWholeAotFlowKind::Returned:",
+@@ -2541,7 +2603,8 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
+             "        return true;",
+             "    case Oot3dWholeAotFlowKind::BlockLimit:",
+             "        *result = {a32::ExitKind::BlockLimit, flow.Pc,",
+-            "                   a32::FallbackReason::None, context.BlocksConsumed};",
++            "                   a32::FallbackReason::None,",
++            "                   Oot3dAotBlocksConsumed(context)};",
+             "        return true;",
+             "    case Oot3dWholeAotFlowKind::MemoryFault:",
+             "        *result = {a32::ExitKind::MemoryFault, flow.Pc,",
+@@ -2740,7 +2803,7 @@ def _existing_shard_assignments(
      pattern = re.compile(
          r"^Oot3dWholeAotFlow Execute_.*_([0-9A-F]{8})\(\n"
          r"\s+Oot3dWholeAotFrame& frame, Oot3dWholeAotContext& context,\n"
@@ -1661,7 +1703,7 @@ index 5f59a070..9c84472c 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..3b3a090f 100644
+index 01026912..d514b1ec 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 @@ -4,10 +4,149 @@
@@ -1828,7 +1870,7 @@ index 01026912..3b3a090f 100644
    static const bool inputAdmission =
        inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
    static const bool lateInputSample =
-@@ -637,6 +782,95 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +782,105 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -1884,12 +1926,22 @@ index 01026912..3b3a090f 100644
 +      const auto ms = [&](double current, double previous) {
 +        return hostFrames > 0.0 ? (current - previous) * 1000.0 / hostFrames : 0.0;
 +      };
++      // The scene at the end of the window (PlayState + 0x104, as the scene
++      // view reads it; -1 before the first PlayState), so that windows of
++      // different areas with similar draw counts can be told apart.
++      int scene = -1;
++      if (const uint32_t playState = sceneViewProbe.Stats().LastPlayStateAddress;
++          playState != 0U && processStorage) {
++        uint16_t sceneId = 0xFFFFU;
++        if (processStorage->Memory().Read16(playState + 0x104U, &sceneId) && sceneId < 0x8000U)
++          scene = sceneId;
++      }
 +      std::fprintf(stderr,
 +                   "[triaevum] game: %.1f guest frames/s, %.1f host frames/s | per host frame ms:"
 +                   " guest %.1f (pica submit %.1f, plan %.1f, backend %.1f), dsp %.1f, audio %.1f,"
 +                   " input %.1f, frame start %.1f, visual %.1f, present %.1f, pacing %.1f |"
 +                   " audio: %llu starvations, %llu frames short, %d buffered |"
-+                   " speed: %.1f dsp frames/s (real time 204.5), %.1f vblanks/s\n",
++                   " speed: %.1f dsp frames/s (real time 204.5), %.1f vblanks/s | scene %d\n",
 +                   static_cast<double>(frameCount - windowGuestFrames) / seconds,
 +                   hostFrames / seconds,
 +                   ms(phaseTiming.GuestSeconds, windowPhases.GuestSeconds),
@@ -1909,7 +1961,7 @@ index 01026912..3b3a090f 100644
 +                                                   windowShortfall),
 +                   audioPlayer != nullptr && audioPlayer->IsInitialized() ? audioPlayer->Buffered() : -1,
 +                   static_cast<double>(dspStats.FramesMixed - windowDspFrames) / seconds,
-+                   static_cast<double>(vblankCount - windowVblanks) / seconds);
++                   static_cast<double>(vblankCount - windowVblanks) / seconds, scene);
 +      windowStart = now;
 +      windowGuestFrames = frameCount;
 +      windowHostFrames = runFrameCount;
@@ -1924,7 +1976,7 @@ index 01026912..3b3a090f 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1444,6 +1678,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1688,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -1945,7 +1997,7 @@ index 01026912..3b3a090f 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1464,14 +1712,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1722,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
            suppressTopScreenFrontendBackdrop &&
            targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
@@ -2132,7 +2184,7 @@ index 8d432189..d501044d 100644
  
  void ComputeSoftMtx3x4Multiply(const std::array<uint32_t, 12>& left,
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
-index 2487dd8f..6598bbcf 100644
+index 2487dd8f..1ed0165e 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
 @@ -16,6 +16,7 @@
@@ -2172,7 +2224,7 @@ index 2487dd8f..6598bbcf 100644
    }
    const Oot3dDirectAotProgramV1 *program = DirectAotProgram();
    if (program == nullptr || result == nullptr || stats == nullptr ||
-@@ -308,6 +323,12 @@ bool ExecuteOot3dWholeAotFunction(
+@@ -308,14 +323,20 @@ bool ExecuteOot3dWholeAotFunction(
          Oot3dWholeAotTakeObservableExitSnapshot(exit.Pc, &observableExitState);
      flow = Oot3dAotBranch(exit.Pc);
    }
@@ -2185,6 +2237,25 @@ index 2487dd8f..6598bbcf 100644
    if (restoreObservableExitState) {
      state = observableExitState;
    }
+   ++stats->Calls;
+   state.r[15] = flow.Pc;
+   if (blocksConsumed != nullptr) {
+-    *blocksConsumed =
+-        context.BlocksConsumed != 0U ? context.BlocksConsumed : 1U;
++    const uint32_t consumed = Oot3dAotBlocksConsumed(context);
++    *blocksConsumed = consumed != 0U ? consumed : 1U;
+   }
+   switch (flow.Kind) {
+   case Oot3dWholeAotFlowKind::Returned:
+@@ -328,7 +349,7 @@ bool ExecuteOot3dWholeAotFunction(
+     return true;
+   case Oot3dWholeAotFlowKind::BlockLimit:
+     *result = {a32::ExitKind::BlockLimit, flow.Pc, a32::FallbackReason::None,
+-               context.BlocksConsumed};
++               Oot3dAotBlocksConsumed(context)};
+     return true;
+   case Oot3dWholeAotFlowKind::MemoryFault:
+     *result = {a32::ExitKind::MemoryFault, flow.Pc, a32::FallbackReason::None,
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h b/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h
 index 6854bb24..bc5c7060 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_frame_rate.h
@@ -2739,7 +2810,7 @@ index 29e449f5..1ea336bf 100644
      for (;;) {
          mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
-index a9811221..9229af31 100644
+index a9811221..9a408600 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 @@ -10,6 +10,7 @@
@@ -2778,7 +2849,7 @@ index a9811221..9229af31 100644
      }
  
      void Insert(uint32_t pc) noexcept {
-@@ -90,6 +101,22 @@ struct Oot3dAotBlockEntryFilter final {
+@@ -90,6 +101,25 @@ struct Oot3dAotBlockEntryFilter final {
      }
  };
  
@@ -2793,15 +2864,18 @@ index a9811221..9229af31 100644
 +// resolves it (it passes every pc, so that block takes the slow path)...
 +inline constexpr Oot3dAotBlockEntryFilter kOot3dAotUnresolvedBlockEntryFilter =
 +    Oot3dAotFullBlockEntryFilter();
-+// ...and after, when a hook runs for every listed pc without a filter.
++// ...and after, when a hook runs for every listed pc without a filter, or
++// when no hook can run (an empty filter: every block tests a bit, never a
++// null pointer first).
 +inline constexpr Oot3dAotBlockEntryFilter kOot3dAotEveryBlockEntryFilter =
 +    Oot3dAotFullBlockEntryFilter();
++inline constexpr Oot3dAotBlockEntryFilter kOot3dAotNoBlockEntryFilter{};
 +#endif
 +
  inline thread_local bool gOot3dWholeAotExecutionActive = false;
  inline thread_local Oot3dWholeAotObservableExitSnapshot
      gOot3dWholeAotObservableExitSnapshot{};
-@@ -128,6 +155,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
+@@ -128,6 +158,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
      throw Oot3dWholeAotObservableExit{pc};
  }
  
@@ -2835,21 +2909,26 @@ index a9811221..9229af31 100644
  inline bool Oot3dWholeAotTakeObservableExitSnapshot(
      uint32_t pc, oot3d::recomp::a32::GuestState* state) noexcept {
      auto& snapshot = gOot3dWholeAotObservableExitSnapshot;
-@@ -159,6 +213,13 @@ struct Oot3dWholeAotContext {
+@@ -159,6 +216,18 @@ struct Oot3dWholeAotContext {
      bool SkipFirstBlockEntry = false;
      uint32_t BlocksRemaining = 0;
      uint32_t BlocksConsumed = 0;
 +#if defined(__ORBIS__)
++    // The budget the context started with. Every consumer of blocks takes
++    // them from BlocksRemaining, so the consumed count is the difference
++    // (Oot3dAotBlocksConsumed) and a block entry steps one counter, not two;
++    // BlocksConsumed is not kept up to date here.
++    uint32_t BlockBudget = BlocksRemaining;
 +    // What every block tests, resolved from the hook fields above at the
-+    // first block: null when no hook can run, else a filter that passes at
-+    // least every pc the hook runs for.
++    // first block: a filter that passes at least every pc the hook runs for
++    // (empty when no hook can run).
 +    const Oot3dAotBlockEntryFilter* ActiveBlockEntryFilter =
 +        &kOot3dAotUnresolvedBlockEntryFilter;
 +#endif
  };
  
  struct Oot3dAotExternalStateAccess final {
-@@ -196,7 +257,20 @@ constexpr Oot3dAotExternalStateAccess Oot3dAotExternalStateAccessFor(
+@@ -196,85 +265,203 @@ constexpr Oot3dAotExternalStateAccess Oot3dAotExternalStateAccessFor(
      }
  }
  
@@ -2871,11 +2950,22 @@ index a9811221..9229af31 100644
      if (context.BlocksRemaining == 0U) {
          return false;
      }
-@@ -205,76 +279,172 @@ inline bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& context) noexcept {
+     --context.BlocksRemaining;
++#if !defined(__ORBIS__)
+     ++context.BlocksConsumed;
++#endif
      return true;
  }
  
 -inline bool Oot3dAotShouldNotifyBlock(
++inline uint32_t Oot3dAotBlocksConsumed(const Oot3dWholeAotContext& context) noexcept {
++#if defined(__ORBIS__)
++    return context.BlockBudget - context.BlocksRemaining;
++#else
++    return context.BlocksConsumed;
++#endif
++}
++
 +// The inline part of Oot3dAotShouldNotifyBlock: false when no hook can run
 +// for pc. True still needs Oot3dAotBlockEntryListed.
 +OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotMayNotifyBlock(
@@ -2931,8 +3021,7 @@ index a9811221..9229af31 100644
 +    if (!Oot3dAotConsumeBlock(context)) {
 +        return Oot3dAotBlockEntryStep::Stop;
 +    }
-+    const Oot3dAotBlockEntryFilter* filter = context.ActiveBlockEntryFilter;
-+    return filter != nullptr && filter->MayContain(pc)
++    return context.ActiveBlockEntryFilter->MayContain(pc)
 +               ? Oot3dAotBlockEntryStep::Notify
 +               : Oot3dAotBlockEntryStep::Proceed;
 +#else
@@ -2959,12 +3048,12 @@ index a9811221..9229af31 100644
          return true;
      }
 +    context.ActiveBlockEntryFilter =
-+        context.BlockEntry == nullptr ? nullptr
++        context.BlockEntry == nullptr ? &kOot3dAotNoBlockEntryFilter
 +        : context.BlockEntryPcCount == 0U || context.BlockEntryFilter == nullptr
 +            ? &kOot3dAotEveryBlockEntryFilter
 +            : context.BlockEntryFilter;
 +    // This block was already consumed.
-+    return Oot3dAotMayNotifyBlock(context, pc, context.BlocksConsumed == 1U);
++    return Oot3dAotMayNotifyBlock(context, pc, Oot3dAotBlocksConsumed(context) == 1U);
 +#else
 +    (void)context;
 +    (void)pc;

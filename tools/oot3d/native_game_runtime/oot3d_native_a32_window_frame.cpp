@@ -834,12 +834,22 @@ bool NativeA32WindowSession::RunFrame() {
       const auto ms = [&](double current, double previous) {
         return hostFrames > 0.0 ? (current - previous) * 1000.0 / hostFrames : 0.0;
       };
+      // The scene at the end of the window (PlayState + 0x104, as the scene
+      // view reads it; -1 before the first PlayState), so that windows of
+      // different areas with similar draw counts can be told apart.
+      int scene = -1;
+      if (const uint32_t playState = sceneViewProbe.Stats().LastPlayStateAddress;
+          playState != 0U && processStorage) {
+        uint16_t sceneId = 0xFFFFU;
+        if (processStorage->Memory().Read16(playState + 0x104U, &sceneId) && sceneId < 0x8000U)
+          scene = sceneId;
+      }
       std::fprintf(stderr,
                    "[triaevum] game: %.1f guest frames/s, %.1f host frames/s | per host frame ms:"
                    " guest %.1f (pica submit %.1f, plan %.1f, backend %.1f), dsp %.1f, audio %.1f,"
                    " input %.1f, frame start %.1f, visual %.1f, present %.1f, pacing %.1f |"
                    " audio: %llu starvations, %llu frames short, %d buffered |"
-                   " speed: %.1f dsp frames/s (real time 204.5), %.1f vblanks/s\n",
+                   " speed: %.1f dsp frames/s (real time 204.5), %.1f vblanks/s | scene %d\n",
                    static_cast<double>(frameCount - windowGuestFrames) / seconds,
                    hostFrames / seconds,
                    ms(phaseTiming.GuestSeconds, windowPhases.GuestSeconds),
@@ -859,7 +869,7 @@ bool NativeA32WindowSession::RunFrame() {
                                                    windowShortfall),
                    audioPlayer != nullptr && audioPlayer->IsInitialized() ? audioPlayer->Buffered() : -1,
                    static_cast<double>(dspStats.FramesMixed - windowDspFrames) / seconds,
-                   static_cast<double>(vblankCount - windowVblanks) / seconds);
+                   static_cast<double>(vblankCount - windowVblanks) / seconds, scene);
       windowStart = now;
       windowGuestFrames = frameCount;
       windowHostFrames = runFrameCount;
