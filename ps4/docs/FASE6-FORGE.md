@@ -126,3 +126,16 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
 - Jogo: com o pack pronto, `--ui-texture-pack` e `--topscreen-ui-atlas-hd`
   (o atlas HD do pack) entram nos argumentos do PS4
   (`Fast::OrbisForgeLaunchArguments`).
+
+## 1.37 no console / 1.38 (2026-10-24)
+
+- 1.37: o download falhou com `sceHttpSendRequest = 0x80431068`
+  (`SCE_HTTP_ERROR_TIMEOUT`, pela tabela do vitasdk: os erros de DNS são
+  `0x80436xxx`). Nada respondeu no endereço resolvido. Suspeita: DNS do
+  console bloqueando a internet (comum em consoles mantidos fora da PSN).
+- 1.38: o Forge resolve o host antes (`sceNetResolverStartNtoa`) e registra
+  IP e tempos; IP 0.0.0.0, loopback ou de rede local vira erro explicando o
+  DNS bloqueado; timeout no modo verificado também repete sem a verificação
+  TLS (handshake travado); a mensagem de erro sugere o teste de conexão do
+  PS4 ou o zip por FTP. A varredura da tela não lança mais exceção a cada
+  2 s quando o pack não existe.

@@ -60,6 +60,43 @@ std::string Hex(int32_t code) {
     return text;
 }
 
+// The host's IPv4 address from the console's DNS, for the log and to tell a
+// DNS that blocks the internet (common on consoles kept off PSN: every name
+// resolves to 0.0.0.0 or a local address) from a slow connection.
+std::string Resolve(const std::string& host) {
+    const OrbisNetId resolver = sceNetResolverCreate("triaevum_forge", Context().Net, 0);
+    if (resolver < 0) throw ForgeError("sceNetResolverCreate = " + Hex(resolver));
+    OrbisNetInAddr address{};
+    const auto started = std::chrono::steady_clock::now();
+    const int32_t resolved = sceNetResolverStartNtoa(resolver, host.c_str(), &address,
+                                                     10 * kSecond, 2, 0);
+    sceNetResolverDestroy(resolver);
+    const double seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    if (resolved < 0) {
+        throw ForgeError("the console's DNS could not resolve " + host + " (" + Hex(resolved) +
+                         "). Check the console's Internet connection and DNS settings.");
+    }
+    const uint32_t ip = address.s_addr;  // network byte order
+    const uint32_t a = ip & 0xFF, b = (ip >> 8) & 0xFF, c = (ip >> 16) & 0xFF, d = ip >> 24;
+    char text[64];
+    std::snprintf(text, sizeof(text), "%u.%u.%u.%u", a, b, c, d);
+    std::printf("[forge] %s -> %s (%.1f s)\n", host.c_str(), text, seconds);
+    if (ip == 0 || a == 127 || a == 10 || (a == 192 && b == 168) || (a == 172 && (b & 0xF0) == 16)) {
+        throw ForgeError(host + " resolves to " + text +
+                         ": the console's DNS blocks the Internet (a setting often used to stay off "
+                         "PSN). Use a public DNS in the console's network settings, or send "
+                         "the archive over FTP to /data/triaevum/forge/.");
+    }
+    return text;
+}
+
+std::string HostOf(const std::string& url) {
+    const size_t start = url.find("://");
+    const size_t from = start == std::string::npos ? 0 : start + 3;
+    return url.substr(from, url.find_first_of(":/", from) - from);
+}
+
 class Handles final {
   public:
     ~Handles() {
@@ -74,6 +111,7 @@ class Handles final {
 // before anything was received (the caller may retry without it).
 bool Attempt(const std::string& url, const fs::path& destination, const forge::Identity& expected,
              const forge::ProgressFn& progress, const std::atomic<bool>* cancel, bool verifyServer) {
+    const std::string address = Resolve(HostOf(url));
     Handles http;
     http.Template = sceHttpCreateTemplate(Context().Http, "TriAevum-Forge", ORBIS_HTTP_VERSION_1_1, 1);
     if (http.Template < 0) throw ForgeError("sceHttpCreateTemplate = " + Hex(http.Template));
@@ -86,18 +124,27 @@ bool Attempt(const std::string& url, const fs::path& destination, const forge::I
     if (http.Connection < 0) throw ForgeError("sceHttpCreateConnectionWithURL = " + Hex(http.Connection));
     http.Request = sceHttpCreateRequestWithURL(http.Connection, ORBIS_METHOD_GET, url.c_str(), 0);
     if (http.Request < 0) throw ForgeError("sceHttpCreateRequestWithURL = " + Hex(http.Request));
+    const auto sendStarted = std::chrono::steady_clock::now();
     const int32_t sent = sceHttpSendRequest(http.Request, nullptr, 0);
+    const double sendSeconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - sendStarted).count();
+    std::printf("[forge] %s: send = %s after %.1f s\n", url.c_str(), Hex(sent).c_str(), sendSeconds);
     if (sent < 0) {
         // libSceSsl's errors (0x8095xxxx) and libSceHttp's HTTPS ones
         // (0x804350xx: certificate, handshake): the TLS check failed.
         const uint32_t code = static_cast<uint32_t>(sent);
-        if (verifyServer && ((code >> 16) == 0x8095U || (code >> 8) == 0x804350U)) {
+        // A stalled handshake ends as SCE_HTTP_ERROR_TIMEOUT (0x80431068).
+        if (verifyServer &&
+            ((code >> 16) == 0x8095U || (code >> 8) == 0x804350U || code == 0x80431068U)) {
             std::printf("[forge] %s: TLS check failed (%s), retrying without it\n", url.c_str(),
                         Hex(sent).c_str());
             return false;
         }
-        throw ForgeError("could not reach " + url + " (sceHttpSendRequest = " + Hex(sent) +
-                         "). Is the console online?");
+        // 0x80431068 SCE_HTTP_ERROR_TIMEOUT: nothing answered at that address.
+        throw ForgeError("could not reach " + HostOf(url) + " at " + address + " (" + Hex(sent) +
+                         (code == 0x80431068U ? ", timed out" : "") +
+                         "). Check the console's Internet connection (Settings > Network > Test "
+                         "Internet Connection), or send the archive over FTP to /data/triaevum/forge/.");
     }
     int32_t status = 0;
     sceHttpGetStatusCode(http.Request, &status);

@@ -82,6 +82,7 @@ fs::path UiTexturePack::UiAtlasHd(const fs::path& dataRoot) const {
 
 bool UiTexturePackPrepared(const UiTexturePack& pack, const fs::path& dataRoot, bool hashes) {
     const fs::path directory = pack.Directory(dataRoot);
+    if (FileSize(directory / kReceipt) == UINT64_MAX) return false;
     try {
         const auto bytes = ReadFile(directory / kReceipt);
         const json receipt = json::parse(bytes.begin(), bytes.end());
