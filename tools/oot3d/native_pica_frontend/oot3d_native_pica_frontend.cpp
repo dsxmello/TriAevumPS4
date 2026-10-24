@@ -602,6 +602,65 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
     size_t cursor = 0;
     bool stopRequested = false;
     bool drawSubmitted = false;
+    // A draw trigger builds the full packet (registers, both shader units,
+    // the LUTs: ~11 KiB on the stack). Out of line, so that the per-write
+    // path below stays small enough to inline into the command-list loop
+    // instead of a call with that frame for every register write.
+    const auto submitDraw = [&](uint16_t id, uint32_t offsetWords)
+                                __attribute__((noinline)) -> bool {
+        if (!mLightingLuts->ContentHashAvailable) {
+            mLightingLuts->ContentHash =
+                ComputeOot3dPicaLightingLutContentHash(*mLightingLuts);
+            mLightingLuts->ContentHashAvailable = true;
+        }
+        const auto* metadata = resolveComposition(offsetWords);
+        auto composition = metadata != nullptr
+            ? metadata->Attribution
+            : mCommandListCompositionDomain == Oot3dPicaCompositionDomain::Ui
+                ? Oot3dPicaCompositionAttribution{
+                      Oot3dPicaCompositionLayer::Ui,
+                      Oot3dPicaCompositionProvenance::NativeUiLifecycle, 0U, 0U}
+                : Oot3dPicaCompositionAttribution{};
+        if (composition.TemporalIdentity.Available()) {
+            const uint64_t address = uint64_t{commandListAddress} + uint64_t{offsetWords} * 4U;
+            if (metadata == nullptr || composition.TemporalPacketBeginAddress == 0 ||
+                address < composition.TemporalPacketBeginAddress || address >= metadata->EndAddress)
+                composition.TemporalIdentity = {};
+            else
+                composition.TemporalIdentity.Slot += address - composition.TemporalPacketBeginAddress;
+        }
+        composition.TemporalPacketBeginAddress = 0;
+        auto domain = mCommandListCompositionDomain;
+        switch (composition.Layer) {
+            case Oot3dPicaCompositionLayer::OpaqueWorld:
+            case Oot3dPicaCompositionLayer::TransparentWorld:
+            case Oot3dPicaCompositionLayer::Atmosphere:
+                domain = Oot3dPicaCompositionDomain::Scene;
+                break;
+            case Oot3dPicaCompositionLayer::Ui:
+                domain = Oot3dPicaCompositionDomain::Ui;
+                break;
+            case Oot3dPicaCompositionLayer::Unknown:
+                break;
+        }
+        Oot3dPicaDrawPacket draw(
+            commandListAddress, offsetWords,
+            domain, composition,
+            id == kPicaTriggerDrawIndexed, mPicaRegisters,
+            mVertexShader, mGeometryShader, mFogLut, mProcTexLuts,
+            mLightingLuts, mDefaultAttributes);
+        if (metadata != nullptr && domain == Oot3dPicaCompositionDomain::Scene)
+            draw.LightBinding = metadata->LightBinding;
+        if (mPacketSink != nullptr &&
+            !mPacketSink->SubmitDrawPacket(draw, error)) {
+            return false;
+        }
+        drawSubmitted = true;
+        if (mDiagnosticHistoryEnabled) {
+            mPendingDrawPackets.push_back(std::move(draw));
+        }
+        return true;
+    };
     while (cursor < commandListWords.size()) {
         if (stopRequested) {
             break;
@@ -625,8 +684,11 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
         const uint32_t extraDataLength = (header >> 20U) & 0xFFU;
         const bool grouped = (header >> 31U) != 0;
 
+        // Every register write of the command list: inline, the draw and
+        // side-effect work it may need is out of line.
         const auto applyWrite = [&](uint16_t id, uint32_t writeValue,
-                                    uint32_t offsetWords) -> bool {
+                                    uint32_t offsetWords)
+                                    __attribute__((always_inline)) -> bool {
             const bool supported = id < kPicaRegisterCount;
             uint32_t finalValue = writeValue;
             if (supported) {
@@ -635,7 +697,11 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
                 finalValue = (mPicaRegisters[id] & ~mask) |
                              (writeValue & mask);
                 mPicaRegisters[id] = finalValue;
-                ApplyShaderRegisterSideEffects(id, finalValue);
+                // Most writes have none: skip the call (the function
+                // tests the same table).
+                if (kShaderSideEffectRegisters[id]) {
+                    ApplyShaderRegisterSideEffects(id, finalValue);
+                }
             }
             if (mDiagnosticHistoryEnabled) {
                 mPendingRegisterWrites.push_back(
@@ -644,56 +710,8 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
             }
             if (id == kPicaTriggerDraw ||
                 id == kPicaTriggerDrawIndexed) {
-                if (!mLightingLuts->ContentHashAvailable) {
-                    mLightingLuts->ContentHash =
-                        ComputeOot3dPicaLightingLutContentHash(*mLightingLuts);
-                    mLightingLuts->ContentHashAvailable = true;
-                }
-                const auto* metadata = resolveComposition(offsetWords);
-                auto composition = metadata != nullptr
-                    ? metadata->Attribution
-                    : mCommandListCompositionDomain == Oot3dPicaCompositionDomain::Ui
-                        ? Oot3dPicaCompositionAttribution{
-                              Oot3dPicaCompositionLayer::Ui,
-                              Oot3dPicaCompositionProvenance::NativeUiLifecycle, 0U, 0U}
-                        : Oot3dPicaCompositionAttribution{};
-                if (composition.TemporalIdentity.Available()) {
-                    const uint64_t address = uint64_t{commandListAddress} + uint64_t{offsetWords} * 4U;
-                    if (metadata == nullptr || composition.TemporalPacketBeginAddress == 0 ||
-                        address < composition.TemporalPacketBeginAddress || address >= metadata->EndAddress)
-                        composition.TemporalIdentity = {};
-                    else
-                        composition.TemporalIdentity.Slot += address - composition.TemporalPacketBeginAddress;
-                }
-                composition.TemporalPacketBeginAddress = 0;
-                auto domain = mCommandListCompositionDomain;
-                switch (composition.Layer) {
-                    case Oot3dPicaCompositionLayer::OpaqueWorld:
-                    case Oot3dPicaCompositionLayer::TransparentWorld:
-                    case Oot3dPicaCompositionLayer::Atmosphere:
-                        domain = Oot3dPicaCompositionDomain::Scene;
-                        break;
-                    case Oot3dPicaCompositionLayer::Ui:
-                        domain = Oot3dPicaCompositionDomain::Ui;
-                        break;
-                    case Oot3dPicaCompositionLayer::Unknown:
-                        break;
-                }
-                Oot3dPicaDrawPacket draw(
-                    commandListAddress, offsetWords,
-                    domain, composition,
-                    id == kPicaTriggerDrawIndexed, mPicaRegisters,
-                    mVertexShader, mGeometryShader, mFogLut, mProcTexLuts,
-                    mLightingLuts, mDefaultAttributes);
-                if (metadata != nullptr && domain == Oot3dPicaCompositionDomain::Scene)
-                    draw.LightBinding = metadata->LightBinding;
-                if (mPacketSink != nullptr &&
-                    !mPacketSink->SubmitDrawPacket(draw, error)) {
+                if (!submitDraw(id, offsetWords)) {
                     return false;
-                }
-                drawSubmitted = true;
-                if (mDiagnosticHistoryEnabled) {
-                    mPendingDrawPackets.push_back(std::move(draw));
                 }
             }
             if (id == kPicaIrqRequest && supported) {

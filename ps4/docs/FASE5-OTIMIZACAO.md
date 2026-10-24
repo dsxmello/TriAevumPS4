@@ -479,3 +479,61 @@ registrador porque toda escrita na memória do guest pode apelidar o contexto.
 - Ferramenta: `perscene.sh`-style (scratch) = CPU da thread do jogo por
   quadro do jogo por cena; para A/B, reta por cena e comparação no mesmo
   número de draws.
+
+## 1.54 — frontend PICA: escrita de registrador inline, hash do arquivo de registradores memoizado
+
+Perfil da 1.51s (thread do jogo): frontend PICA ~10% — `SubmitGspCommand`
+3,2%, `BuildOot3dPicaCanonicalDrawIdentity` 2,4%, efeitos de registrador
+2,5%, identidade visual 0,9%; cópia do pacote de draw ~1,4% (o pacote tem
+~10 KB e é copiado duas vezes por draw: frontend e fila).
+
+- `applyWrite` (uma vez por escrita de registrador da command list) não era
+  inlinado: carregava o pacote do draw no próprio frame (~11 KB de pilha),
+  e toda escrita pagava chamada + 5 push/pop + a chamada de
+  `ApplyShaderRegisterSideEffects`. O disparo do draw vai para um lambda
+  `noinline` (`submitDraw`), e a tabela `kShaderSideEffectRegisters` é
+  testada antes da chamada (a função testa a mesma); `applyWrite` vira
+  `always_inline` (usado em 3 pontos do laço, não era inlinado). Mesma
+  semântica.
+- `HashRegisterFile` (ID do arquivo de registradores, valor exato
+  preservado — vai para registros do renderer e para a validade da scene
+  view): já retomava do primeiro bloco de 32 palavras alterado, mas todos
+  os blocos depois dele eram dobrados byte a byte (4 multiplicações de 64
+  bits encadeadas por palavra). No FNV-1a o byte baixo do estado só depende
+  do byte baixo anterior, então num bloco de n bytes
+  `s_out = s_in * P^n + C(L_in, bytes)` e `L_out = f(L_in, bytes)`: um bloco
+  inalterado vira uma multiplicação e uma soma, memoizado por bloco e
+  `L_in` (256 entradas por bloco, invalidado por geração quando o bloco
+  muda; ~100 KB por thread no heap, não em TLS estático).
+  Teste no PC: 400 mil draws simulados (poucos registradores mudando por
+  draw, trocas do arquivo inteiro), 0 diferenças contra o FNV direto;
+  1,42 -> 0,34 µs por draw (4,1x) com `-march=btver2`.
+
+## Medição da 1.54 e 1.55 — hashes por draw memoizados (2026-10-24)
+
+- 1.54 no console: Kokiri igual à 1.53 (15,6 / 16,5 ms em 250 / 300 draws);
+  Hyrule Field com 9 janelas, inconclusivo. Perfil contra a 1.51s:
+  `SubmitGspCommand` 3,21% -> 2,28%, `ApplyShaderRegisterSideEffects`
+  1,68% -> 1,11% (~1,5% da thread, dentro do ruído do tempo por quadro);
+  `BuildOot3dPicaCanonicalDrawIdentity` 2,37% -> 2,32%: o laço quente não
+  era o arquivo de registradores. Pelo deslocamento no pacote (layout
+  calculado no PC), os laços liam `ProcTexLuts` (0x1C38) e os registradores
+  0x140–0x1DA: `BuildDynamicStateId` hasheia por draw os 96 uniforms float
+  do vertex shader (384 palavras), os atributos padrão (64), a LUT de
+  neblina (128) e os registradores de iluminação (154), e
+  `BuildFragmentProgramId` as LUTs de proctex (1.024) quando usadas.
+- 1.55: `WordFoldMemo` generaliza a memoização da 1.54 (blocos de 32
+  palavras, passo afim por byte baixo de entrada, mesmo valor) para
+  qualquer arranjo hasheado por draw; um memo por ponto de chamada e por
+  thread (`OOT3D_PICA_WORD_FOLD_MEMO()`), nos 9 pontos acima. Teste no PC:
+  600 mil dobras (tamanhos 0–1000, fora de múltiplos de 32, mudanças
+  esparsas e totais, estados de entrada variados), 0 diferenças; uniforms
+  com 2 vec4 mudando por chamada: 1,40 -> 0,18 µs (8x).
+- Medição da 1.55: perfil contra a 1.51s — `BuildOot3dPicaCanonicalDrawIdentity`
+  2,37% -> 1,29%, `SubmitGspCommand` 3,21% -> 2,55%,
+  `ApplyShaderRegisterSideEffects` 1,68% -> 1,41% (~2 pontos do frontend).
+  Tempo por quadro do jogo por cena (reta ms x draws, 250 / 300 draws):
+  Kokiri 16,1 / 16,7 ms (1.53: 15,6 / 16,4), Hyrule Field 14,9 / 16,6 ms em
+  35 janelas (1.53: 15,3 / 16,3). Ganhos de ~2% somem no ruído entre sessões
+  (±0,5 ms nas retas): ficam pelo perfil. Para medir ganhos pequenos é
+  preciso um trecho repetível (mesmo lugar e câmera por um minuto).

@@ -3243,7 +3243,7 @@ index b029e2eb..02447581 100644
    return literal;
  }
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
-index 7cc1eeec..9b432cab 100644
+index 7cc1eeec..4aaf5ac7 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
 +++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
 @@ -38,6 +38,23 @@ constexpr uint16_t kPicaProcTexLutDataEnd = 0x0B7U;
@@ -3280,11 +3280,263 @@ index 7cc1eeec..9b432cab 100644
      if (registerId >= kPicaLightingLutDataBegin &&
          registerId <= kPicaLightingLutDataEnd) {
          const uint32_t config = mPicaRegisters[kPicaLightingLutConfig];
+@@ -582,6 +602,65 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
+     size_t cursor = 0;
+     bool stopRequested = false;
+     bool drawSubmitted = false;
++    // A draw trigger builds the full packet (registers, both shader units,
++    // the LUTs: ~11 KiB on the stack). Out of line, so that the per-write
++    // path below stays small enough to inline into the command-list loop
++    // instead of a call with that frame for every register write.
++    const auto submitDraw = [&](uint16_t id, uint32_t offsetWords)
++                                __attribute__((noinline)) -> bool {
++        if (!mLightingLuts->ContentHashAvailable) {
++            mLightingLuts->ContentHash =
++                ComputeOot3dPicaLightingLutContentHash(*mLightingLuts);
++            mLightingLuts->ContentHashAvailable = true;
++        }
++        const auto* metadata = resolveComposition(offsetWords);
++        auto composition = metadata != nullptr
++            ? metadata->Attribution
++            : mCommandListCompositionDomain == Oot3dPicaCompositionDomain::Ui
++                ? Oot3dPicaCompositionAttribution{
++                      Oot3dPicaCompositionLayer::Ui,
++                      Oot3dPicaCompositionProvenance::NativeUiLifecycle, 0U, 0U}
++                : Oot3dPicaCompositionAttribution{};
++        if (composition.TemporalIdentity.Available()) {
++            const uint64_t address = uint64_t{commandListAddress} + uint64_t{offsetWords} * 4U;
++            if (metadata == nullptr || composition.TemporalPacketBeginAddress == 0 ||
++                address < composition.TemporalPacketBeginAddress || address >= metadata->EndAddress)
++                composition.TemporalIdentity = {};
++            else
++                composition.TemporalIdentity.Slot += address - composition.TemporalPacketBeginAddress;
++        }
++        composition.TemporalPacketBeginAddress = 0;
++        auto domain = mCommandListCompositionDomain;
++        switch (composition.Layer) {
++            case Oot3dPicaCompositionLayer::OpaqueWorld:
++            case Oot3dPicaCompositionLayer::TransparentWorld:
++            case Oot3dPicaCompositionLayer::Atmosphere:
++                domain = Oot3dPicaCompositionDomain::Scene;
++                break;
++            case Oot3dPicaCompositionLayer::Ui:
++                domain = Oot3dPicaCompositionDomain::Ui;
++                break;
++            case Oot3dPicaCompositionLayer::Unknown:
++                break;
++        }
++        Oot3dPicaDrawPacket draw(
++            commandListAddress, offsetWords,
++            domain, composition,
++            id == kPicaTriggerDrawIndexed, mPicaRegisters,
++            mVertexShader, mGeometryShader, mFogLut, mProcTexLuts,
++            mLightingLuts, mDefaultAttributes);
++        if (metadata != nullptr && domain == Oot3dPicaCompositionDomain::Scene)
++            draw.LightBinding = metadata->LightBinding;
++        if (mPacketSink != nullptr &&
++            !mPacketSink->SubmitDrawPacket(draw, error)) {
++            return false;
++        }
++        drawSubmitted = true;
++        if (mDiagnosticHistoryEnabled) {
++            mPendingDrawPackets.push_back(std::move(draw));
++        }
++        return true;
++    };
+     while (cursor < commandListWords.size()) {
+         if (stopRequested) {
+             break;
+@@ -605,8 +684,11 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
+         const uint32_t extraDataLength = (header >> 20U) & 0xFFU;
+         const bool grouped = (header >> 31U) != 0;
+ 
++        // Every register write of the command list: inline, the draw and
++        // side-effect work it may need is out of line.
+         const auto applyWrite = [&](uint16_t id, uint32_t writeValue,
+-                                    uint32_t offsetWords) -> bool {
++                                    uint32_t offsetWords)
++                                    __attribute__((always_inline)) -> bool {
+             const bool supported = id < kPicaRegisterCount;
+             uint32_t finalValue = writeValue;
+             if (supported) {
+@@ -615,7 +697,11 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
+                 finalValue = (mPicaRegisters[id] & ~mask) |
+                              (writeValue & mask);
+                 mPicaRegisters[id] = finalValue;
+-                ApplyShaderRegisterSideEffects(id, finalValue);
++                // Most writes have none: skip the call (the function
++                // tests the same table).
++                if (kShaderSideEffectRegisters[id]) {
++                    ApplyShaderRegisterSideEffects(id, finalValue);
++                }
+             }
+             if (mDiagnosticHistoryEnabled) {
+                 mPendingRegisterWrites.push_back(
+@@ -624,57 +710,9 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
+             }
+             if (id == kPicaTriggerDraw ||
+                 id == kPicaTriggerDrawIndexed) {
+-                if (!mLightingLuts->ContentHashAvailable) {
+-                    mLightingLuts->ContentHash =
+-                        ComputeOot3dPicaLightingLutContentHash(*mLightingLuts);
+-                    mLightingLuts->ContentHashAvailable = true;
+-                }
+-                const auto* metadata = resolveComposition(offsetWords);
+-                auto composition = metadata != nullptr
+-                    ? metadata->Attribution
+-                    : mCommandListCompositionDomain == Oot3dPicaCompositionDomain::Ui
+-                        ? Oot3dPicaCompositionAttribution{
+-                              Oot3dPicaCompositionLayer::Ui,
+-                              Oot3dPicaCompositionProvenance::NativeUiLifecycle, 0U, 0U}
+-                        : Oot3dPicaCompositionAttribution{};
+-                if (composition.TemporalIdentity.Available()) {
+-                    const uint64_t address = uint64_t{commandListAddress} + uint64_t{offsetWords} * 4U;
+-                    if (metadata == nullptr || composition.TemporalPacketBeginAddress == 0 ||
+-                        address < composition.TemporalPacketBeginAddress || address >= metadata->EndAddress)
+-                        composition.TemporalIdentity = {};
+-                    else
+-                        composition.TemporalIdentity.Slot += address - composition.TemporalPacketBeginAddress;
+-                }
+-                composition.TemporalPacketBeginAddress = 0;
+-                auto domain = mCommandListCompositionDomain;
+-                switch (composition.Layer) {
+-                    case Oot3dPicaCompositionLayer::OpaqueWorld:
+-                    case Oot3dPicaCompositionLayer::TransparentWorld:
+-                    case Oot3dPicaCompositionLayer::Atmosphere:
+-                        domain = Oot3dPicaCompositionDomain::Scene;
+-                        break;
+-                    case Oot3dPicaCompositionLayer::Ui:
+-                        domain = Oot3dPicaCompositionDomain::Ui;
+-                        break;
+-                    case Oot3dPicaCompositionLayer::Unknown:
+-                        break;
+-                }
+-                Oot3dPicaDrawPacket draw(
+-                    commandListAddress, offsetWords,
+-                    domain, composition,
+-                    id == kPicaTriggerDrawIndexed, mPicaRegisters,
+-                    mVertexShader, mGeometryShader, mFogLut, mProcTexLuts,
+-                    mLightingLuts, mDefaultAttributes);
+-                if (metadata != nullptr && domain == Oot3dPicaCompositionDomain::Scene)
+-                    draw.LightBinding = metadata->LightBinding;
+-                if (mPacketSink != nullptr &&
+-                    !mPacketSink->SubmitDrawPacket(draw, error)) {
++                if (!submitDraw(id, offsetWords)) {
+                     return false;
+                 }
+-                drawSubmitted = true;
+-                if (mDiagnosticHistoryEnabled) {
+-                    mPendingDrawPackets.push_back(std::move(draw));
+-                }
+             }
+             if (id == kPicaIrqRequest && supported) {
+                 const uint32_t request = mPicaRegisters[kPicaIrqRequest];
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
-index 62b0f054..092c9f1c 100644
+index 62b0f054..46e87420 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
 +++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
-@@ -56,7 +56,9 @@ class CanonicalHashBuilder {
+@@ -9,6 +9,8 @@
+ #include <array>
+ #include <bit>
+ #include <cstring>
++#include <memory>
++#include <vector>
+ #include <iomanip>
+ #include <sstream>
+ #include <string_view>
+@@ -51,12 +53,101 @@ bool IsSupportedTevSource(uint8_t source) {
+            source == 0xFU;
+ }
+ 
++// The exact FNV-1a fold of a word array that mostly repeats between calls
++// (uniforms, LUTs, register ranges hashed for every draw). A byte step
++// s' = (s ^ b) * P only changes the low byte before the multiply, and the low
++// byte of s' depends only on the low byte of s: over a block of n bytes,
++// s_out = s_in * P^n + C and the output low byte is fixed, where C depends
++// only on the block's bytes and the input low byte. A block equal to the
++// previous call's is one multiply and one add once its C for that input low
++// byte is known (computed on first use, forgotten when the block changes).
++// One memo per call site and thread.
++class WordFoldMemo {
++  public:
++    uint64_t Fold(uint64_t state, const void* data, size_t count) {
++        const auto* bytes = static_cast<const uint8_t*>(data);
++        const size_t blocks = (count + kBlockWords - 1U) / kBlockWords;
++        if (mBlocks.size() < blocks) mBlocks.resize(blocks);
++        for (size_t index = 0; index < blocks; ++index) {
++            Block& block = mBlocks[index];
++            const size_t words =
++                std::min(kBlockWords, count - index * kBlockWords);
++            const uint8_t* source = bytes + index * kBlockWords * 4U;
++            if (block.Count == words &&
++                std::memcmp(block.Words.data(), source, words * 4U) == 0) {
++                Step& step = block.Steps[state & 0xFFU];
++                if (step.Generation != block.Generation) {
++                    const uint64_t low = state & 0xFFU;
++                    step.Offset = FoldWords(low, block.Words.data(), words) -
++                                  low * Multiplier(words);
++                    step.Generation = block.Generation;
++                }
++                state = state * Multiplier(words) + step.Offset;
++                continue;
++            }
++            std::memcpy(block.Words.data(), source, words * 4U);
++            block.Count = words;
++            if (++block.Generation == 0U) {
++                for (auto& step : block.Steps) step.Generation = 0U;
++                block.Generation = 1U;
++            }
++            state = FoldWords(state, block.Words.data(), words);
++        }
++        return state;
++    }
++
++  private:
++    static constexpr size_t kBlockWords = 32U;
++    struct Step {
++        uint64_t Offset = 0;
++        uint32_t Generation = 0;
++    };
++    struct Block {
++        std::array<uint32_t, kBlockWords> Words{};
++        size_t Count = 0;
++        uint32_t Generation = 0;
++        std::array<Step, 256> Steps{};
++    };
++
++    static uint64_t FoldWords(uint64_t state, const uint32_t* words, size_t count) {
++        for (size_t index = 0; index < count; ++index) {
++            state = CanonicalHashDetail::AppendWord(state, words[index]);
++        }
++        return state;
++    }
++    // P^(4 * words): the multiplier of a block of that many words.
++    static uint64_t Multiplier(size_t words) {
++        static constexpr auto kPowers = [] {
++            std::array<uint64_t, kBlockWords + 1U> powers{};
++            powers[0] = 1U;
++            for (size_t index = 1; index <= kBlockWords; ++index) {
++                powers[index] = powers[index - 1U] *
++                                CanonicalHashDetail::ZeroWordMultiplier;
++            }
++            return powers;
++        }();
++        return kPowers[words];
++    }
++
++    std::vector<Block> mBlocks;
++};
++
++// A memo per thread for one call site (WordFoldMemo).
++#define OOT3D_PICA_WORD_FOLD_MEMO()                                         \
++    ([]() -> WordFoldMemo& {                                                \
++        thread_local std::unique_ptr<WordFoldMemo> memo;                    \
++        if (!memo) memo = std::make_unique<WordFoldMemo>();                 \
++        return *memo;                                                       \
++    }())
++
+ class CanonicalHashBuilder {
+   public:
      explicit CanonicalHashBuilder(std::string_view domain) {
          AppendU32(kOot3dPicaProgramDescriptorSchemaVersion);
          AppendU32(static_cast<uint32_t>(domain.size()));
@@ -3295,6 +3547,187 @@ index 62b0f054..092c9f1c 100644
      }
  
      void AppendU8(uint8_t value) {
+@@ -105,6 +196,19 @@ class CanonicalHashBuilder {
+         }
+     }
+ 
++    // AppendWords through a memo: the same value.
++    template <size_t Size>
++    void AppendWords(WordFoldMemo& memo, const std::array<uint32_t, Size>& words,
++                     size_t count = Size) {
++        AppendU32(static_cast<uint32_t>(count));
++        mHash = memo.Fold(mHash, words.data(), count);
++    }
++
++    // count 32-bit words (AppendU32 or AppendFloat each) through a memo.
++    void AppendWordRange(WordFoldMemo& memo, const void* data, size_t count) {
++        mHash = memo.Fold(mHash, data, count);
++    }
++
+     uint64_t Finish() const {
+         return mHash == 0U ? 1U : mHash;
+     }
+@@ -178,11 +282,11 @@ uint64_t BuildFragmentProgramId(const Oot3dPicaDrawPacket& packet,
+     if ((packet.Registers[0x080U] & (1U << 10U)) != 0U &&
+         (Oot3dPicaReferencesProceduralTexture(packet) ||
+          shadowProcTexReferenced)) {
+-        hash.AppendWords(packet.ProcTexLuts.Noise);
+-        hash.AppendWords(packet.ProcTexLuts.ColorMap);
+-        hash.AppendWords(packet.ProcTexLuts.AlphaMap);
+-        hash.AppendWords(packet.ProcTexLuts.Color);
+-        hash.AppendWords(packet.ProcTexLuts.ColorDifference);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.Noise);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.ColorMap);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.AlphaMap);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.Color);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.ColorDifference);
+     }
+     hash.AppendU32(packet.Registers[0x0E0U]);
+     hash.AppendU32(packet.Registers[0x104U] & 0x00000071U);
+@@ -334,16 +438,18 @@ uint64_t BuildDynamicStateId(const Oot3dPicaDrawPacket& packet,
+             hash.AppendU8(value);
+         }
+     }
+-    for (const auto& row : packet.VertexShader.FloatUniforms) {
+-        for (const float value : row) {
+-            hash.AppendFloat(value);
+-        }
+-    }
+-    for (const auto& attribute : packet.DefaultAttributes) {
+-        for (const float value : attribute) {
+-            hash.AppendFloat(value);
+-        }
+-    }
++    // Every float of the uniform and default attribute arrays in order, as
++    // AppendFloat would.
++    static_assert(sizeof(Oot3dPicaShaderState::FloatUniforms) ==
++                  Oot3dPicaShaderState::FloatUniformCount * 4U * sizeof(uint32_t));
++    static_assert(sizeof(Oot3dPicaDrawPacket::DefaultAttributes) ==
++                  16U * 4U * sizeof(uint32_t));
++    hash.AppendWordRange(OOT3D_PICA_WORD_FOLD_MEMO(),
++                         packet.VertexShader.FloatUniforms.data(),
++                         packet.VertexShader.FloatUniforms.size() * 4U);
++    hash.AppendWordRange(OOT3D_PICA_WORD_FOLD_MEMO(),
++                         packet.DefaultAttributes.data(),
++                         packet.DefaultAttributes.size() * 4U);
+     for (const uint16_t base : kTevStageBases) {
+         hash.AppendU32(packet.Registers[base + 3U]);
+     }
+@@ -351,14 +457,13 @@ uint64_t BuildDynamicStateId(const Oot3dPicaDrawPacket& packet,
+     hash.AppendU32(packet.Registers[0x0FDU]);
+     hash.AppendU32(packet.Registers[0x08BU]);
+     hash.AppendU32(packet.Registers[0x130U]);
+-    hash.AppendWords(packet.FogLut);
++    hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.FogLut);
+ 
+     // Lighting values and lookup-table data are uniforms. Hash the complete
+     // native ranges so traces detect missing state before every field has a
+     // typed representation in the renderer contract.
+-    for (uint16_t reg = 0x140U; reg <= 0x1D9U; ++reg) {
+-        hash.AppendU32(packet.Registers[reg]);
+-    }
++    hash.AppendWordRange(OOT3D_PICA_WORD_FOLD_MEMO(),
++                         packet.Registers.data() + 0x140U, 0x1D9U - 0x140U + 1U);
+     if (packet.LightingLuts != nullptr &&
+         packet.LightingLuts->ContentHashAvailable) {
+         hash.AppendU64(packet.LightingLuts->ContentHash);
+@@ -372,26 +477,63 @@ uint64_t BuildDynamicStateId(const Oot3dPicaDrawPacket& packet,
+ // file with the fold state at every block boundary and resume from the first
+ // block that changed. The result equals hashing the whole file. The cache is
+ // per thread, so concurrent callers never share it.
++//
++// The blocks after the first changed one still had to be folded byte by byte
++// (four dependent 64-bit multiplies a word), because their input state
++// differs. But a byte step s' = (s ^ b) * P only changes the low byte before
++// the multiply, and the low byte of s' depends only on the low byte of s:
++// over a block of n bytes, s_out = s_in * P^n + C and the output low byte is
++// L_out, where C and L_out depend only on the block's bytes and the input
++// low byte L_in. An unchanged block reached with a low byte it has seen
++// before is one multiply and one add (memoized per block and L_in).
+ uint64_t HashRegisterFile(
+     const std::array<uint32_t, kOot3dPicaRegisterWords>& words) {
+     constexpr size_t kBlockWords = 32U;
+     constexpr size_t kBlocks = kOot3dPicaRegisterWords / kBlockWords;
+     static_assert(kOot3dPicaRegisterWords % kBlockWords == 0U);
++    constexpr uint64_t kBlockMultiplier = [] {
++        uint64_t value = 1U;
++        for (size_t byte = 0; byte < kBlockWords * 4U; ++byte) value *= kFnvPrime;
++        return value;
++    }();
++    struct BlockStep {
++        uint64_t Offset = 0;    // C: s_out - s_in * P^n
++        uint32_t Generation = 0; // valid while equal to the block's
++    };
+     struct Cache {
+         bool Valid = false;
+         std::array<uint32_t, kOot3dPicaRegisterWords> Words{};
+         // States[b] is the fold state before block b; States[kBlocks] is final.
+         std::array<uint64_t, kBlocks + 1U> States{};
++        // Steps[b][L_in] for the cached contents of block b; a block's
++        // generation changes whenever its contents do.
++        std::array<uint32_t, kBlocks> Generations{};
++        std::array<std::array<BlockStep, 256>, kBlocks> Steps{};
++    };
++    // ~100 KiB: allocated by the threads that hash, not reserved in every
++    // thread's static TLS.
++    thread_local std::unique_ptr<Cache> cacheStorage;
++    if (!cacheStorage) cacheStorage = std::make_unique<Cache>();
++    Cache& cache = *cacheStorage;
++
++    const auto foldBlock = [&](uint64_t state, size_t block) {
++        for (size_t word = block * kBlockWords;
++             word < (block + 1U) * kBlockWords; ++word) {
++            state = CanonicalHashDetail::AppendWord(state, words[word]);
++        }
++        return state;
++    };
++    const auto blockChanged = [&](size_t block) {
++        return std::memcmp(words.data() + block * kBlockWords,
++                           cache.Words.data() + block * kBlockWords,
++                           kBlockWords * sizeof(uint32_t)) != 0;
+     };
+-    thread_local Cache cache;
+ 
+     size_t first = 0U;
+     if (cache.Valid) {
+         first = kBlocks;
+         for (size_t block = 0; block < kBlocks; ++block) {
+-            if (std::memcmp(words.data() + block * kBlockWords,
+-                            cache.Words.data() + block * kBlockWords,
+-                            kBlockWords * sizeof(uint32_t)) != 0) {
++            if (blockChanged(block)) {
+                 first = block;
+                 break;
+             }
+@@ -401,12 +543,25 @@ uint64_t HashRegisterFile(
+         prefix.AppendU32(static_cast<uint32_t>(kOot3dPicaRegisterWords));
+         cache.States[0] = prefix.State();
+         cache.Valid = true;
++        for (auto& generation : cache.Generations) ++generation;
+     }
+     uint64_t state = cache.States[first];
+     for (size_t block = first; block < kBlocks; ++block) {
+-        for (size_t word = block * kBlockWords;
+-             word < (block + 1U) * kBlockWords; ++word) {
+-            state = CanonicalHashDetail::AppendWord(state, words[word]);
++        if (block == first || blockChanged(block)) {
++            // New contents: fold and forget this block's memoized steps.
++            if (++cache.Generations[block] == 0U) {
++                for (auto& step : cache.Steps[block]) step.Generation = 0U;
++                cache.Generations[block] = 1U;
++            }
++            state = foldBlock(state, block);
++        } else {
++            BlockStep& step = cache.Steps[block][state & 0xFFU];
++            if (step.Generation != cache.Generations[block]) {
++                const uint64_t low = state & 0xFFU;
++                step.Offset = foldBlock(low, block) - low * kBlockMultiplier;
++                step.Generation = cache.Generations[block];
++            }
++            state = state * kBlockMultiplier + step.Offset;
+         }
+         cache.States[block + 1U] = state;
+     }
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp
 index 19d0ada5..7edf6c5b 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp

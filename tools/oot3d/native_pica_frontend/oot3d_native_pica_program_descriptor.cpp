@@ -9,6 +9,8 @@
 #include <array>
 #include <bit>
 #include <cstring>
+#include <memory>
+#include <vector>
 #include <iomanip>
 #include <sstream>
 #include <string_view>
@@ -50,6 +52,93 @@ bool IsSupportedTevSource(uint8_t source) {
     return source <= 0x6U || source == 0xDU || source == 0xEU ||
            source == 0xFU;
 }
+
+// The exact FNV-1a fold of a word array that mostly repeats between calls
+// (uniforms, LUTs, register ranges hashed for every draw). A byte step
+// s' = (s ^ b) * P only changes the low byte before the multiply, and the low
+// byte of s' depends only on the low byte of s: over a block of n bytes,
+// s_out = s_in * P^n + C and the output low byte is fixed, where C depends
+// only on the block's bytes and the input low byte. A block equal to the
+// previous call's is one multiply and one add once its C for that input low
+// byte is known (computed on first use, forgotten when the block changes).
+// One memo per call site and thread.
+class WordFoldMemo {
+  public:
+    uint64_t Fold(uint64_t state, const void* data, size_t count) {
+        const auto* bytes = static_cast<const uint8_t*>(data);
+        const size_t blocks = (count + kBlockWords - 1U) / kBlockWords;
+        if (mBlocks.size() < blocks) mBlocks.resize(blocks);
+        for (size_t index = 0; index < blocks; ++index) {
+            Block& block = mBlocks[index];
+            const size_t words =
+                std::min(kBlockWords, count - index * kBlockWords);
+            const uint8_t* source = bytes + index * kBlockWords * 4U;
+            if (block.Count == words &&
+                std::memcmp(block.Words.data(), source, words * 4U) == 0) {
+                Step& step = block.Steps[state & 0xFFU];
+                if (step.Generation != block.Generation) {
+                    const uint64_t low = state & 0xFFU;
+                    step.Offset = FoldWords(low, block.Words.data(), words) -
+                                  low * Multiplier(words);
+                    step.Generation = block.Generation;
+                }
+                state = state * Multiplier(words) + step.Offset;
+                continue;
+            }
+            std::memcpy(block.Words.data(), source, words * 4U);
+            block.Count = words;
+            if (++block.Generation == 0U) {
+                for (auto& step : block.Steps) step.Generation = 0U;
+                block.Generation = 1U;
+            }
+            state = FoldWords(state, block.Words.data(), words);
+        }
+        return state;
+    }
+
+  private:
+    static constexpr size_t kBlockWords = 32U;
+    struct Step {
+        uint64_t Offset = 0;
+        uint32_t Generation = 0;
+    };
+    struct Block {
+        std::array<uint32_t, kBlockWords> Words{};
+        size_t Count = 0;
+        uint32_t Generation = 0;
+        std::array<Step, 256> Steps{};
+    };
+
+    static uint64_t FoldWords(uint64_t state, const uint32_t* words, size_t count) {
+        for (size_t index = 0; index < count; ++index) {
+            state = CanonicalHashDetail::AppendWord(state, words[index]);
+        }
+        return state;
+    }
+    // P^(4 * words): the multiplier of a block of that many words.
+    static uint64_t Multiplier(size_t words) {
+        static constexpr auto kPowers = [] {
+            std::array<uint64_t, kBlockWords + 1U> powers{};
+            powers[0] = 1U;
+            for (size_t index = 1; index <= kBlockWords; ++index) {
+                powers[index] = powers[index - 1U] *
+                                CanonicalHashDetail::ZeroWordMultiplier;
+            }
+            return powers;
+        }();
+        return kPowers[words];
+    }
+
+    std::vector<Block> mBlocks;
+};
+
+// A memo per thread for one call site (WordFoldMemo).
+#define OOT3D_PICA_WORD_FOLD_MEMO()                                         \
+    ([]() -> WordFoldMemo& {                                                \
+        thread_local std::unique_ptr<WordFoldMemo> memo;                    \
+        if (!memo) memo = std::make_unique<WordFoldMemo>();                 \
+        return *memo;                                                       \
+    }())
 
 class CanonicalHashBuilder {
   public:
@@ -105,6 +194,19 @@ class CanonicalHashBuilder {
         for (size_t index = 0; index < count; ++index) {
             AppendU32(words[index]);
         }
+    }
+
+    // AppendWords through a memo: the same value.
+    template <size_t Size>
+    void AppendWords(WordFoldMemo& memo, const std::array<uint32_t, Size>& words,
+                     size_t count = Size) {
+        AppendU32(static_cast<uint32_t>(count));
+        mHash = memo.Fold(mHash, words.data(), count);
+    }
+
+    // count 32-bit words (AppendU32 or AppendFloat each) through a memo.
+    void AppendWordRange(WordFoldMemo& memo, const void* data, size_t count) {
+        mHash = memo.Fold(mHash, data, count);
     }
 
     uint64_t Finish() const {
@@ -180,11 +282,11 @@ uint64_t BuildFragmentProgramId(const Oot3dPicaDrawPacket& packet,
     if ((packet.Registers[0x080U] & (1U << 10U)) != 0U &&
         (Oot3dPicaReferencesProceduralTexture(packet) ||
          shadowProcTexReferenced)) {
-        hash.AppendWords(packet.ProcTexLuts.Noise);
-        hash.AppendWords(packet.ProcTexLuts.ColorMap);
-        hash.AppendWords(packet.ProcTexLuts.AlphaMap);
-        hash.AppendWords(packet.ProcTexLuts.Color);
-        hash.AppendWords(packet.ProcTexLuts.ColorDifference);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.Noise);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.ColorMap);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.AlphaMap);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.Color);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.ColorDifference);
     }
     hash.AppendU32(packet.Registers[0x0E0U]);
     hash.AppendU32(packet.Registers[0x104U] & 0x00000071U);
@@ -336,16 +438,18 @@ uint64_t BuildDynamicStateId(const Oot3dPicaDrawPacket& packet,
             hash.AppendU8(value);
         }
     }
-    for (const auto& row : packet.VertexShader.FloatUniforms) {
-        for (const float value : row) {
-            hash.AppendFloat(value);
-        }
-    }
-    for (const auto& attribute : packet.DefaultAttributes) {
-        for (const float value : attribute) {
-            hash.AppendFloat(value);
-        }
-    }
+    // Every float of the uniform and default attribute arrays in order, as
+    // AppendFloat would.
+    static_assert(sizeof(Oot3dPicaShaderState::FloatUniforms) ==
+                  Oot3dPicaShaderState::FloatUniformCount * 4U * sizeof(uint32_t));
+    static_assert(sizeof(Oot3dPicaDrawPacket::DefaultAttributes) ==
+                  16U * 4U * sizeof(uint32_t));
+    hash.AppendWordRange(OOT3D_PICA_WORD_FOLD_MEMO(),
+                         packet.VertexShader.FloatUniforms.data(),
+                         packet.VertexShader.FloatUniforms.size() * 4U);
+    hash.AppendWordRange(OOT3D_PICA_WORD_FOLD_MEMO(),
+                         packet.DefaultAttributes.data(),
+                         packet.DefaultAttributes.size() * 4U);
     for (const uint16_t base : kTevStageBases) {
         hash.AppendU32(packet.Registers[base + 3U]);
     }
@@ -353,14 +457,13 @@ uint64_t BuildDynamicStateId(const Oot3dPicaDrawPacket& packet,
     hash.AppendU32(packet.Registers[0x0FDU]);
     hash.AppendU32(packet.Registers[0x08BU]);
     hash.AppendU32(packet.Registers[0x130U]);
-    hash.AppendWords(packet.FogLut);
+    hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.FogLut);
 
     // Lighting values and lookup-table data are uniforms. Hash the complete
     // native ranges so traces detect missing state before every field has a
     // typed representation in the renderer contract.
-    for (uint16_t reg = 0x140U; reg <= 0x1D9U; ++reg) {
-        hash.AppendU32(packet.Registers[reg]);
-    }
+    hash.AppendWordRange(OOT3D_PICA_WORD_FOLD_MEMO(),
+                         packet.Registers.data() + 0x140U, 0x1D9U - 0x140U + 1U);
     if (packet.LightingLuts != nullptr &&
         packet.LightingLuts->ContentHashAvailable) {
         hash.AppendU64(packet.LightingLuts->ContentHash);
@@ -374,26 +477,63 @@ uint64_t BuildDynamicStateId(const Oot3dPicaDrawPacket& packet,
 // file with the fold state at every block boundary and resume from the first
 // block that changed. The result equals hashing the whole file. The cache is
 // per thread, so concurrent callers never share it.
+//
+// The blocks after the first changed one still had to be folded byte by byte
+// (four dependent 64-bit multiplies a word), because their input state
+// differs. But a byte step s' = (s ^ b) * P only changes the low byte before
+// the multiply, and the low byte of s' depends only on the low byte of s:
+// over a block of n bytes, s_out = s_in * P^n + C and the output low byte is
+// L_out, where C and L_out depend only on the block's bytes and the input
+// low byte L_in. An unchanged block reached with a low byte it has seen
+// before is one multiply and one add (memoized per block and L_in).
 uint64_t HashRegisterFile(
     const std::array<uint32_t, kOot3dPicaRegisterWords>& words) {
     constexpr size_t kBlockWords = 32U;
     constexpr size_t kBlocks = kOot3dPicaRegisterWords / kBlockWords;
     static_assert(kOot3dPicaRegisterWords % kBlockWords == 0U);
+    constexpr uint64_t kBlockMultiplier = [] {
+        uint64_t value = 1U;
+        for (size_t byte = 0; byte < kBlockWords * 4U; ++byte) value *= kFnvPrime;
+        return value;
+    }();
+    struct BlockStep {
+        uint64_t Offset = 0;    // C: s_out - s_in * P^n
+        uint32_t Generation = 0; // valid while equal to the block's
+    };
     struct Cache {
         bool Valid = false;
         std::array<uint32_t, kOot3dPicaRegisterWords> Words{};
         // States[b] is the fold state before block b; States[kBlocks] is final.
         std::array<uint64_t, kBlocks + 1U> States{};
+        // Steps[b][L_in] for the cached contents of block b; a block's
+        // generation changes whenever its contents do.
+        std::array<uint32_t, kBlocks> Generations{};
+        std::array<std::array<BlockStep, 256>, kBlocks> Steps{};
     };
-    thread_local Cache cache;
+    // ~100 KiB: allocated by the threads that hash, not reserved in every
+    // thread's static TLS.
+    thread_local std::unique_ptr<Cache> cacheStorage;
+    if (!cacheStorage) cacheStorage = std::make_unique<Cache>();
+    Cache& cache = *cacheStorage;
+
+    const auto foldBlock = [&](uint64_t state, size_t block) {
+        for (size_t word = block * kBlockWords;
+             word < (block + 1U) * kBlockWords; ++word) {
+            state = CanonicalHashDetail::AppendWord(state, words[word]);
+        }
+        return state;
+    };
+    const auto blockChanged = [&](size_t block) {
+        return std::memcmp(words.data() + block * kBlockWords,
+                           cache.Words.data() + block * kBlockWords,
+                           kBlockWords * sizeof(uint32_t)) != 0;
+    };
 
     size_t first = 0U;
     if (cache.Valid) {
         first = kBlocks;
         for (size_t block = 0; block < kBlocks; ++block) {
-            if (std::memcmp(words.data() + block * kBlockWords,
-                            cache.Words.data() + block * kBlockWords,
-                            kBlockWords * sizeof(uint32_t)) != 0) {
+            if (blockChanged(block)) {
                 first = block;
                 break;
             }
@@ -403,12 +543,25 @@ uint64_t HashRegisterFile(
         prefix.AppendU32(static_cast<uint32_t>(kOot3dPicaRegisterWords));
         cache.States[0] = prefix.State();
         cache.Valid = true;
+        for (auto& generation : cache.Generations) ++generation;
     }
     uint64_t state = cache.States[first];
     for (size_t block = first; block < kBlocks; ++block) {
-        for (size_t word = block * kBlockWords;
-             word < (block + 1U) * kBlockWords; ++word) {
-            state = CanonicalHashDetail::AppendWord(state, words[word]);
+        if (block == first || blockChanged(block)) {
+            // New contents: fold and forget this block's memoized steps.
+            if (++cache.Generations[block] == 0U) {
+                for (auto& step : cache.Steps[block]) step.Generation = 0U;
+                cache.Generations[block] = 1U;
+            }
+            state = foldBlock(state, block);
+        } else {
+            BlockStep& step = cache.Steps[block][state & 0xFFU];
+            if (step.Generation != cache.Generations[block]) {
+                const uint64_t low = state & 0xFFU;
+                step.Offset = foldBlock(low, block) - low * kBlockMultiplier;
+                step.Generation = cache.Generations[block];
+            }
+            state = state * kBlockMultiplier + step.Offset;
         }
         cache.States[block + 1U] = state;
     }
