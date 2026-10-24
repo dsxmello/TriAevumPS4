@@ -42,3 +42,17 @@ for name, ok in checks.items():
 sys.exit(0 if all(checks.values()) else 1)
 E
 )
+
+# With FORGE_TEXTURES_ZIP (oot3d_vanilla_ui_hud_32.zip) and optionally
+# FORGE_TEXTURES_DESKTOP (the desktop Forge's prepared vanilla_ui_hud-3.2):
+# the HD UI texture pack too.
+if [ -n "${FORGE_TEXTURES_ZIP:-}" ]; then
+    python3 -I -B "$HERE/forge_catalogs.py" "$TRIAEVUM" "$PORT/forge/recipes/oot3d.json" "$work/catalog"
+    clang++ -std=c++20 -O2 -Wall -Wextra -I"$src/src" -I"$PORT/ports/ps4-vk-game/third_party" \
+        "$src/src/forge/forge_core.cpp" "$src/src/forge/forge_sha256.cpp" \
+        "$src/src/forge/forge_textures.cpp" "$src/tests/forge_textures_host_test.cpp" -lzip \
+        -o "$work/forge_textures_host_test"
+    rm -rf "$work/data"
+    "$work/forge_textures_host_test" "$work/catalog/ui_texture_pack.json" "$FORGE_TEXTURES_ZIP" \
+        "$work/data" ${FORGE_TEXTURES_DESKTOP:+"$FORGE_TEXTURES_DESKTOP"}
+fi

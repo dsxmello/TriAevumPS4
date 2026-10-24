@@ -17,6 +17,8 @@
 
 #include "fast/backends/gfx_orbis.h"
 #include "forge/forge_core.h"
+#include "forge/forge_textures.h"
+#include "ps4_forge_net.h"
 
 #include <imgui.h>
 #include <imgui_impl_vulkan.h>
@@ -61,6 +63,10 @@ constexpr char kTopScreenConfig[] = "/data/triaevum/config/topscreen_ui.json";
 constexpr char kAppForge[] = "/app0/forge";
 constexpr char kAppLinkAnimations[] = "/app0/resources/topscreen/singlescreen-3.0/zelda_link_ext.zar";
 constexpr char kEboot[] = "/app0/eboot.bin";
+constexpr char kData[] = "/data/triaevum";
+constexpr char kDownloads[] = "/data/triaevum/downloads";
+constexpr char kSettings[] = "/data/triaevum/config/forge.json";
+constexpr char kTextureCatalog[] = "/app0/forge/ui_texture_pack.json";
 constexpr int kStateFormat = 1;
 
 // ---- the game and the drop folder -------------------------------------------
@@ -143,44 +149,96 @@ void InstallDefaults() {
     CopyIfMissing(fs::path(kAppForge) / "topscreen_ui.example.json", kTopScreenConfig);
 }
 
+// ---- the HD UI texture pack -------------------------------------------------------
+
+const forge::UiTexturePack* TexturePack() {
+    static const std::optional<forge::UiTexturePack> pack = []() -> std::optional<forge::UiTexturePack> {
+        try {
+            return forge::UiTexturePack::Load(kTextureCatalog);
+        } catch (const std::exception& error) {
+            std::printf("[forge] %s: %s\n", kTextureCatalog, error.what());
+            return std::nullopt;
+        }
+    }();
+    return pack ? &*pack : nullptr;
+}
+
+// An archive the user sent over FTP, or one Forge downloaded.
+std::optional<fs::path> StoredTextureArchive(const forge::UiTexturePack& pack) {
+    return forge::FindUiTextureArchive(pack, {kDrop, kDownloads});
+}
+
+// The desktop Forge's "Download the HD textures with Prepare and install
+// when they are not stored yet" (on by default there too).
+bool DownloadTexturesWithPrepare() {
+    try {
+        const auto bytes = forge::ReadFile(kSettings);
+        return nlohmann::json::parse(bytes.begin(), bytes.end()).value("download_hd_textures_with_prepare", true);
+    } catch (const std::exception&) {
+        return true;
+    }
+}
+
+void SetDownloadTexturesWithPrepare(bool enabled) {
+    try {
+        std::error_code error;
+        fs::create_directories(fs::path(kSettings).parent_path(), error);
+        forge::WriteFileAtomic(kSettings,
+                               nlohmann::json{{"download_hd_textures_with_prepare", enabled}}.dump(2) + "\n");
+    } catch (const std::exception& failure) {
+        std::printf("[forge] %s\n", failure.what());
+    }
+}
+
 // ---- preparation on a worker thread ------------------------------------------
 
 struct Stage {
     const char* Name;
     const char* Text;
-    double Start, Weight;  // share of the whole preparation
 };
-// Measured on the console's storage: every stage is one pass over the RomFS.
 constexpr Stage kStages[] = {
-    {"extract", "Extracting the ROM", 0.00, 0.30},
-    {"check", "Checking the extracted data", 0.30, 0.20},
-    {"adapt", "Adapting the USA revision to the canonical EUR runtime", 0.50, 0.25},
-    {"verify", "Verifying the game data", 0.75, 0.25},
+    {"extract", "Extracting the ROM"},
+    {"check", "Checking the extracted data"},
+    {"adapt", "Adapting the USA revision to the canonical EUR runtime"},
+    {"verify", "Verifying the game data"},
+    {"textures-download", "Downloading the HD textures"},
+    {"textures-verify", "Verifying the HD texture archive"},
+    {"textures-extract", "Installing the HD textures"},
 };
 
-class PrepareJob final {
+// What one run does (the desktop Forge's "Prepare and install" and
+// "Download HD textures").
+struct Plan {
+    std::optional<RomFile> Rom;   // prepare the game from it
+    bool Textures = false;        // install the HD textures when stored
+    bool DownloadTextures = false;  // ... downloading them when not stored
+};
+
+class ForgeJob final {
   public:
-    ~PrepareJob() {
+    ~ForgeJob() {
         if (mThread.joinable()) mThread.join();
     }
     bool Running() const { return mRunning.load(); }
-    void Start(const RomFile& rom) {
+    void Start(Plan plan) {
         if (mThread.joinable()) mThread.join();
         {
             std::lock_guard lock(mMutex);
-            mStatus = "Preparing " + rom.Path.filename().string() + "...";
-            mFailed = false;
+            mStatus = "Starting...";
+            mFailed = mSucceeded = mRomPrepared = false;
             mFraction = 0.0;
         }
         mRunning = true;
-        mThread = std::thread([this, rom] { Run(rom); });
+        mThread = std::thread([this, plan = std::move(plan)] { Run(plan); });
     }
-    void Read(std::string& status, double& fraction, bool& failed, bool& succeeded) {
+    struct View {
+        std::string Status;
+        double Fraction = 0.0;
+        bool Failed = false, Succeeded = false, RomPrepared = false;
+    };
+    View Read() {
         std::lock_guard lock(mMutex);
-        status = mStatus;
-        fraction = mFraction;
-        failed = mFailed;
-        succeeded = mSucceeded;
+        return {mStatus, mFraction, mFailed, mSucceeded, mRomPrepared};
     }
 
   private:
@@ -188,45 +246,98 @@ class PrepareJob final {
         for (const Stage& known : kStages) {
             if (stage != known.Name) continue;
             std::lock_guard lock(mMutex);
-            mStatus = std::string(known.Text) + "...";
-            mFraction = known.Start + known.Weight * fraction;
+            mStatus = mStep + std::string(known.Text) + "...";
+            mFraction = fraction;
         }
     }
-    void Run(RomFile rom) {
-        Fast::OrbisRegisterThread("forge");
+    void SetStep(int index, int count) {
+        std::lock_guard lock(mMutex);
+        mStep = count > 1 ? "Step " + std::to_string(index) + " of " + std::to_string(count) + ": " : "";
+    }
+    std::string PrepareRom(const RomFile& rom) {
         const auto started = std::chrono::steady_clock::now();
-        try {
-            const forge::PrepareResult result = forge::PrepareTitle(
-                {rom.Path, fs::path(kAppForge) / "recipes/oot3d.json", kAppForge, kWork, kGame},
-                [this](std::string_view stage, double fraction) { Report(stage, fraction); });
-            const double seconds =
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-            const nlohmann::json state{
-                {"format", "triaevum_ps4_forge_state_v1"},
-                {"state_format", kStateFormat},
-                {"build", TRIAEVUM_PS4_BUILD_VERSION},
-                {"rom", RomKey(rom.Path)},
-                {"recipe", result.RecipeId},
-                {"program_id", result.ProgramId},
-                {"inputs", {{"code", result.Code.Json()}, {"exheader", result.Exheader.Json()},
-                            {"romfs", result.Romfs.Json()}}},
-                {"adaptation", result.Receipt},
-                {"seconds", seconds}};
-            forge::WriteFileAtomic(fs::path(kGame) / "forge-state.json", state.dump(2) + "\n");
-            forge::RemoveFile(kError);
-            InstallDefaults();
-            char text[256];
-            std::snprintf(text, sizeof(text),
-                          "Installed %s in %.0f s. Select \"Launch game\" to play.",
-                          result.RecipeId.c_str(), seconds);
-            std::printf("[forge] %s\n", text);
+        const forge::PrepareResult result = forge::PrepareTitle(
+            {rom.Path, fs::path(kAppForge) / "recipes/oot3d.json", kAppForge, kWork, kGame},
+            [this](std::string_view stage, double fraction) { Report(stage, fraction); });
+        const double seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        const nlohmann::json state{
+            {"format", "triaevum_ps4_forge_state_v1"},
+            {"state_format", kStateFormat},
+            {"build", TRIAEVUM_PS4_BUILD_VERSION},
+            {"rom", RomKey(rom.Path)},
+            {"recipe", result.RecipeId},
+            {"program_id", result.ProgramId},
+            {"inputs", {{"code", result.Code.Json()}, {"exheader", result.Exheader.Json()},
+                        {"romfs", result.Romfs.Json()}}},
+            {"adaptation", result.Receipt},
+            {"seconds", seconds}};
+        forge::WriteFileAtomic(fs::path(kGame) / "forge-state.json", state.dump(2) + "\n");
+        InstallDefaults();
+        {
             std::lock_guard lock(mMutex);
-            mStatus = text;
+            mRomPrepared = true;
+        }
+        char text[160];
+        std::snprintf(text, sizeof(text), "Installed %s in %.0f s.", result.RecipeId.c_str(), seconds);
+        return text;
+    }
+    // The HD textures: "" when there was nothing to do.
+    std::string InstallTextures(bool download) {
+        const forge::UiTexturePack* pack = TexturePack();
+        if (pack == nullptr) throw forge::ForgeError("the HD UI texture catalog is missing from the PKG");
+        if (forge::UiTexturePackPrepared(*pack, kData, false)) return "";
+        std::optional<fs::path> archive = StoredTextureArchive(*pack);
+        if (!archive && !download) {
+            return "The HD textures are not stored: the game uses the native textures.";
+        }
+        if (!archive) {
+            const fs::path destination = fs::path(kDownloads) / pack->ArchiveName();
+            std::string failure;
+            for (const std::string& url : pack->Downloads()) {
+                try {
+                    triaevum::ps4::DownloadVerified(
+                        url, destination, pack->Archive(),
+                        [this](std::string_view stage, double fraction) { Report(stage, fraction); });
+                    archive = destination;
+                    break;
+                } catch (const std::exception& error) {
+                    failure = error.what();
+                    std::printf("[forge] %s: %s\n", url.c_str(), failure.c_str());
+                }
+            }
+            if (!archive) throw forge::ForgeError("The HD textures were not downloaded: " + failure);
+        }
+        forge::ExtractUiTexturePack(*pack, *archive, kData,
+                                    [this](std::string_view stage, double fraction) { Report(stage, fraction); });
+        return pack->Title() + " installed: the game uses the HD textures.";
+    }
+    void Run(const Plan& plan) {
+        Fast::OrbisRegisterThread("forge");
+        std::string summary;
+        try {
+            const int count = (plan.Rom ? 1 : 0) + (plan.Textures ? 1 : 0);
+            int step = 0;
+            if (plan.Rom) {
+                SetStep(++step, count);
+                summary = PrepareRom(*plan.Rom);
+                forge::RemoveFile(kError);
+            }
+            if (plan.Textures) {
+                SetStep(++step, count);
+                const std::string textures = InstallTextures(plan.DownloadTextures);
+                if (!textures.empty()) summary += (summary.empty() ? "" : " ") + textures;
+            }
+            if (summary.empty()) summary = "Nothing to do: everything is installed.";
+            if (GameReady()) summary += " Select \"Launch game\" to play.";
+            std::printf("[forge] %s\n", summary.c_str());
+            std::lock_guard lock(mMutex);
+            mStatus = summary;
             mFraction = 1.0;
             mSucceeded = true;
         } catch (const std::exception& error) {
             const std::string message = error.what();
-            std::printf("[forge] preparation failed: %s\n", message.c_str());
+            std::printf("[forge] failed: %s\n", message.c_str());
             try {
                 forge::WriteFileAtomic(kError, message + "\n");
                 forge::RemoveTree(kWork);
@@ -234,18 +345,18 @@ class PrepareJob final {
                 std::printf("[forge] %s\n", cleanup.what());
             }
             std::lock_guard lock(mMutex);
-            mStatus = "The game was not prepared: " + message;
+            mStatus = (summary.empty() ? "" : summary + " ") + "Failed: " + message;
             mFailed = true;
         }
         mRunning = false;
     }
+
     std::thread mThread;
     std::atomic<bool> mRunning{false};
     std::mutex mMutex;
-    std::string mStatus;
+    std::string mStatus, mStep;
     double mFraction = 0.0;
-    bool mFailed = false;
-    bool mSucceeded = false;
+    bool mFailed = false, mSucceeded = false, mRomPrepared = false;
 };
 
 // ---- the screen ----------------------------------------------------------------
@@ -302,6 +413,10 @@ struct ScreenState {
     bool FirstFrame = true;
     bool DeleteOffered = false;  // after a successful preparation, once
     std::string DeleteResult;
+    // The HD textures, refreshed with the folder scan.
+    bool TexturesPrepared = false;
+    std::optional<fs::path> TextureArchive;
+    bool DownloadWithPrepare = DownloadTexturesWithPrepare();
 };
 
 // The ROM is only needed to prepare the game: offer to free its space.
@@ -342,7 +457,7 @@ void DrawDeletePrompt(ScreenState& screen, float width) {
     ImGui::EndPopup();
 }
 
-void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
+void DrawForge(ScreenState& screen, ForgeJob& job, ImFont* title) {
     const ImGuiIO& io = ImGui::GetIO();
     const float width = std::min(io.DisplaySize.x - 160.0F, 1500.0F);
     ImGui::SetNextWindowPos(ImVec2((io.DisplaySize.x - width) / 2, 40));
@@ -354,10 +469,11 @@ void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoSavedSettings);
     const bool running = job.Running();
-    std::string status;
-    double fraction = 0.0;
-    bool failed = false, succeeded = false;
-    job.Read(status, fraction, failed, succeeded);
+    const ForgeJob::View view = job.Read();
+    std::string status = view.Status;
+    const double fraction = view.Fraction;
+    const bool failed = view.Failed, succeeded = view.Succeeded;
+    const forge::UiTexturePack* pack = TexturePack();
 
     // The folder is watched: the ROM may arrive over FTP while this is open.
     const auto now = std::chrono::steady_clock::now();
@@ -365,6 +481,8 @@ void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
         now - screen.LastScan > std::chrono::seconds(2)) {
         screen.Rom = FindRom();
         screen.LastScan = now;
+        screen.TexturesPrepared = pack != nullptr && forge::UiTexturePackPrepared(*pack, kData, false);
+        screen.TextureArchive = pack != nullptr ? StoredTextureArchive(*pack) : std::nullopt;
     }
 
     ImGui::PushFont(title);
@@ -409,17 +527,42 @@ void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
     ImGui::EndDisabled();
 
     const float line = ImGui::GetTextLineHeightWithSpacing();
-    Section("HD UI textures (recommended)", line * 6.6F, [&] {
+    Section("HD UI textures (recommended)", line * 8.2F, [&] {
         ImGui::TextWrapped(
             "OoT3D Vanilla UI/HUD 3.2 by chubbycubby (credits: HenrikoMagnifico, M-1): HD "
-            "textures for the HUD, the menus and TopScreen. Licensed CC BY-NC-ND 4.0: TriAevum "
-            "does not distribute it. Forge downloads the author's original archive from "
-            "GameBanana, verifies it and keeps it in your private data folder.");
-        ImGui::BeginDisabled();
-        ImGui::Button("Download HD textures");
+            "textures for the HUD, the menus and TopScreen, in the game language you choose here or "
+            "in game. Licensed CC BY-NC-ND 4.0: TriAevum does not distribute it. Forge downloads the "
+            "author's original archive from GameBanana, verifies it and keeps it in your private data "
+            "folder. If the download does not work, send oot3d_vanilla_ui_hud_32.zip from the mod page "
+            "to /data/triaevum/forge/ over FTP.");
+        const bool needed = pack != nullptr && !screen.TexturesPrepared;
+        ImGui::BeginDisabled(running || !needed || screen.TextureArchive.has_value());
+        if (ImGui::Button("Download HD textures")) {
+            screen.LaunchError.clear();
+            job.Start({std::nullopt, true, true});
+        }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::TextDisabled("Not available yet on PS4: coming in a later version.");
+        ImGui::BeginDisabled(running);
+        if (ImGui::Button("Look for the .zip")) screen.LastScan = {};
+        ImGui::EndDisabled();
+        ImGui::BeginDisabled(running || pack == nullptr);
+        if (ImGui::Checkbox("Download the HD textures with \"Prepare and install\" when they are not stored yet",
+                            &screen.DownloadWithPrepare)) {
+            SetDownloadTexturesWithPrepare(screen.DownloadWithPrepare);
+        }
+        ImGui::EndDisabled();
+        if (pack == nullptr) {
+            ImGui::TextDisabled("The HD UI texture catalog is missing from this TriAevum PKG.");
+        } else if (screen.TexturesPrepared) {
+            ImGui::TextDisabled("Installed: the game uses the HD textures.");
+        } else if (screen.TextureArchive) {
+            ImGui::TextDisabled("Stored (%s): \"Prepare and install\" installs them.",
+                                screen.TextureArchive->c_str());
+        } else {
+            ImGui::TextDisabled("Not stored yet: the HD textures (451 MB) are downloaded when you prepare "
+                                "and install the title. Without them the game uses the native textures.");
+        }
     });
     Section("Optional mods", line * 6.6F, [&] {
         ImGui::TextWrapped(
@@ -456,10 +599,16 @@ void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
     const float buttonWidth = width * 0.22F;
     ImGui::SetCursorPosX(width - 2 * buttonWidth - ImGui::GetStyle().ItemSpacing.x -
                          ImGui::GetStyle().WindowPadding.x);
-    ImGui::BeginDisabled(running || !screen.Rom);
+    // Prepare the ROM when it is new (or there is no game), and the HD
+    // textures when they are stored or may be downloaded.
+    const bool romWork = screen.Rom && (!GameReady() || !RomPrepared(*screen.Rom));
+    const bool textureWork = pack != nullptr && !screen.TexturesPrepared &&
+                             (screen.TextureArchive || screen.DownloadWithPrepare);
+    ImGui::BeginDisabled(running || (!romWork && !(GameReady() && textureWork)));
     if (ImGui::Button("Prepare and install", ImVec2(buttonWidth, 0))) {
         screen.LaunchError.clear();
-        job.Start(*screen.Rom);
+        screen.DeleteOffered = false;
+        job.Start({romWork ? screen.Rom : std::nullopt, textureWork, screen.DownloadWithPrepare});
     }
     if (screen.Rom && !GameReady()) ImGui::SetItemDefaultFocus();
     ImGui::EndDisabled();
@@ -471,7 +620,7 @@ void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
 
     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - line - ImGui::GetStyle().WindowPadding.y);
     ImGui::TextDisabled("Cross: select    D-pad: move    Hold L1+R1 when starting TriAevum to open Forge again");
-    if (succeeded) DrawDeletePrompt(screen, width);
+    if (succeeded && view.RomPrepared) DrawDeletePrompt(screen, width);
     ImGui::End();
 }
 
@@ -531,7 +680,7 @@ void RunForgeScreen() {
         return;
     }
 
-    PrepareJob job;
+    ForgeJob job;
     ScreenState screen;
     for (;;) {
         Fast::gOrbisFrameHeartbeat.fetch_add(1, std::memory_order_relaxed);
@@ -626,6 +775,17 @@ bool OrbisPrepareGame() {
     }
     RunForgeScreen();
     return false;
+}
+
+std::vector<std::string> OrbisForgeLaunchArguments() {
+    std::vector<std::string> arguments;
+    const forge::UiTexturePack* pack = TexturePack();
+    if (pack != nullptr && forge::UiTexturePackPrepared(*pack, kData, false)) {
+        arguments = {"--ui-texture-pack", pack->Directory(kData).string(),
+                     "--topscreen-ui-atlas-hd", pack->UiAtlasHd(kData).string()};
+    }
+    std::printf("[forge] HD UI textures: %s\n", arguments.empty() ? "not installed" : "installed");
+    return arguments;
 }
 
 } // namespace Fast

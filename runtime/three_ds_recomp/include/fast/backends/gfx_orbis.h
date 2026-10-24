@@ -9,6 +9,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 struct ImDrawData;
 
@@ -64,6 +66,9 @@ void OrbisProcessInit();
 // to /data/triaevum/forge becomes the game in /data/triaevum/game. False when
 // there is no game to run (the user was told how to provide one).
 bool OrbisPrepareGame();
+// Runtime arguments for what the Forge installed (the HD UI texture pack and
+// its TopScreen atlas), appended to the PS4 launch arguments.
+std::vector<std::string> OrbisForgeLaunchArguments();
 
 // The game's busy threads ("main", "render", "pica plan") register: each is
 // kept on its cores of the CPU's first cluster, and the sampling profiler

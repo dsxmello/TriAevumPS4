@@ -99,3 +99,30 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
 - Confirmado no console (Daniel): L1+R1 abre o Forge, o controle navega a
   tela, a preparação conclui, o diálogo de apagar a ROM aparece e "Launch
   game" abre o jogo. Fase 1 concluída.
+
+## 1.37 — fase 2: texturas HD (Vanilla UI/HUD 3.2)
+
+- `src/forge/forge_textures.{h,cpp}`: port de `ui_texture_pack.py`. O zip do
+  autor é conferido pelo contrato das receitas (451.655.008 bytes,
+  `5ff478db`), só as 76 texturas catalogadas são extraídas (libzip), cada uma
+  conferida por tamanho e SHA-256 em disco, no layout do Forge do PC
+  (`/data/triaevum/mods/ui-textures/vanilla_ui_hud-3.2/{common,languages}`,
+  `source.json`). O catálogo (`/app0/forge/ui_texture_pack.json`) é gerado no
+  build por `tools/forge_catalogs.py` a partir do `VANILLA_UI_HUD` do Forge
+  do PC. Teste no PC (`FORGE_TEXTURES_ZIP=... tools/test-forge-host.sh`):
+  76 de 76 arquivos idênticos ao pack do Forge do PC.
+- `src/ps4_forge_net.cpp`: download por `libSceHttp` (redirecionamentos
+  seguidos: gamebanana.com/dl -> files -> filecache), conferido por tamanho e
+  SHA-256 antes de ficar com o arquivo. Tenta com verificação TLS; se o
+  repositório de certificados do console recusar o servidor (erros
+  0x8095xxxx/0x804350xx), repete sem ela: o SHA-256 é o que prova o arquivo.
+  Vai para `/data/triaevum/downloads/`; um zip mandado por FTP para
+  `/data/triaevum/forge/` também serve.
+- Tela: seção HD como a do PC ("Download HD textures", "Look for the .zip",
+  checkbox "baixar com Prepare and install", ligado por padrão, em
+  `/data/triaevum/config/forge.json`) e status (instalado / guardado / não
+  guardado). "Prepare and install" faz a ROM quando é nova e as texturas
+  quando estão guardadas ou podem ser baixadas, em passos.
+- Jogo: com o pack pronto, `--ui-texture-pack` e `--topscreen-ui-atlas-hd`
+  (o atlas HD do pack) entram nos argumentos do PS4
+  (`Fast::OrbisForgeLaunchArguments`).

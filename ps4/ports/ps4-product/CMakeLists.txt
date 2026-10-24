@@ -43,7 +43,7 @@ include(${DOLPHINPS4}/toolchain/ps4-love-style.cmake)
 # compiled library and the third-party headers of this build root. fmt 10
 # (bundled with spdlog) trips clang's consteval checks; its runtime-checked
 # format strings are what the desktop gets with MSVC anyway.
-set(TRIAEVUM_PS4_BUILD_VERSION "1.36")
+set(TRIAEVUM_PS4_BUILD_VERSION "1.37")
 add_compile_definitions(TRIAEVUM_PS4_HOST=1 SPDLOG_COMPILED_LIB=1 FMT_CONSTEVAL=)
 include_directories(SYSTEM
     "${SPDLOG_ROOT}/include"
@@ -146,15 +146,17 @@ add_library(ps4_platform OBJECT
     src/gfx_orbis_rendering.cpp
     # The console Forge (src/ps4_forge.cpp; portable core in src/forge).
     src/ps4_forge.cpp
+    src/ps4_forge_net.cpp
     src/forge/forge_core.cpp
     src/forge/forge_sha256.cpp
+    src/forge/forge_textures.cpp
     "${PS4_VK_GAME_SRC}/ps4_vk_pica_backend.cpp"
     "${PS4_DEPS}/imgui/backends/imgui_impl_vulkan.cpp")
 target_compile_definitions(ps4_platform PRIVATE ${tri_oot3d_native_game_DEFINES}
     TRIAEVUM_PS4_BUILD_VERSION="${TRIAEVUM_PS4_BUILD_VERSION}"
     IMGUI_IMPL_VULKAN_NO_PROTOTYPES=1)
 target_include_directories(ps4_platform PRIVATE
-    src "${PS4_VK_GAME_SRC}" "${PS4_VK_GAME_SRC}/../third_party"
+    src "${PS4_VK_GAME_SRC}" "${PS4_VK_GAME_SRC}/../third_party" "${PS4_SYSROOT}/libzip/include"
     ${tri_oot3d_native_game_INCLUDES}
     ${tri_three_ds_recomp_runtime_INCLUDES}
     "${PS4_DEPS}/imgui" "${PS4_DEPS}/imgui/backends")
@@ -192,7 +194,8 @@ target_link_libraries(triaevum_product PRIVATE
     "${PS4_SYSROOT}/glslang/lib/libglslang.a"
     "${PS4_SDL2}/lib/libSDL2.a"
     "${PS4_SYSROOT}/libzip/lib/libzip.a"
-    z SceSysmodule SceSystemService SceUserService SceVideoOut ScePad SceAudioOut pthread)
+    z SceSysmodule SceSystemService SceUserService SceVideoOut ScePad SceAudioOut
+    SceNet SceSsl SceHttp pthread)
 # The kernel's path calls only take absolute paths (src/ps4_paths.cpp).
 target_link_options(triaevum_product PRIVATE
     "LINKER:--wrap=open,--wrap=stat,--wrap=lstat,--wrap=mkdir,--wrap=rmdir"

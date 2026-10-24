@@ -289,9 +289,14 @@ int main(int argc, char** argv) {
             const_cast<char*>("--width"),
             const_cast<char*>("1920"),
         });
+        static std::vector<std::string> forgeArguments;
+        static std::vector<char*> ps4Arguments;
         if (argc <= 1) {
-            argc = static_cast<int>(homebrewArguments.size());
-            argv = homebrewArguments.data();
+            forgeArguments = Fast::OrbisForgeLaunchArguments();
+            ps4Arguments.assign(homebrewArguments.begin(), homebrewArguments.end());
+            for (auto& argument : forgeArguments) ps4Arguments.push_back(argument.data());
+            argc = static_cast<int>(ps4Arguments.size());
+            argv = ps4Arguments.data();
         }
 #else
         preparedArguments = PrepareNativeGameArguments(argc, argv);
