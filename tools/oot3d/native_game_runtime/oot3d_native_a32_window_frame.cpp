@@ -829,7 +829,7 @@ bool NativeA32WindowSession::RunFrame() {
     static uint64_t windowVblanks = vblankCount;
     const auto now = std::chrono::steady_clock::now();
     const double seconds = std::chrono::duration<double>(now - windowStart).count();
-    if (seconds >= 5.0) {
+    if (seconds >= 5.0 && Fast::gOrbisDiagnosticLogs.load(std::memory_order_relaxed)) {
       const double hostFrames = static_cast<double>(runFrameCount - windowHostFrames);
       const auto ms = [&](double current, double previous) {
         return hostFrames > 0.0 ? (current - previous) * 1000.0 / hostFrames : 0.0;

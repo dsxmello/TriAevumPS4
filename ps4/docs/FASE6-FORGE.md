@@ -187,3 +187,26 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
   é 1920x1080, e 4096x4096 custava 64 MiB cada; o envio vai em faixas de
   16 MiB, cada uma com sua reserva no ring. O "Open TriAevum Forge" apaga o
   marcador antes de reiniciar.
+
+## 1.42 no console / 1.43 (2026-10-24)
+
+- 1.42: algumas texturas HD aparecem e somem; no HUD do TopScreen os
+  botões C viram quadrados cinza-claro opacos (foto do Daniel). Sem erros
+  no log. Orientação descartada (o runtime entrega no layout do decoder
+  nativo, o mesmo do PS4); o cache do runtime não tem descarte por memória.
+  Suspeita: alfa perdido em algum formato/caminho. Pendente.
+- 1.43:
+  - Configurações do console em `/data/triaevum/config/forge.json`
+    (leitura e escrita por chave; antes cada gravação apagava as outras):
+    `hd_textures_enabled` e `logs_enabled` (ambas ligadas por padrão),
+    além de `download_hd_textures_with_prepare`.
+  - Menu do jogo, "Mods and textures": "HD UI textures" (só com o pack
+    instalado) e "Diagnostic logs", valendo no próximo início; a tela do
+    Forge tem os mesmos checkboxes. Com as texturas HD desligadas, o jogo não
+    recebe `--ui-texture-pack`/`--topscreen-ui-atlas-hd`.
+  - Logs desligados: `OrbisProcessInit` lê a chave antes de abrir o boot
+    log e manda stdout/stderr para `/dev/null` (Mesa incluído); as linhas
+    periódicas `perf`/`game`/`geometry cache` não são montadas
+    (`Fast::gOrbisDiagnosticLogs`).
+  - Diagnóstico: cada substituição HD aparece uma vez no boot log (arquivo
+    do pack, tamanho e formato da textura nativa, tamanho final).

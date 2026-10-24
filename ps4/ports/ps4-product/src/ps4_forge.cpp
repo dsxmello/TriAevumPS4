@@ -170,27 +170,45 @@ std::optional<fs::path> StoredTextureArchive(const forge::UiTexturePack& pack) {
     return forge::FindUiTextureArchive(pack, {kDrop, kDownloads});
 }
 
-// The desktop Forge's "Download the HD textures with Prepare and install
-// when they are not stored yet" (on by default there too).
-bool DownloadTexturesWithPrepare() {
+// The console's Forge settings (/data/triaevum/config/forge.json):
+//   download_hd_textures_with_prepare  the desktop Forge's checkbox (on)
+//   hd_textures_enabled                the game uses the installed pack (on)
+//   logs_enabled                       boot log and performance lines (on;
+//                                      read by ps4_process_init.cpp)
+nlohmann::json LoadSettings() {
     try {
         const auto bytes = forge::ReadFile(kSettings);
-        return nlohmann::json::parse(bytes.begin(), bytes.end()).value("download_hd_textures_with_prepare", true);
+        auto settings = nlohmann::json::parse(bytes.begin(), bytes.end());
+        if (settings.is_object()) return settings;
     } catch (const std::exception&) {
-        return true;
     }
+    return nlohmann::json::object();
 }
 
-void SetDownloadTexturesWithPrepare(bool enabled) {
+bool Setting(const char* key, bool fallback) {
+    const nlohmann::json settings = LoadSettings();
+    const auto found = settings.find(key);
+    return found != settings.end() && found->is_boolean() ? found->get<bool>() : fallback;
+}
+
+void SetSetting(const char* key, bool value) {
     try {
+        nlohmann::json settings = LoadSettings();
+        settings[key] = value;
         std::error_code error;
         fs::create_directories(fs::path(kSettings).parent_path(), error);
-        forge::WriteFileAtomic(kSettings,
-                               nlohmann::json{{"download_hd_textures_with_prepare", enabled}}.dump(2) + "\n");
+        forge::WriteFileAtomic(kSettings, settings.dump(2) + "\n");
     } catch (const std::exception& failure) {
         triaevum::ps4::ForgeLog("%s\n", failure.what());
     }
 }
+
+bool DownloadTexturesWithPrepare() { return Setting("download_hd_textures_with_prepare", true); }
+void SetDownloadTexturesWithPrepare(bool enabled) {
+    SetSetting("download_hd_textures_with_prepare", enabled);
+}
+bool HdTexturesEnabled() { return Setting("hd_textures_enabled", true); }
+bool LogsEnabled() { return Setting("logs_enabled", true); }
 
 // ---- preparation on a worker thread ------------------------------------------
 
@@ -419,6 +437,8 @@ struct ScreenState {
     bool TexturesPrepared = false;
     std::optional<fs::path> TextureArchive;
     bool DownloadWithPrepare = DownloadTexturesWithPrepare();
+    bool UseHdTextures = HdTexturesEnabled();
+    bool Logs = LogsEnabled();
 };
 
 // The ROM is only needed to prepare the game: offer to free its space.
@@ -554,10 +574,16 @@ void DrawForge(ScreenState& screen, ForgeJob& job, ImFont* title) {
             SetDownloadTexturesWithPrepare(screen.DownloadWithPrepare);
         }
         ImGui::EndDisabled();
+        ImGui::BeginDisabled(running || !screen.TexturesPrepared);
+        if (ImGui::Checkbox("Use the HD textures in game", &screen.UseHdTextures)) {
+            SetSetting("hd_textures_enabled", screen.UseHdTextures);
+        }
+        ImGui::EndDisabled();
         if (pack == nullptr) {
             ImGui::TextDisabled("The HD UI texture catalog is missing from this TriAevum PKG.");
         } else if (screen.TexturesPrepared) {
-            ImGui::TextDisabled("Installed: the game uses the HD textures.");
+            ImGui::TextDisabled(screen.UseHdTextures ? "Installed: the game uses the HD textures."
+                                                     : "Installed, turned off: the game uses the native textures.");
         } else if (screen.TextureArchive) {
             ImGui::TextDisabled("Stored (%s): \"Prepare and install\" installs them.",
                                 screen.TextureArchive->c_str());
@@ -580,6 +606,12 @@ void DrawForge(ScreenState& screen, ForgeJob& job, ImFont* title) {
         ImGui::TextDisabled("Not available yet on PS4.");
     });
 
+    ImGui::BeginDisabled(running);
+    if (ImGui::Checkbox("Diagnostic logs (boot log and performance lines; off is a little faster)",
+                        &screen.Logs)) {
+        SetSetting("logs_enabled", screen.Logs);
+    }
+    ImGui::EndDisabled();
     ImGui::Spacing();
     ImGui::Separator();
     if (status.empty()) {
@@ -806,19 +838,37 @@ void OrbisOpenForge() {
 std::string OrbisForgeStatus() {
     const forge::UiTexturePack* pack = TexturePack();
     if (pack == nullptr) return "";
-    return forge::UiTexturePackPrepared(*pack, kData, false)
-               ? pack->Title() + " HD textures: installed."
-               : "HD textures: not installed.";
+    if (!forge::UiTexturePackPrepared(*pack, kData, false)) return "HD textures: not installed.";
+    return pack->Title() + (HdTexturesEnabled() ? " HD textures: installed, on." : " HD textures: installed, off.");
+}
+
+std::vector<OrbisMenuToggle> OrbisForgeToggles() {
+    std::vector<OrbisMenuToggle> toggles;
+    const forge::UiTexturePack* pack = TexturePack();
+    if (pack != nullptr && forge::UiTexturePackPrepared(*pack, kData, false)) {
+        toggles.push_back({"HD UI textures",
+                           pack->Title() + ": HD textures for the HUD, the menus and TopScreen. "
+                           "Takes effect the next time TriAevum starts.",
+                           [] { return HdTexturesEnabled(); },
+                           [](bool on) { SetSetting("hd_textures_enabled", on); }});
+    }
+    toggles.push_back({"Diagnostic logs",
+                       "The boot log (/data/triaevum_boot.log) and the performance lines. Off is a "
+                       "little faster. Takes effect the next time TriAevum starts.",
+                       [] { return LogsEnabled(); },
+                       [](bool on) { SetSetting("logs_enabled", on); }});
+    return toggles;
 }
 
 std::vector<std::string> OrbisForgeLaunchArguments() {
     std::vector<std::string> arguments;
     const forge::UiTexturePack* pack = TexturePack();
-    if (pack != nullptr && forge::UiTexturePackPrepared(*pack, kData, false)) {
+    if (pack != nullptr && HdTexturesEnabled() && forge::UiTexturePackPrepared(*pack, kData, false)) {
         arguments = {"--ui-texture-pack", pack->Directory(kData).string(),
                      "--topscreen-ui-atlas-hd", pack->UiAtlasHd(kData).string()};
     }
-    triaevum::ps4::ForgeLog("HD UI textures: %s\n", arguments.empty() ? "not installed" : "installed");
+    triaevum::ps4::ForgeLog("HD UI textures: %s\n", !arguments.empty() ? "on"
+                            : HdTexturesEnabled() ? "not installed" : "turned off");
     return arguments;
 }
 

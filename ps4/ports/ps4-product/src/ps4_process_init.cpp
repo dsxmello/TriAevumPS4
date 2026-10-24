@@ -70,10 +70,25 @@ void* WatchStalls(void*) {
 
 } // namespace
 
+std::atomic<bool> gOrbisDiagnosticLogs{true};
+
 void OrbisProcessInit() {
+    // The user's choice (ps4_forge.cpp writes it): a plain search, before
+    // anything else runs.
+    if (const int settings = open("/data/triaevum/config/forge.json", O_RDONLY); settings >= 0) {
+        char text[4096] = {};
+        const ssize_t got = read(settings, text, sizeof(text) - 1);
+        close(settings);
+        if (got > 0 && std::strstr(text, "\"logs_enabled\": false") != nullptr) {
+            gOrbisDiagnosticLogs = false;
+        }
+    }
     // stdout/stderr carry the boot log (spdlog's console sink and every
-    // printf diagnostic), the evidence channel since phase 1.
-    const int bootLog = open("/data/triaevum_boot.log", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    // printf diagnostic), the evidence channel since phase 1. With the logs
+    // off they go nowhere (Mesa's and the runtime's lines included).
+    const int bootLog = gOrbisDiagnosticLogs
+                            ? open("/data/triaevum_boot.log", O_WRONLY | O_CREAT | O_TRUNC, 0644)
+                            : open("/dev/null", O_WRONLY);
     if (bootLog >= 0) {
         dup2(bootLog, STDOUT_FILENO);
         dup2(bootLog, STDERR_FILENO);

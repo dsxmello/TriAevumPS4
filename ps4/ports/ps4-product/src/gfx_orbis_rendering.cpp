@@ -201,19 +201,36 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
             }
             return replacement;
         };
+        // Each replacement once in the boot log: which pack file, for which
+        // native texture (diagnosing what the HD pack changes on screen).
+        auto logReplacement = [](const ::Oot3d::Renderer::AzaharTextureResolveResult& result,
+                                 const char* how, uint32_t width, uint32_t height, int format) {
+            static std::unordered_map<uint64_t, bool> logged;
+            if (result.State != ::Oot3d::Renderer::AzaharTextureResolveState::Ready ||
+                !result.Replacement || logged.size() > 512 || !logged.emplace(result.NativeHash, true).second ||
+                !gOrbisDiagnosticLogs.load(std::memory_order_relaxed))
+                return;
+            std::printf("[triaevum] HD texture %s (%s, native %ux%u format %d) -> %ux%u\n",
+                        result.Replacement->SourcePath.filename().c_str(), how, width, height, format,
+                        result.Replacement->Width, result.Replacement->Height);
+        };
         mPica->SetTextureReplacements(
-            [toBackend](const Backend::TextureReplacementRequest& request) {
-                return toBackend(::Oot3d::Renderer::AzaharTexturePackRuntime::Instance().ResolveOrQueue({
+            [toBackend, logReplacement](const Backend::TextureReplacementRequest& request) {
+                const auto result = ::Oot3d::Renderer::AzaharTexturePackRuntime::Instance().ResolveOrQueue({
                     .Width = request.width,
                     .Height = request.height,
                     .NativeFormat = request.nativeFormat,
                     .MipLevel = 0U,
                     .NativeBytes = request.nativeBase,
                     .NativeRgba8 = request.rgba8Base,
-                }));
+                });
+                logReplacement(result, "ready", request.width, request.height, request.nativeFormat);
+                return toBackend(result);
             },
-            [toBackend](uint64_t hash) {
-                return toBackend(::Oot3d::Renderer::AzaharTexturePackRuntime::Instance().PollQueued(hash));
+            [toBackend, logReplacement](uint64_t hash) {
+                const auto result = ::Oot3d::Renderer::AzaharTexturePackRuntime::Instance().PollQueued(hash);
+                logReplacement(result, "loaded", 0U, 0U, -1);
+                return toBackend(result);
             });
         CreateFast3dObjects();
         mInitialized = true;
@@ -645,7 +662,7 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
         ++mPerf.frames;
         const auto now = std::chrono::steady_clock::now();
         const double seconds = std::chrono::duration<double>(now - mPerf.start).count();
-        if (seconds < 5.0) return;
+        if (seconds < 5.0 || !gOrbisDiagnosticLogs.load(std::memory_order_relaxed)) return;
         const auto& stats = mPica->Stats();
         const double frames = mPerf.frames;
         auto perFrame = [&](uint64_t current, uint64_t previous) {

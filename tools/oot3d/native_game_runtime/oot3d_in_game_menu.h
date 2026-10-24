@@ -54,6 +54,14 @@ struct InGameMenuHostInput {
   float PointerWheel = 0.0F;
 };
 
+// An on/off setting the host owns (the PS4's HD textures and logs), shown
+// with the Forge action.
+struct InGameMenuHostToggle {
+  std::string Key;
+  std::string Help;
+  std::function<bool()> Read;
+  std::function<void(bool)> Write;
+};
 struct InGameMenuOwners {
   std::shared_ptr<NativeControlConfigRuntime> Controls;
   // Null unless the TopScreen profile is active: the TopScreen rows then stay out.
@@ -67,6 +75,7 @@ struct InGameMenuOwners {
   std::function<void()> OpenForge;
   // One line on what Forge installed, shown beside that action.
   std::function<std::string()> ForgeStatus;
+  std::vector<InGameMenuHostToggle> HostToggles;
 };
 
 class InGameMenu {

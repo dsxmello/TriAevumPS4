@@ -834,8 +834,22 @@ void InGameMenu::BuildGameTab(Menu::Document &document) {
     tab.Rows.push_back(action("Load last state + settings", "Loads the most recent save state and applies the settings it carries.",
                               SavestateRequestKind::Load, true));
   }
-  if (mOwners.OpenForge) {
+  if (mOwners.OpenForge || !mOwners.HostToggles.empty()) {
     tab.Rows.push_back(Heading("Mods and textures"));
+  }
+  for (const auto &toggle : mOwners.HostToggles) {
+    Row row;
+    row.Key = toggle.Key;
+    row.Kind = RowKind::Toggle;
+    row.Help = toggle.Help;
+    row.Read = [read = toggle.Read] { return read() ? 1 : 0; };
+    row.Write = [write = toggle.Write](int value) {
+      write(value != 0);
+      return WriteResult{"Applies the next time TriAevum starts", false};
+    };
+    tab.Rows.push_back(std::move(row));
+  }
+  if (mOwners.OpenForge) {
     Row row;
     row.Key = "Open TriAevum Forge";
     row.Kind = RowKind::Action;

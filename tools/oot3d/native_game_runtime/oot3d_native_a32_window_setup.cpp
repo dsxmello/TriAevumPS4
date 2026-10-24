@@ -973,7 +973,13 @@ void NativeA32WindowSession::Setup() {
       launch.UiProfile == Oot3dNativeGame::Oot3dUiProfile::TopScreen ? topScreenConfigRuntime : nullptr,
       languageSettings, savestateLibrary, nativeCandidateDispatch.DevFreeCamera, photoMode
 #if defined(__ORBIS__)
-      , [] { Fast::OrbisOpenForge(); }, [] { return Fast::OrbisForgeStatus(); }
+      , [] { Fast::OrbisOpenForge(); }, [] { return Fast::OrbisForgeStatus(); },
+      [] {
+        std::vector<Oot3dNativeGame::InGameMenuHostToggle> toggles;
+        for (auto &toggle : Fast::OrbisForgeToggles())
+          toggles.push_back({toggle.Key, toggle.Help, toggle.Read, toggle.Write});
+        return toggles;
+      }()
 #endif
   });
 #if defined(__SWITCH__)

@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -62,6 +63,11 @@ void OrbisDrawPerformanceOverlay();
 // /data/triaevum_boot.log, chdir to /data/triaevum, the DualShock mapping.
 void OrbisProcessInit();
 
+// Off when the user turned the diagnostic logs off (in-game menu or Forge,
+// /data/triaevum/config/forge.json "logs_enabled"): the boot log goes to
+// /dev/null and the periodic performance lines are not built.
+extern std::atomic<bool> gOrbisDiagnosticLogs;
+
 // The console Forge (ps4 product, src/ps4_forge.cpp): a decrypted ROM sent
 // to /data/triaevum/forge becomes the game in /data/triaevum/game. False when
 // there is no game to run (the user was told how to provide one).
@@ -73,6 +79,15 @@ std::vector<std::string> OrbisForgeLaunchArguments();
 void OrbisOpenForge();
 // One line on what Forge installed (the in-game menu shows it).
 std::string OrbisForgeStatus();
+// The in-game menu's host settings: { name, help, read, write } (written to
+// /data/triaevum/config/forge.json, applied at the next start).
+struct OrbisMenuToggle {
+    std::string Key;
+    std::string Help;
+    std::function<bool()> Read;
+    std::function<void(bool)> Write;
+};
+std::vector<OrbisMenuToggle> OrbisForgeToggles();
 
 // The game's busy threads ("main", "render", "pica plan") register: each is
 // kept on its cores of the CPU's first cluster, and the sampling profiler

@@ -1,6 +1,9 @@
 #include "oot3d_native_pica_submission.h"
 #include "oot3d_cpu_phase_probe.h"
 #include "oot3d_native_pica_transfer.h"
+#if defined(__ORBIS__)
+#include "fast/backends/gfx_orbis.h"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -408,7 +411,7 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
     if ((++calls & 1023U) == 0U) {
       const auto now = std::chrono::steady_clock::now();
       const double seconds = std::chrono::duration<double>(now - windowStart).count();
-      if (seconds >= 5.0) {
+      if (seconds >= 5.0 && Fast::gOrbisDiagnosticLogs.load(std::memory_order_relaxed)) {
         std::fprintf(stderr,
                      "[triaevum] geometry cache: %zu entries, %.1f MiB | per second: %.0f hits,"
                      " %.0f misses, %.2f MiB copied\n",
