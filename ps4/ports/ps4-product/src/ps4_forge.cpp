@@ -581,17 +581,29 @@ bool ForgeRequestedByUser() {
         SDL_PumpEvents();
         SDL_Delay(10);
     }
-    SDL_GameControllerUpdate();
-    bool held = false;
-    for (int index = 0; index < SDL_NumJoysticks() && !held; ++index) {
-        if (!SDL_IsGameController(index)) continue;
-        if (SDL_GameController* pad = SDL_GameControllerOpen(index)) {
-            SDL_GameControllerUpdate();
-            held = SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) &&
-                   SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
-            SDL_GameControllerClose(pad);
-        }
+    // The first states after opening the pad are empty: watch it for up to
+    // a second (the buttons are already held when the app starts).
+    SDL_GameController* pad = nullptr;
+    for (int index = 0; index < SDL_NumJoysticks() && pad == nullptr; ++index) {
+        if (SDL_IsGameController(index)) pad = SDL_GameControllerOpen(index);
     }
+    if (pad == nullptr) {
+        std::printf("[forge] L1+R1: no controller\n");
+        return false;
+    }
+    bool held = false, l1 = false, r1 = false;
+    for (int attempt = 0; attempt < 50 && !held; ++attempt) {
+        SDL_PumpEvents();
+        SDL_GameControllerUpdate();
+        l1 = l1 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+        r1 = r1 || SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+        held = SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) &&
+               SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+        if (!held) SDL_Delay(20);
+    }
+    std::printf("[forge] L1+R1: %s (L1 %s, R1 %s)\n", held ? "held" : "not held",
+                l1 ? "seen" : "not seen", r1 ? "seen" : "not seen");
+    SDL_GameControllerClose(pad);
     return held;
 }
 
