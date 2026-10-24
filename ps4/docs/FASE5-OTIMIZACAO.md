@@ -290,3 +290,29 @@ interpolado para 60; GPU em 4K: 14–17 ms).
   com 2+ amostras e no máximo 1500, o que escondia ~2/3 da thread do jogo.
   Para achar as funções do jogo mais quentes e o peso dos acessos à memória
   dentro delas.
+
+## Medição da 1.48 com perfil completo (2026-10-24)
+
+- Sessão até a Árvore Deku. Interiores 42 fps, médias (~185 draws) 26 fps.
+- Áreas pesadas (>= 140 draws), thread do jogo: código gerado 51% em 1415
+  funções, muito espalhado (top 10 = 10%, top 50 = 23%, top 200 = 37%):
+  reescrever poucas funções à mão rende pouco.
+- Classificação por instrução das amostras nas 300 funções geradas mais
+  quentes (41% da thread): leituras/escritas dos registradores do guest em
+  memória (`state.R`) 36%, acessos à memória do guest 33%, entrada de bloco
+  16%, cálculo/desvios 13%, chamadas 2%.
+
+## 1.49 — registradores do guest em locais
+
+- Os registradores eram referências para `state.R[]`: cada instrução do
+  guest ia à memória, e depois de cada escrita na memória do guest (ponteiro
+  de byte, que pode apelidar tudo) o compilador relia todos. O modo
+  `local_state` do gerador os mantém em locais e grava/relê nos pontos de
+  saída; o comentário do upstream diz que no desktop isso piorou o
+  workload, aqui a medição decide.
+- `ps4/tools/aot_promote_registers.py` aplica a forma do `local_state` aos
+  shards já gerados (os lambdas `commitState`/`reloadState`, já chamados em
+  todo return, chamada direta/externa/indireta e hook, passam a gravar e
+  reler): 12.414 de 12.439 funções. Antes dela: `title-content/aot-cpp.batched`.
+  Regenerar no futuro: `generate(..., local_state=True)`.
+- eboot 206 -> 244 MB (gravação/releitura em cada saída e chamada).
