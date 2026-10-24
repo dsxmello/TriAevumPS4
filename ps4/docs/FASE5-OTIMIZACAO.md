@@ -316,3 +316,19 @@ interpolado para 60; GPU em 4K: 14–17 ms).
   reler): 12.414 de 12.439 funções. Antes dela: `title-content/aot-cpp.batched`.
   Regenerar no futuro: `generate(..., local_state=True)`.
 - eboot 206 -> 244 MB (gravação/releitura em cada saída e chamada).
+
+## Medição da 1.49 (2026-10-24)
+
+- Pior: interiores 42,2 -> 32,4 fps, médias 25,6 -> 22,1 fps. Revertido aos
+  shards `aot-cpp.batched`.
+
+## `__restrict` no state (não enviado)
+
+- `ps4/tools/aot_restrict_state.py` marca `Oot3dAotArchitecturalState&
+  __restrict state` nos shards (54.999 parâmetros); o gerador já emite assim.
+- Sem efeito: compilado com e sem, o shard 000 tem 9.956 contra 9.961
+  leituras e 8.400 contra 8.407 escritas. O `state` escapa (é passado aos
+  hooks de entrada de bloco e às chamadas), então a análise de alias não
+  pode usar o `noalias`; o assembly lê e grava `state.R[]` a cada instrução
+  do guest (`addl $-44, 52(%r14)`), não só depois das escritas na memória.
+  A versão não foi para o console: o código é praticamente o da 1.48.

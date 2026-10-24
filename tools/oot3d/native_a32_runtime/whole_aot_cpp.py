@@ -1889,10 +1889,14 @@ def _render_function(
     # Broad residency regressed the matched full-title workload. Keep local
     # state only at the existing explicitly selected callback-free boundaries.
     local_state = local_state or callback_free or memory_view
+    # The state parameter is __restrict: within a call it is reached only
+    # through `state` (its own copy of the registers; callees receive it), so
+    # guest memory stores, byte copies that may alias anything, need not
+    # reload the registers (ps4/tools/aot_restrict_state.py).
     lines = [
         f"Oot3dWholeAotFlow Execute_{symbol}(",
         "    Oot3dWholeAotFrame& frame, Oot3dWholeAotContext& context,",
-        "    Oot3dAotArchitecturalState& state,",
+        "    Oot3dAotArchitecturalState& __restrict state,",
         "    uint32_t entryPc) {",
     ]
     lines.extend(
@@ -2092,7 +2096,7 @@ def _render_region_function(
     lines += [
         f"Oot3dWholeAotFlow Execute_{symbol}(",
         "    Oot3dWholeAotFrame& frame, Oot3dWholeAotContext& context,",
-        "    Oot3dAotArchitecturalState& state, uint32_t entryPc) {",
+        "    Oot3dAotArchitecturalState& __restrict state, uint32_t entryPc) {",
         "    bool observed = context.BlockEntry != nullptr;",
         "    if (observed && context.BlockEntryPcCount != 0U) {",
         "        const auto end = context.BlockEntryPcs + context.BlockEntryPcCount;",
@@ -2167,7 +2171,7 @@ def _render_source(
         "",
         "Oot3dWholeAotFlow ExecuteOot3dWholeAotIndirect(",
         "    uint32_t pc, Oot3dWholeAotFrame& frame,",
-        "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& state);",
+        "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& __restrict state);",
         "",
     ]
     if memory_entries:
@@ -2177,7 +2181,7 @@ def _render_source(
             [
                 f"Oot3dWholeAotFlow Execute_{function_symbols[function.entry]}(",
                 "    Oot3dWholeAotFrame& frame, Oot3dWholeAotContext& context,",
-                "    Oot3dAotArchitecturalState& state,",
+                "    Oot3dAotArchitecturalState& __restrict state,",
                 "    uint32_t entryPc);",
             ]
         )
@@ -2190,7 +2194,7 @@ def _render_source(
         [
             "Oot3dWholeAotFlow ExecuteOot3dWholeAotIndirect(",
             "    uint32_t pc, Oot3dWholeAotFrame& frame,",
-            "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& state) {",
+            "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& __restrict state) {",
             "    switch (pc) {",
         ]
     )
@@ -2339,7 +2343,7 @@ def _render_internal_header() -> str:
         "",
         "Oot3dWholeAotFlow ExecuteOot3dWholeAotIndirect(",
         "    uint32_t pc, Oot3dWholeAotFrame& frame,",
-        "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& state);",
+        "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& __restrict state);",
         "",
     ]
     lines.extend(["} // namespace Oot3dNativeGame::GeneratedWholeAot", ""])
@@ -2354,7 +2358,7 @@ def _render_function_declarations(functions: Iterable[Function]) -> list[str]:
             [
                 f"Oot3dWholeAotFlow Execute_{symbol}(",
                 "    Oot3dWholeAotFrame& frame, Oot3dWholeAotContext& context,",
-                "    Oot3dAotArchitecturalState& state,",
+                "    Oot3dAotArchitecturalState& __restrict state,",
                 "    uint32_t entryPc);",
             ]
         )
@@ -2488,7 +2492,7 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
             "",
             "Oot3dWholeAotFlow ExecuteOot3dWholeAotIndirect(",
             "    uint32_t pc, Oot3dWholeAotFrame& frame,",
-            "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& state) {",
+            "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& __restrict state) {",
             "    const DispatchEntry* entry = FindDispatchEntry(pc);",
             "    if (entry == nullptr) {",
             "        return Oot3dAotCallExternal(context, pc, frame, state);",
@@ -2767,7 +2771,7 @@ def _existing_shard_assignments(
     pattern = re.compile(
         r"^Oot3dWholeAotFlow Execute_.*_([0-9A-F]{8})\(\n"
         r"\s+Oot3dWholeAotFrame& frame, Oot3dWholeAotContext& context,\n"
-        r"(?:\s+Oot3dAotArchitecturalState& state,\n)?"
+        r"(?:\s+Oot3dAotArchitecturalState&(?: __restrict)? state,\n)?"
         r"\s+uint32_t entryPc\) \{$",
         re.MULTILINE,
     )
