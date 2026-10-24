@@ -73,6 +73,13 @@ class NativeA32UnobservedMemory final {
         return mMemory.WriteFast<T>(address, value, fault);
     }
 
+    // The batched LDM/STM paths of generated code: a region keeps its
+    // per-word accesses (they count its writes), so these always decline.
+    template <size_t N>
+    OOT3D_REGION_INLINE bool ReadWordsFast(uint32_t, uint32_t (&)[N]) noexcept { return false; }
+    template <size_t N>
+    OOT3D_REGION_INLINE bool WriteWordsFast(uint32_t, const uint32_t (&)[N]) noexcept { return false; }
+
     // A proven, nonaliasing carried-word copy loop. Validate its lookahead as
     // well as the stores; retain instruction order in the scalar fallback.
     bool CopyPairs(uint32_t& source, uint32_t& destination, uint32_t& count,

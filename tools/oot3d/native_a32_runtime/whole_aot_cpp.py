@@ -1074,11 +1074,17 @@ def _emit_block_transfer(item: Instruction) -> list[str]:
         first = f"{_reg(rn)} - {adjustment}U"
         updated = f"{_reg(rn)} - {byte_count}U"
     body = [f"const uint32_t firstAddress = {first};"]
+    # Two or more words go through one page lookup (ReadWordsFast /
+    # WriteWordsFast) when they share a fast page; the per-word code below
+    # remains the exact path otherwise (ps4/tools/aot_batch_block_transfers.py
+    # applies the same shape to already generated shards).
+    batched = len(registers) >= 2
     if load:
+        per_word = []
         for offset, register in enumerate(registers):
-            body.extend(
+            body.append(f"uint32_t value{register} = 0;")
+            per_word.extend(
                 [
-                    f"uint32_t value{register} = 0;",
                     f"if (!context.Memory.ReadFast<uint32_t>(",
                     f"        firstAddress + {offset * 4}U, &value{register})) {{",
                     f"    return Oot3dAotMemoryFault(context, 0x{pc:08X}U,",
@@ -1086,12 +1092,23 @@ def _emit_block_transfer(item: Instruction) -> list[str]:
                     "}",
                 ]
             )
+        if batched:
+            body.extend(["{", f"    uint32_t words[{len(registers)}];",
+                         "    if (context.Memory.ReadWordsFast(firstAddress, words)) {"])
+            body.extend(f"        value{register} = words[{index}];"
+                        for index, register in enumerate(registers))
+            body.append("    } else {")
+            body.extend("        " + line for line in per_word)
+            body.extend(["    }", "}"])
+        else:
+            body.extend(per_word)
         for register in registers:
             if register != 15:
                 body.append(f"{_reg(register)} = value{register};")
     else:
+        per_word = []
         for offset, register in enumerate(registers):
-            body.extend(
+            per_word.extend(
                 [
                     "if (!context.Memory.WriteFast<uint32_t>(",
                     f"        firstAddress + {offset * 4}U, {_reg(register, pc)})) {{",
@@ -1100,6 +1117,14 @@ def _emit_block_transfer(item: Instruction) -> list[str]:
                     "}",
                 ]
             )
+        if batched:
+            values = ", ".join(_reg(register, pc) for register in registers)
+            body.extend(["{", f"    const uint32_t words[{len(registers)}] = {{{values}}};",
+                         "    if (!context.Memory.WriteWordsFast(firstAddress, words)) {"])
+            body.extend("        " + line for line in per_word)
+            body.extend(["    }", "}"])
+        else:
+            body.extend(per_word)
     if writeback:
         body.append(f"{_reg(rn)} = {updated};")
     if load and 15 in registers:
@@ -1999,6 +2024,8 @@ def _render_function(
         if memory_view:
             line = line.replace("context.Memory.ReadFast<", "regionMemory.ReadFast<")
             line = line.replace("context.Memory.WriteFast<", "regionMemory.WriteFast<")
+            line = line.replace("context.Memory.ReadWordsFast(", "regionMemory.ReadWordsFast(")
+            line = line.replace("context.Memory.WriteWordsFast(", "regionMemory.WriteWordsFast(")
         for helper in promoted_helpers:
             line = line.replace(f"{helper}(frame,", f"{helper}(state,")
         line = line.replace(

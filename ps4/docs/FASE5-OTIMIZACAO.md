@@ -246,3 +246,29 @@ interpolado para 60; GPU em 4K: 14–17 ms).
   da GPU.
 - Estimativa nos interiores: ~28 ms (CPU+GPU em série) -> ~17 ms (o maior
   dos dois); o limite passa a ser a thread do jogo.
+
+## Medição da 1.46 (2026-10-24)
+
+- Interiores: 29,3 -> **35,9** quadros apresentados/s (picos de 41); espera
+  pela GPU por quadro 16,2 -> 1,5 ms; thread do jogo 28,1 -> 22,9 ms por
+  quadro do host. A thread de render passa 55% esperando trabalho: o limite
+  agora é a thread do jogo (sessão sem vila).
+- mem* na thread do jogo: construtor de move do plano de draw 2,2%,
+  realocação do vetor de planos 0,5%.
+
+## 1.47 — plano menor e LDM/STM em lote no AOT
+
+- `Oot3dPicaVulkanDrawPlan::UberFragmentShader` vira só identidade
+  (`StateKey`, `SourceIdentity`, `Hooks`): os uniforms (com a tabela de
+  neblina e a iluminação) e o `Source` do shader uber nunca eram lidos. Cópia
+  por move: ~14,6 KB -> ~8,4 KB.
+- Item 8, LDM/STM: `NativeA32Memory::ReadWordsFast`/`WriteWordsFast<N>` (uma
+  busca de página e, na escrita, um passo de geração de N, o mesmo estado de
+  N `WriteFast`; recusam em página lenta, divisa de página ou trace;
+  `NativeA32UnobservedMemory` sempre recusa). O gerador
+  (`whole_aot_cpp.py _emit_block_transfer`) emite o lote para 2+ palavras
+  com o código por palavra como fallback; `ps4/tools/aot_batch_block_transfers.py`
+  aplica o mesmo formato aos shards já gerados (`title-content/aot-cpp`;
+  originais em `title-content/aot-cpp.orig`): 18.595 LDM e 18.220 STM,
+  166.262 palavras, 37% dos acessos estáticos à memória do código gerado.
+  Idempotente.

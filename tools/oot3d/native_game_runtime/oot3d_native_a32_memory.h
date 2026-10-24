@@ -289,6 +289,31 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
         std::memcpy(bytes.data(), page->Read + (address & PageMask), bytes.size());
         return true;
     }
+    // A32 LDM/STM in generated code: N consecutive words on one fast page
+    // take one page lookup, and a store one generation step of N - the
+    // state N WriteFast calls leave (a step landing on generation 0 still
+    // invalidates the range versions). False, with nothing read or written,
+    // sends the caller to its per-word path (page boundaries, slow pages,
+    // traced writes keep their exact behavior and faults).
+    template <size_t N>
+    OOT3D_MEMORY_FAST_PATH bool ReadWordsFast(uint32_t address, uint32_t (&values)[N]) const noexcept {
+        const FastPage* page = FastPageFor(address, N * 4U);
+        if (mTraceWriteFingerprint || page == nullptr || page->Read == nullptr) return false;
+        std::memcpy(values, page->Read + (address & PageMask), N * 4U);
+        return true;
+    }
+    template <size_t N>
+    OOT3D_MEMORY_FAST_PATH bool WriteWordsFast(uint32_t address, const uint32_t (&values)[N]) noexcept {
+        FastPage* page = const_cast<FastPage*>(FastPageFor(address, N * 4U));
+        if (mTraceWriteFingerprint || page == nullptr || page->Write == nullptr) return false;
+        std::memcpy(page->Write + (address & PageMask), values, N * 4U);
+        const uint64_t before = CurrentRangeGeneration();
+        mWriteGeneration += N;
+        page->WriteGeneration = CurrentRangeGeneration();
+        if (uint64_t{0} - before - 1U < N) [[unlikely]] mRangeVersionsValid = false;
+        return true;
+    }
+
     bool WriteBytesFast(uint32_t address, std::span<const uint8_t> bytes) noexcept {
         FastPage* page = const_cast<FastPage*>(FastPageFor(address, bytes.size()));
         if (mTraceWriteFingerprint || page == nullptr || page->Write == nullptr) {

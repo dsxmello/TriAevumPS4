@@ -95,7 +95,15 @@ struct Oot3dPicaVulkanDrawPlan {
     std::shared_ptr<const std::string> SharedFragmentShaderSource;
     // The parametric program of the same draw (hybrid preparation); no source
     // when the draw has none or the specialized program is already parametric.
-    Oot3dPicaGeneratedFragmentShader UberFragmentShader;
+    // Only its identity: the source is SharedUberFragmentShaderSource and the
+    // uniforms are FragmentShader's (a full generated shader here carried
+    // kilobytes of never-read uniforms through every plan move).
+    struct UberFragmentShaderIdentity {
+        uint64_t StateKey = 0;
+        Oot3d::Renderer::PicaShaderSourceIdentity SourceIdentity;
+        Oot3d::Renderer::PicaShaderHookLayout Hooks;
+    };
+    UberFragmentShaderIdentity UberFragmentShader;
     std::shared_ptr<const std::string> SharedUberFragmentShaderSource;
     Oot3dPicaDecodedDrawState State;
     std::vector<Oot3dPicaVulkanVertexBinding> VertexBindings;

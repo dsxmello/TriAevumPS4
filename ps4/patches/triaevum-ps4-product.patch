@@ -862,6 +862,79 @@ index 4bdfc850..a60db74d 100644
      const Result result = F32ToInteger(
          value, true, ControlFromFpscr(fpscr));
      return {result.value, result.flags & kExceptionFlags};
+diff --git a/tools/oot3d/native_a32_runtime/whole_aot_cpp.py b/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
+index 42f991d1..5dff59b6 100644
+--- a/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
++++ b/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
+@@ -1074,11 +1074,17 @@ def _emit_block_transfer(item: Instruction) -> list[str]:
+         first = f"{_reg(rn)} - {adjustment}U"
+         updated = f"{_reg(rn)} - {byte_count}U"
+     body = [f"const uint32_t firstAddress = {first};"]
++    # Two or more words go through one page lookup (ReadWordsFast /
++    # WriteWordsFast) when they share a fast page; the per-word code below
++    # remains the exact path otherwise (ps4/tools/aot_batch_block_transfers.py
++    # applies the same shape to already generated shards).
++    batched = len(registers) >= 2
+     if load:
++        per_word = []
+         for offset, register in enumerate(registers):
+-            body.extend(
++            body.append(f"uint32_t value{register} = 0;")
++            per_word.extend(
+                 [
+-                    f"uint32_t value{register} = 0;",
+                     f"if (!context.Memory.ReadFast<uint32_t>(",
+                     f"        firstAddress + {offset * 4}U, &value{register})) {{",
+                     f"    return Oot3dAotMemoryFault(context, 0x{pc:08X}U,",
+@@ -1086,12 +1092,23 @@ def _emit_block_transfer(item: Instruction) -> list[str]:
+                     "}",
+                 ]
+             )
++        if batched:
++            body.extend(["{", f"    uint32_t words[{len(registers)}];",
++                         "    if (context.Memory.ReadWordsFast(firstAddress, words)) {"])
++            body.extend(f"        value{register} = words[{index}];"
++                        for index, register in enumerate(registers))
++            body.append("    } else {")
++            body.extend("        " + line for line in per_word)
++            body.extend(["    }", "}"])
++        else:
++            body.extend(per_word)
+         for register in registers:
+             if register != 15:
+                 body.append(f"{_reg(register)} = value{register};")
+     else:
++        per_word = []
+         for offset, register in enumerate(registers):
+-            body.extend(
++            per_word.extend(
+                 [
+                     "if (!context.Memory.WriteFast<uint32_t>(",
+                     f"        firstAddress + {offset * 4}U, {_reg(register, pc)})) {{",
+@@ -1100,6 +1117,14 @@ def _emit_block_transfer(item: Instruction) -> list[str]:
+                     "}",
+                 ]
+             )
++        if batched:
++            values = ", ".join(_reg(register, pc) for register in registers)
++            body.extend(["{", f"    const uint32_t words[{len(registers)}] = {{{values}}};",
++                         "    if (!context.Memory.WriteWordsFast(firstAddress, words)) {"])
++            body.extend("        " + line for line in per_word)
++            body.extend(["    }", "}"])
++        else:
++            body.extend(per_word)
+     if writeback:
+         body.append(f"{_reg(rn)} = {updated};")
+     if load and 15 in registers:
+@@ -1999,6 +2024,8 @@ def _render_function(
+         if memory_view:
+             line = line.replace("context.Memory.ReadFast<", "regionMemory.ReadFast<")
+             line = line.replace("context.Memory.WriteFast<", "regionMemory.WriteFast<")
++            line = line.replace("context.Memory.ReadWordsFast(", "regionMemory.ReadWordsFast(")
++            line = line.replace("context.Memory.WriteWordsFast(", "regionMemory.WriteWordsFast(")
+         for helper in promoted_helpers:
+             line = line.replace(f"{helper}(frame,", f"{helper}(state,")
+         line = line.replace(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp
 index 6c029b63..b0d7da0c 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp
@@ -997,7 +1070,7 @@ index 571e4752..eb393c6f 100644
                          submitted = QueueGspInterrupt(
                              memory, static_cast<uint8_t>(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
-index 170d0788..20b67c46 100644
+index 170d0788..8f587768 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
 @@ -19,6 +19,14 @@
@@ -1097,6 +1170,56 @@ index 170d0788..20b67c46 100644
          return WriteSized(address, static_cast<uint8_t>(sizeof(T)), value,
                            faultAddress);
      }
+@@ -261,6 +289,31 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+         std::memcpy(bytes.data(), page->Read + (address & PageMask), bytes.size());
+         return true;
+     }
++    // A32 LDM/STM in generated code: N consecutive words on one fast page
++    // take one page lookup, and a store one generation step of N - the
++    // state N WriteFast calls leave (a step landing on generation 0 still
++    // invalidates the range versions). False, with nothing read or written,
++    // sends the caller to its per-word path (page boundaries, slow pages,
++    // traced writes keep their exact behavior and faults).
++    template <size_t N>
++    OOT3D_MEMORY_FAST_PATH bool ReadWordsFast(uint32_t address, uint32_t (&values)[N]) const noexcept {
++        const FastPage* page = FastPageFor(address, N * 4U);
++        if (mTraceWriteFingerprint || page == nullptr || page->Read == nullptr) return false;
++        std::memcpy(values, page->Read + (address & PageMask), N * 4U);
++        return true;
++    }
++    template <size_t N>
++    OOT3D_MEMORY_FAST_PATH bool WriteWordsFast(uint32_t address, const uint32_t (&values)[N]) noexcept {
++        FastPage* page = const_cast<FastPage*>(FastPageFor(address, N * 4U));
++        if (mTraceWriteFingerprint || page == nullptr || page->Write == nullptr) return false;
++        std::memcpy(page->Write + (address & PageMask), values, N * 4U);
++        const uint64_t before = CurrentRangeGeneration();
++        mWriteGeneration += N;
++        page->WriteGeneration = CurrentRangeGeneration();
++        if (uint64_t{0} - before - 1U < N) [[unlikely]] mRangeVersionsValid = false;
++        return true;
++    }
++
+     bool WriteBytesFast(uint32_t address, std::span<const uint8_t> bytes) noexcept {
+         FastPage* page = const_cast<FastPage*>(FastPageFor(address, bytes.size()));
+         if (mTraceWriteFingerprint || page == nullptr || page->Write == nullptr) {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_region.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_region.h
+index 9aa1fa86..f1d771f5 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_region.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_region.h
+@@ -73,6 +73,13 @@ class NativeA32UnobservedMemory final {
+         return mMemory.WriteFast<T>(address, value, fault);
+     }
+ 
++    // The batched LDM/STM paths of generated code: a region keeps its
++    // per-word accesses (they count its writes), so these always decline.
++    template <size_t N>
++    OOT3D_REGION_INLINE bool ReadWordsFast(uint32_t, uint32_t (&)[N]) noexcept { return false; }
++    template <size_t N>
++    OOT3D_REGION_INLINE bool WriteWordsFast(uint32_t, const uint32_t (&)[N]) noexcept { return false; }
++
+     // A proven, nonaliasing carried-word copy loop. Validate its lookahead as
+     // well as the stores; retain instruction order in the scalar fallback.
+     bool CopyPairs(uint32_t& source, uint32_t& destination, uint32_t& count,
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_process_image.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_process_image.cpp
 index f1a959fb..7d2cc2d0 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_process_image.cpp
@@ -2045,10 +2168,27 @@ index 5a3228f1..d14c4fa3 100644
          shaderCache != nullptr
              ? shaderCache->VertexSources.find(vertexShaderKey)
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.h
-index 3f387455..b0458f4e 100644
+index 3f387455..39fd44f5 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.h
-@@ -114,6 +114,17 @@ struct Oot3dPicaVulkanDrawPlan {
+@@ -95,7 +95,15 @@ struct Oot3dPicaVulkanDrawPlan {
+     std::shared_ptr<const std::string> SharedFragmentShaderSource;
+     // The parametric program of the same draw (hybrid preparation); no source
+     // when the draw has none or the specialized program is already parametric.
+-    Oot3dPicaGeneratedFragmentShader UberFragmentShader;
++    // Only its identity: the source is SharedUberFragmentShaderSource and the
++    // uniforms are FragmentShader's (a full generated shader here carried
++    // kilobytes of never-read uniforms through every plan move).
++    struct UberFragmentShaderIdentity {
++        uint64_t StateKey = 0;
++        Oot3d::Renderer::PicaShaderSourceIdentity SourceIdentity;
++        Oot3d::Renderer::PicaShaderHookLayout Hooks;
++    };
++    UberFragmentShaderIdentity UberFragmentShader;
+     std::shared_ptr<const std::string> SharedUberFragmentShaderSource;
+     Oot3dPicaDecodedDrawState State;
+     std::vector<Oot3dPicaVulkanVertexBinding> VertexBindings;
+@@ -114,6 +122,17 @@ struct Oot3dPicaVulkanDrawPlan {
      uint64_t GeometryIdentity = 0;
      uint64_t GeometryContentVersion = 0;
      bool GeometryIdentityAvailable = false;
