@@ -1386,27 +1386,67 @@ Ps4VkPicaRenderBackend::Impl::Image *Ps4VkPicaRenderBackend::Impl::UploadReplace
         replacement.pending = false;
         return nullptr;
     }
-    const VkDeviceSize bytes = found.rgba8->size();
-    if (!RingReserve(bytes + 16U)) {
-        NoteError("HD texture %ux%u exceeds the upload ring", found.width, found.height);
-        replacement.pending = false;
-        return nullptr;
+    // The scanout is 1920x1080: past 2048 texels a side an HD texture only
+    // costs memory (a 4096x4096 one is 64 MiB) and upload time, so it is
+    // halved with a 2x2 box filter until it fits.
+    constexpr uint32_t kMaxSide = 2048U;
+    uint32_t width = found.width, height = found.height;
+    const std::vector<uint8_t> *pixels = found.rgba8.get();
+    std::vector<uint8_t> reduced;
+    while ((width > kMaxSide || height > kMaxSide) && width > 1U && height > 1U) {
+        const uint32_t w = width / 2U, h = height / 2U;
+        std::vector<uint8_t> next(size_t{w} * h * 4U);
+        const uint8_t *source = pixels->data();
+        for (uint32_t y = 0; y < h; ++y) {
+            const uint8_t *row0 = source + (size_t{y} * 2U) * width * 4U;
+            const uint8_t *row1 = row0 + size_t{width} * 4U;
+            uint8_t *out = next.data() + size_t{y} * w * 4U;
+            for (uint32_t x = 0; x < w; ++x) {
+                for (int c = 0; c < 4; ++c) {
+                    out[x * 4 + c] = static_cast<uint8_t>(
+                        (row0[x * 8 + c] + row0[x * 8 + 4 + c] + row1[x * 8 + c] +
+                         row1[x * 8 + 4 + c] + 2) / 4);
+                }
+            }
+        }
+        reduced = std::move(next);
+        pixels = &reduced;
+        width = w;
+        height = h;
     }
+    const VkDeviceSize bytes = pixels->size();
     Image image;
-    if (!CreateImage(image, found.width, found.height, VK_FORMAT_R8G8B8A8_UNORM,
+    if (!CreateImage(image, width, height, VK_FORMAT_R8G8B8A8_UNORM,
                      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                      VK_IMAGE_ASPECT_COLOR_BIT, true, 1U)) {
         replacement.pending = false;
         return nullptr;
     }
-    const VkDeviceSize offset = RingAlloc(bytes, 16U);
-    std::memcpy(ringPointer + offset, found.rgba8->data(), bytes);
-    VkBufferImageCopy copy{};
-    copy.bufferOffset = offset;
-    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-    copy.imageExtent = {found.width, found.height, 1};
     ToGeneral(uploadCb, image);
-    vk.vkCmdCopyBufferToImage(uploadCb, ring, image.image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+    // HD textures reach 4096x4096 (64 MiB, the whole ring): they go up in
+    // bands of rows, each through its own ring reservation.
+    constexpr VkDeviceSize kBandBytes = 16ULL << 20;
+    const VkDeviceSize rowBytes = VkDeviceSize{width} * 4U;
+    const uint32_t bandRows = static_cast<uint32_t>(std::max<VkDeviceSize>(1U, kBandBytes / rowBytes));
+    for (uint32_t row = 0; row < height; row += bandRows) {
+        const uint32_t rows = std::min(bandRows, height - row);
+        const VkDeviceSize bandBytes = rowBytes * rows;
+        if (!RingReserve(bandBytes + 16U)) {
+            NoteError("HD texture %ux%u: a band exceeds the upload ring", width, height);
+            DestroyImage(image);
+            replacement.pending = false;
+            return nullptr;
+        }
+        const VkDeviceSize offset = RingAlloc(bandBytes, 16U);
+        std::memcpy(ringPointer + offset, pixels->data() + rowBytes * row, bandBytes);
+        VkBufferImageCopy copy{};
+        copy.bufferOffset = offset;
+        copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        copy.imageOffset = {0, static_cast<int32_t>(row), 0};
+        copy.imageExtent = {width, rows, 1};
+        vk.vkCmdCopyBufferToImage(uploadCb, ring, image.image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+        uploadsRecorded = true;
+    }
     uploadsRecorded = true;
     ++stats.textures;
     stats.textureUploadBytes += bytes;

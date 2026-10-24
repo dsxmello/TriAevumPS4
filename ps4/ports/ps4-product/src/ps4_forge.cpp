@@ -783,6 +783,14 @@ bool OrbisPrepareGame() {
 }
 
 void OrbisOpenForge() {
+    // A deliberate restart, not a failed launch: without its launch marker
+    // the next start keeps the display settings (a marker younger than a
+    // minute resets them, oot3d_demo_host_context.cpp ArmLaunchMarker).
+    try {
+        forge::RemoveFile("/data/triaevum/config/TriAevum.json.launching");
+    } catch (const std::exception& error) {
+        triaevum::ps4::ForgeLog("%s\n", error.what());
+    }
     try {
         forge::WriteFileAtomic(kOpenRequest, "in-game menu\n");
     } catch (const std::exception& error) {

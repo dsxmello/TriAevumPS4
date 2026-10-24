@@ -172,3 +172,18 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
   a hora com `localtime`). Sem registro no crash.log.
 - 1.41: `ForgeLog` sem `localtime` (segundos desde a época) e com `fflush`
   a cada linha, para o boot log mostrar até onde o app chegou.
+
+## 1.41 no console / 1.42 (2026-10-24)
+
+- 1.41 abriu normalmente (a falha da 1.40 era o `localtime`) e a
+  substituição de texturas passou a funcionar, mas as maiores falharam:
+  `HD texture 4096x4096 exceeds the upload ring` (64 MiB, o ring inteiro);
+  na falha a substituição era abandonada e o jogo ficava com a original.
+- O "Open TriAevum Forge" reinicia o jogo em segundos: o marcador de
+  lançamento (`TriAevum.json.launching`, vive 1 minuto) fazia o próximo
+  início achar que o anterior tinha falhado e voltar tela, resolução e
+  anti-aliasing aos padrões (`TRIAEVUM_SAFE_PRESENTATION`).
+- 1.42: HD acima de 2048 de lado é reduzida (caixa 2x2) até caber: a saída
+  é 1920x1080, e 4096x4096 custava 64 MiB cada; o envio vai em faixas de
+  16 MiB, cada uma com sua reserva no ring. O "Open TriAevum Forge" apaga o
+  marcador antes de reiniciar.
