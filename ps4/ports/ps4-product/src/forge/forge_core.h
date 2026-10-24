@@ -125,5 +125,11 @@ std::vector<uint8_t> ReadFile(const std::filesystem::path& path);
 void WriteFileAtomic(const std::filesystem::path& path, std::string_view bytes);
 Identity HashFile(const std::filesystem::path& path, const ProgressFn& progress = {},
                   std::string_view stage = {});
+// File removal and copying with absolute paths only: the PS4 SDK has no
+// openat/unlinkat, which std::filesystem::remove_all and copy_file need.
+// RemoveTree refuses relative and shallow paths.
+void RemoveFile(const std::filesystem::path& path);
+void RemoveTree(const std::filesystem::path& root);
+void CopyFile(const std::filesystem::path& from, const std::filesystem::path& to);
 
 } // namespace triaevum::forge

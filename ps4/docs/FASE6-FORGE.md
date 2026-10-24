@@ -48,3 +48,32 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
   `16a6b0aa`, exheader `dbe5fa01`, RomFS `dae62037`), manifesto idêntico
   byte a byte, fingerprint do RomFS idêntico; 6 s no PC. O caminho EUR (sem
   adaptador) não foi testado com ROM real.
+
+## 1.33 no console (2026-10-24)
+
+- Extração e adaptação rodaram (~60 s), mas o RomFS adaptado não bateu
+  (`Incompatible execution data: romfs`). Comparando o arquivo do console com
+  o do PC: só os bytes de `0x234E8` (fim da tabela de arquivos, o último
+  patch gravado por cima da cópia com `pwrite`) até `0x28000` (32 KiB)
+  diferem, com bytes de heap no lugar dos dados. O patch da tabela QM, mais
+  adiante, saiu certo.
+- `std::filesystem::remove_all` não funciona no PS4: o libc++ usa
+  `openat`/`fdopendir`/`unlinkat`, e o `unlinkat` do SDK é um stub. O
+  `.work` (470 MB) ficou para trás.
+
+## 1.34 — tela do Forge e escrita sequencial
+
+- Todo arquivo de saída é escrito uma vez, do começo ao fim (`write`), sem
+  regravar faixas: os patches do RomFS adaptado são aplicados no buffer da
+  cópia. O RomFS extraído é conferido em disco (hash do arquivo escrito).
+- `RemoveTree`/`RemoveFile`/`CopyFile` próprios, só com caminhos absolutos
+  (`RemoveTree` recusa caminhos relativos ou rasos).
+- Tela do Forge (ImGui, layout do Forge do PC: ROM, dados privados, idioma,
+  texturas HD, mods opcionais, status, barra de progresso, "Prepare and
+  install", "Launch game"), com backend Vulkan próprio. Abre com ROM nova,
+  sem jogo, ou segurando L1+R1 ao abrir o app; observa a pasta (a ROM pode
+  chegar por FTP com a tela aberta). A preparação roda numa thread. "Launch
+  game" reinicia o app (`sceSystemServiceLoadExec`) para o jogo subir num
+  processo limpo. Texturas HD, Vanilla+ e idioma aparecem desabilitados
+  ("not available yet on PS4") até as fases 2, 3 e 5.
+- Fonte DroidSans (Apache 2.0, do Dear ImGui vendorizado) em `/app0/forge`.

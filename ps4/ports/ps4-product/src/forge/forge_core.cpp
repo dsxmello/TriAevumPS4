@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -72,14 +73,16 @@ class File final {
         ReadAt(offset, data.data(), size, label);
         return data;
     }
-    void WriteAt(uint64_t offset, const void* data, size_t size) {
+    // Sequential writes: every output file is written front to back once
+    // (1.33 on the console: rewriting a range with pwrite left heap bytes up
+    // to the next 32 KiB boundary after it).
+    void Append(const void* data, size_t size) {
         const auto* in = static_cast<const uint8_t*>(data);
         while (size != 0) {
-            const ssize_t put = ::pwrite(mFd, in, size, static_cast<off_t>(offset));
+            const ssize_t put = ::write(mFd, in, size);
             if (put < 0 && errno == EINTR) continue;
             if (put <= 0) throw ForgeError("cannot write " + mPath + ": " + std::strerror(errno));
             in += put;
-            offset += static_cast<uint64_t>(put);
             size -= static_cast<size_t>(put);
         }
     }
@@ -110,10 +113,18 @@ void CheckedRegion(uint64_t offset, uint64_t size, uint64_t lower, uint64_t uppe
     }
 }
 
-// Copies [offset, offset + size) of `in` to a new file, hashing every byte
-// from `hashFrom` (an absolute offset) and writing from `writeFrom`.
+// Bytes that replace the copied ones at Offset of the output.
+struct Patch {
+    uint64_t Offset = 0;
+    std::vector<uint8_t> Bytes;
+};
+
+// Copies [offset, offset + size) of `in` to a new file in one sequential
+// pass, hashing every byte read and writing from `writeFrom` (an absolute
+// offset of `in`), with `patches` applied to the written bytes.
 Identity CopyRegion(const File& in, uint64_t offset, uint64_t size, const fs::path& destination,
-                    uint64_t writeFrom, const ProgressFn& progress, std::string_view stage) {
+                    uint64_t writeFrom, const ProgressFn& progress, std::string_view stage,
+                    const std::vector<Patch>& patches = {}) {
     File out(destination, O_WRONLY | O_CREAT | O_EXCL);
     Sha256 hash;
     std::vector<uint8_t> buffer(kChunk);
@@ -125,7 +136,16 @@ Identity CopyRegion(const File& in, uint64_t offset, uint64_t size, const fs::pa
         const uint64_t chunkStart = offset + done, chunkEnd = chunkStart + take;
         if (chunkEnd > writeFrom) {
             const uint64_t skip = writeFrom > chunkStart ? writeFrom - chunkStart : 0;
-            out.WriteAt(chunkStart + skip - writeFrom, buffer.data() + skip, take - skip);
+            const uint64_t outStart = chunkStart + skip - writeFrom, outEnd = chunkEnd - writeFrom;
+            for (const Patch& patch : patches) {
+                const uint64_t from = std::max(outStart, patch.Offset);
+                const uint64_t to = std::min(outEnd, patch.Offset + patch.Bytes.size());
+                if (from < to) {
+                    std::memcpy(buffer.data() + skip + (from - outStart),
+                                patch.Bytes.data() + (from - patch.Offset), to - from);
+                }
+            }
+            out.Append(buffer.data() + skip, take - skip);
         }
         done += take;
         if (progress) progress(stage, static_cast<double>(done) / static_cast<double>(size));
@@ -136,7 +156,7 @@ Identity CopyRegion(const File& in, uint64_t offset, uint64_t size, const fs::pa
 
 void WriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
     File out(path, O_WRONLY | O_CREAT | O_TRUNC);
-    out.WriteAt(0, bytes.data(), bytes.size());
+    out.Append(bytes.data(), bytes.size());
     out.Sync();
 }
 
@@ -643,10 +663,54 @@ void WriteFileAtomic(const fs::path& path, std::string_view bytes) {
     const fs::path temporary = path.string() + ".partial";
     {
         File out(temporary, O_WRONLY | O_CREAT | O_TRUNC);
-        out.WriteAt(0, bytes.data(), bytes.size());
+        out.Append(bytes.data(), bytes.size());
         out.Sync();
     }
     fs::rename(temporary, path);
+}
+
+void RemoveFile(const fs::path& path) {
+    if (::unlink(path.c_str()) != 0 && errno != ENOENT) {
+        throw ForgeError("cannot remove " + path.string() + ": " + std::strerror(errno));
+    }
+}
+
+void RemoveTree(const fs::path& root) {
+    // std::filesystem::remove_all works through openat/fdopendir/unlinkat,
+    // which the PS4 SDK does not implement: only absolute-path calls here.
+    const std::string text = root.string();
+    if (text.empty() || text[0] != '/' || root.lexically_normal() != root ||
+        std::count(text.begin(), text.end(), '/') < 3) {
+        throw ForgeError("refusing to remove " + text);
+    }
+    struct stat info {};
+    if (::lstat(text.c_str(), &info) != 0) {
+        if (errno == ENOENT) return;
+        throw ForgeError("cannot inspect " + text + ": " + std::strerror(errno));
+    }
+    if (!S_ISDIR(info.st_mode)) {
+        RemoveFile(root);
+        return;
+    }
+    std::vector<std::string> names;
+    if (DIR* directory = ::opendir(text.c_str())) {
+        while (const dirent* entry = ::readdir(directory)) {
+            const std::string name = entry->d_name;
+            if (name != "." && name != "..") names.push_back(name);
+        }
+        ::closedir(directory);
+    } else {
+        throw ForgeError("cannot list " + text + ": " + std::strerror(errno));
+    }
+    for (const std::string& name : names) RemoveTree(root / name);
+    if (::rmdir(text.c_str()) != 0 && errno != ENOENT) {
+        throw ForgeError("cannot remove " + text + ": " + std::strerror(errno));
+    }
+}
+
+void CopyFile(const fs::path& from, const fs::path& to) {
+    File in(from, O_RDONLY);
+    CopyRegion(in, 0, in.Size(), to, 0, {}, from.string());
 }
 
 Identity HashFile(const fs::path& path, const ProgressFn& progress, std::string_view stage) {
@@ -831,6 +895,10 @@ ExtractedInputs ExtractDecryptedRom(const fs::path& romPath, const fs::path& out
     extracted.CodeId = {code.size(), Sha256::Of(code.data(), code.size())};
     extracted.RomfsId = CopyRegion(rom, layout.RomfsOffset, layout.RomfsSize, extracted.Romfs,
                                    layout.RomfsOffset, progress, "extract");
+    // What reached the disk, not only what was read.
+    if (HashFile(extracted.Romfs, progress, "check") != extracted.RomfsId) {
+        throw ForgeError("the extracted RomFS on disk differs from the ROM (storage write error)");
+    }
     return extracted;
 }
 
@@ -927,7 +995,10 @@ RomfsFingerprint FingerprintRomfs(const fs::path& path, const ProgressFn& progre
 
 json NormalizeUsaRomfs(const fs::path& source, const fs::path& destination,
                        const ProgressFn& progress) {
-    if (fs::exists(destination)) throw ForgeError("normalization requires a new output");
+    struct stat existing {};
+    if (::stat(destination.c_str(), &existing) == 0) {
+        throw ForgeError("normalization requires a new output");
+    }
     File in(source, O_RDONLY);
     Level3 l3 = ParseLevel3(in, false);
     const auto& h = l3.H;
@@ -998,24 +1069,17 @@ json NormalizeUsaRomfs(const fs::path& source, const fs::path& destination,
         fileHashes[bucket] = offset;
     }
 
+    auto table = [](const std::vector<uint32_t>& values) {
+        std::vector<uint8_t> bytes(values.size() * 4);
+        for (size_t i = 0; i < values.size(); ++i) PutU32(bytes.data() + i * 4, values[i]);
+        return bytes;
+    };
+    const std::vector<Patch> patches{{h[1], table(directoryHashes)}, {h[3], l3.Dirs},
+                                     {h[5], table(fileHashes)}, {h[7], l3.Files},
+                                     {qmOffset, qmTable}};
     const fs::path temporary = destination.string() + ".partial";
-    fs::remove(temporary);
-    CopyRegion(in, l3.Base, l3.Size, temporary, l3.Base, progress, "adapt");
-    {
-        File out(temporary, O_WRONLY);
-        auto table = [](const std::vector<uint32_t>& values) {
-            std::vector<uint8_t> bytes(values.size() * 4);
-            for (size_t i = 0; i < values.size(); ++i) PutU32(bytes.data() + i * 4, values[i]);
-            return bytes;
-        };
-        const auto dirTable = table(directoryHashes), fileTable = table(fileHashes);
-        out.WriteAt(h[1], dirTable.data(), dirTable.size());
-        out.WriteAt(h[3], l3.Dirs.data(), l3.Dirs.size());
-        out.WriteAt(h[5], fileTable.data(), fileTable.size());
-        out.WriteAt(h[7], l3.Files.data(), l3.Files.size());
-        out.WriteAt(qmOffset, qmTable.data(), qmTable.size());
-        out.Sync();
-    }
+    RemoveFile(temporary);
+    CopyRegion(in, l3.Base, l3.Size, temporary, l3.Base, progress, "adapt", patches);
     fs::rename(temporary, destination);
     return {{"files", l3.FileRecords.size()}, {"renamed_directories", 2},
             {"renamed_files", renames.size()}, {"qm_records", count},
@@ -1234,8 +1298,7 @@ std::string DumpPythonJson(const json& value) {
 // ---- PrepareTitle ------------------------------------------------------------------
 
 PrepareResult PrepareTitle(const PrepareOptions& options, const ProgressFn& progress) {
-    std::error_code ignored;
-    fs::remove_all(options.Work, ignored);
+    RemoveTree(options.Work);
     const fs::path extract = options.Work / "extract";
     const fs::path inputs = options.Work / "inputs";
     fs::create_directories(extract);
@@ -1288,9 +1351,9 @@ PrepareResult PrepareTitle(const PrepareOptions& options, const ProgressFn& prog
         }
         const auto canonical = ApplyCopyProgram(ReadFile(extracted.Code), program);
         WriteBytes(code, canonical);
-        fs::copy_file(extracted.Exheader, exheader);
+        CopyFile(extracted.Exheader, exheader);
         const json resources = NormalizeUsaRomfs(extracted.Romfs, romfs, progress);
-        fs::remove(extracted.Romfs);
+        RemoveFile(extracted.Romfs);
         result.Code = {canonical.size(), Sha256::Of(canonical.data(), canonical.size())};
         result.Exheader = extracted.ExheaderId;
         result.Romfs = HashFile(romfs, progress, "verify");
@@ -1324,7 +1387,7 @@ PrepareResult PrepareTitle(const PrepareOptions& options, const ProgressFn& prog
             VerifyFamily(r, code, exheader, romfs, "execution", progress);
         }
     }
-    fs::remove_all(extract, ignored);
+    RemoveTree(extract);
 
     const auto codeBytes = ReadFile(code), exheaderBytes = ReadFile(exheader);
     const json manifest = BuildProcessManifest(exheaderBytes, codeBytes, romfs,
@@ -1339,12 +1402,12 @@ PrepareResult PrepareTitle(const PrepareOptions& options, const ProgressFn& prog
     // Replace the game's inputs only now that everything verified.
     fs::create_directories(options.Game);
     const fs::path previous = options.Game / "inputs.previous";
-    fs::remove_all(previous, ignored);
+    RemoveTree(previous);
     if (fs::exists(options.Game / "inputs")) fs::rename(options.Game / "inputs", previous);
     fs::rename(inputs, options.Game / "inputs");
     fs::rename(options.Work / "process-manifest.json", options.Game / "process-manifest.json");
-    fs::remove_all(previous, ignored);
-    fs::remove_all(options.Work, ignored);
+    RemoveTree(previous);
+    RemoveTree(options.Work);
     return result;
 }
 
