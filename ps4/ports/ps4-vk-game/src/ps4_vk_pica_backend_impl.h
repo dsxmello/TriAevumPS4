@@ -241,6 +241,18 @@ struct Ps4VkPicaRenderBackend::Impl {
         }
     };
     std::unordered_map<TextureKey, Image, TextureKeyHash> textures;
+    // HD replacements by native texture (SetTextureReplacements).
+    struct Replacement {
+        uint64_t hash = 0;
+        bool pending = false;
+        bool ready = false;
+        Image image;
+    };
+    std::unordered_map<TextureKey, Replacement, TextureKeyHash> replacements;
+    Ps4VkPicaRenderBackend::ResolveReplacementFn resolveReplacement;
+    Ps4VkPicaRenderBackend::PollReplacementFn pollReplacement;
+    Image *UploadReplacement(const TextureKey &key, Replacement &replacement,
+                             const Ps4VkPicaRenderBackend::TextureReplacement &found);
     std::unordered_map<uint64_t, Image> lightingLuts;
 
     struct Shader {

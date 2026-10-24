@@ -67,6 +67,8 @@ constexpr char kData[] = "/data/triaevum";
 constexpr char kDownloads[] = "/data/triaevum/downloads";
 constexpr char kSettings[] = "/data/triaevum/config/forge.json";
 constexpr char kTextureCatalog[] = "/app0/forge/ui_texture_pack.json";
+// Written by the in-game menu's "Open TriAevum Forge" before it restarts.
+constexpr char kOpenRequest[] = "/data/triaevum/forge/open-forge";
 constexpr int kStateFormat = 1;
 
 // ---- the game and the drop folder -------------------------------------------
@@ -136,9 +138,9 @@ void CopyIfMissing(const fs::path& from, const fs::path& to) {
     fs::create_directories(to.parent_path(), error);
     try {
         forge::CopyFile(from, to);
-        std::printf("[forge] %s -> %s: installed\n", from.c_str(), to.c_str());
+        triaevum::ps4::ForgeLog("%s -> %s: installed\n", from.c_str(), to.c_str());
     } catch (const std::exception& failure) {
-        std::printf("[forge] %s -> %s: %s\n", from.c_str(), to.c_str(), failure.what());
+        triaevum::ps4::ForgeLog("%s -> %s: %s\n", from.c_str(), to.c_str(), failure.what());
     }
 }
 
@@ -156,7 +158,7 @@ const forge::UiTexturePack* TexturePack() {
         try {
             return forge::UiTexturePack::Load(kTextureCatalog);
         } catch (const std::exception& error) {
-            std::printf("[forge] %s: %s\n", kTextureCatalog, error.what());
+            triaevum::ps4::ForgeLog("%s: %s\n", kTextureCatalog, error.what());
             return std::nullopt;
         }
     }();
@@ -186,7 +188,7 @@ void SetDownloadTexturesWithPrepare(bool enabled) {
         forge::WriteFileAtomic(kSettings,
                                nlohmann::json{{"download_hd_textures_with_prepare", enabled}}.dump(2) + "\n");
     } catch (const std::exception& failure) {
-        std::printf("[forge] %s\n", failure.what());
+        triaevum::ps4::ForgeLog("%s\n", failure.what());
     }
 }
 
@@ -303,7 +305,7 @@ class ForgeJob final {
                     break;
                 } catch (const std::exception& error) {
                     failure = error.what();
-                    std::printf("[forge] %s: %s\n", url.c_str(), failure.c_str());
+                    triaevum::ps4::ForgeLog("%s: %s\n", url.c_str(), failure.c_str());
                 }
             }
             if (!archive) throw forge::ForgeError("The HD textures were not downloaded: " + failure);
@@ -330,19 +332,19 @@ class ForgeJob final {
             }
             if (summary.empty()) summary = "Nothing to do: everything is installed.";
             if (GameReady()) summary += " Select \"Launch game\" to play.";
-            std::printf("[forge] %s\n", summary.c_str());
+            triaevum::ps4::ForgeLog("%s\n", summary.c_str());
             std::lock_guard lock(mMutex);
             mStatus = summary;
             mFraction = 1.0;
             mSucceeded = true;
         } catch (const std::exception& error) {
             const std::string message = error.what();
-            std::printf("[forge] failed: %s\n", message.c_str());
+            triaevum::ps4::ForgeLog("failed: %s\n", message.c_str());
             try {
                 forge::WriteFileAtomic(kError, message + "\n");
                 forge::RemoveTree(kWork);
             } catch (const std::exception& cleanup) {
-                std::printf("[forge] %s\n", cleanup.what());
+                triaevum::ps4::ForgeLog("%s\n", cleanup.what());
             }
             std::lock_guard lock(mMutex);
             mStatus = (summary.empty() ? "" : summary + " ") + "Failed: " + message;
@@ -448,7 +450,7 @@ void DrawDeletePrompt(ScreenState& screen, float width) {
         } catch (const std::exception& error) {
             screen.DeleteResult = error.what();
         }
-        std::printf("[forge] delete ROM: %s\n", screen.DeleteResult.c_str());
+        triaevum::ps4::ForgeLog("delete ROM: %s\n", screen.DeleteResult.c_str());
         ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
@@ -631,7 +633,7 @@ void RunForgeScreen() {
     auto pica = Backend::Create([](const char* text) { std::printf("[forge] %s\n", text); },
                                 display.Width(), display.Height());
     if (pica == nullptr) {
-        std::printf("[forge] the Vulkan renderer did not start\n");
+        triaevum::ps4::ForgeLog("the Vulkan renderer did not start\n");
         return;
     }
     pica->SetImmediatePresentation(true);
@@ -659,7 +661,7 @@ void RunForgeScreen() {
     ApplyStyle(scale);
     Fast::OrbisImGuiPlatformInit();
     if (!ImGui_ImplVulkan_LoadFunctions(VK_API_VERSION_1_1, ImGuiVulkanLoader, vk)) {
-        std::printf("[forge] ImGui Vulkan entry points unavailable\n");
+        triaevum::ps4::ForgeLog("ImGui Vulkan entry points unavailable\n");
         return;
     }
     ImGui_ImplVulkan_InitInfo info{};
@@ -676,7 +678,7 @@ void RunForgeScreen() {
     info.PipelineCache = vk->pipelineCache;
     info.DescriptorPoolSize = 64;
     if (!ImGui_ImplVulkan_Init(&info)) {
-        std::printf("[forge] ImGui_ImplVulkan_Init failed\n");
+        triaevum::ps4::ForgeLog("ImGui_ImplVulkan_Init failed\n");
         return;
     }
 
@@ -708,7 +710,7 @@ void RunForgeScreen() {
 
         if (screen.LaunchRequested && !job.Running()) {
             screen.LaunchRequested = false;
-            std::printf("[forge] launching the game\n");
+            triaevum::ps4::ForgeLog("launching the game\n");
             std::fflush(stdout);
             // A fresh process: the game brings up its own renderer.
             const int result = sceSystemServiceLoadExec(kEboot, nullptr);
@@ -737,7 +739,7 @@ bool ForgeRequestedByUser() {
         if (SDL_IsGameController(index)) pad = SDL_GameControllerOpen(index);
     }
     if (pad == nullptr) {
-        std::printf("[forge] L1+R1: no controller\n");
+        triaevum::ps4::ForgeLog("L1+R1: no controller\n");
         return false;
     }
     bool held = false, l1 = false, r1 = false;
@@ -750,7 +752,7 @@ bool ForgeRequestedByUser() {
                SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
         if (!held) SDL_Delay(20);
     }
-    std::printf("[forge] L1+R1: %s (L1 %s, R1 %s)\n", held ? "held" : "not held",
+    triaevum::ps4::ForgeLog("L1+R1: %s (L1 %s, R1 %s)\n", held ? "held" : "not held",
                 l1 ? "seen" : "not seen", r1 ? "seen" : "not seen");
     SDL_GameControllerClose(pad);
     return held;
@@ -765,8 +767,11 @@ bool OrbisPrepareGame() {
     fs::create_directories(kDrop, ignored);
     const std::optional<RomFile> rom = FindRom();
     const bool newRom = rom && !RomPrepared(*rom);
-    const bool requested = ForgeRequestedByUser();
-    std::printf("[forge] game %s, ROM %s%s\n", GameReady() ? "ready" : "missing",
+    std::error_code requestError;
+    const bool fromMenu = fs::is_regular_file(kOpenRequest, requestError);
+    if (fromMenu) forge::RemoveFile(kOpenRequest);
+    const bool requested = fromMenu || ForgeRequestedByUser();
+    triaevum::ps4::ForgeLog("game %s, ROM %s%s\n", GameReady() ? "ready" : "missing",
                 rom ? rom->Path.filename().c_str() : "none",
                 newRom ? " (not prepared)" : (requested ? ", Forge requested (L1+R1)" : ""));
     if (!newRom && !requested && GameReady()) {
@@ -777,6 +782,27 @@ bool OrbisPrepareGame() {
     return false;
 }
 
+void OrbisOpenForge() {
+    try {
+        forge::WriteFileAtomic(kOpenRequest, "in-game menu\n");
+    } catch (const std::exception& error) {
+        triaevum::ps4::ForgeLog("%s\n", error.what());
+        return;
+    }
+    triaevum::ps4::ForgeLog("restarting into Forge (in-game menu)\n");
+    std::fflush(stdout);
+    const int result = sceSystemServiceLoadExec(kEboot, nullptr);
+    triaevum::ps4::ForgeLog("sceSystemServiceLoadExec = %#x\n", static_cast<unsigned>(result));
+}
+
+std::string OrbisForgeStatus() {
+    const forge::UiTexturePack* pack = TexturePack();
+    if (pack == nullptr) return "";
+    return forge::UiTexturePackPrepared(*pack, kData, false)
+               ? pack->Title() + " HD textures: installed."
+               : "HD textures: not installed.";
+}
+
 std::vector<std::string> OrbisForgeLaunchArguments() {
     std::vector<std::string> arguments;
     const forge::UiTexturePack* pack = TexturePack();
@@ -784,7 +810,7 @@ std::vector<std::string> OrbisForgeLaunchArguments() {
         arguments = {"--ui-texture-pack", pack->Directory(kData).string(),
                      "--topscreen-ui-atlas-hd", pack->UiAtlasHd(kData).string()};
     }
-    std::printf("[forge] HD UI textures: %s\n", arguments.empty() ? "not installed" : "installed");
+    triaevum::ps4::ForgeLog("HD UI textures: %s\n", arguments.empty() ? "not installed" : "installed");
     return arguments;
 }
 

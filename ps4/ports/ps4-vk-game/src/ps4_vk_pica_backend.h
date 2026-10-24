@@ -28,7 +28,9 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -143,6 +145,30 @@ class Ps4VkPicaRenderBackend final : public Oot3d::Renderer::PicaRenderBackend {
     // (FitUiPresentationViewport), so the HUD and ImGui recorded after it
     // land on top. The default (module host) composes at EndFrame instead.
     void SetImmediatePresentation(bool immediate);
+
+    // HD texture replacements (the product's Azahar pack runtime: Forge's HD
+    // UI texture pack and the user's own pack; gfx_vulkan_pica_textures.cpp
+    // on the desktop). Resolve is asked once per new texture with its base
+    // level; a pending answer is polled on the texture's later uses, and a
+    // ready one replaces the native image with a single-level RGBA8 one.
+    struct TextureReplacement {
+        enum class State : uint8_t { None, Pending, Ready };
+        State state = State::None;
+        uint64_t hash = 0;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        std::shared_ptr<const std::vector<uint8_t>> rgba8;
+    };
+    struct TextureReplacementRequest {
+        uint16_t width = 0;
+        uint16_t height = 0;
+        uint8_t nativeFormat = 0;
+        std::span<const uint8_t> nativeBase;
+        std::span<const uint8_t> rgba8Base;
+    };
+    using ResolveReplacementFn = std::function<TextureReplacement(const TextureReplacementRequest &)>;
+    using PollReplacementFn = std::function<TextureReplacement(uint64_t hash)>;
+    void SetTextureReplacements(ResolveReplacementFn resolve, PollReplacementFn poll);
 
     // Internal state for the product's rendering API, which records Fast3D
     // UI draws and ImGui into the same command buffer and scanout pass

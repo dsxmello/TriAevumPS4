@@ -12,10 +12,10 @@ index 04968b59..056d04ca 100644
  class Fast3dWindow : public Ship::Window {
 diff --git a/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
 new file mode 100644
-index 00000000..5dce4a7a
+index 00000000..d3cb8bfa
 --- /dev/null
 +++ b/runtime/three_ds_recomp/include/fast/backends/gfx_orbis.h
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,104 @@
 +#pragma once
 +
 +// PlayStation 4 (OpenOrbis) Fast3D backends. The window backend (VideoOut +
@@ -87,6 +87,10 @@ index 00000000..5dce4a7a
 +// Runtime arguments for what the Forge installed (the HD UI texture pack and
 +// its TopScreen atlas), appended to the PS4 launch arguments.
 +std::vector<std::string> OrbisForgeLaunchArguments();
++// The in-game menu's way back to Forge: restarts the app into its screen.
++void OrbisOpenForge();
++// One line on what Forge installed (the in-game menu shows it).
++std::string OrbisForgeStatus();
 +
 +// The game's busy threads ("main", "render", "pica plan") register: each is
 +// kept on its cores of the CPU's first cluster, and the sampling profiler
@@ -843,6 +847,55 @@ index 4bdfc850..a60db74d 100644
      const Result result = F32ToInteger(
          value, true, ControlFromFpscr(fpscr));
      return {result.value, result.flags & kExceptionFlags};
+diff --git a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp
+index 6c029b63..85f4a92d 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.cpp
+@@ -834,6 +834,20 @@ void InGameMenu::BuildGameTab(Menu::Document &document) {
+     tab.Rows.push_back(action("Load last state + settings", "Loads the most recent save state and applies the settings it carries.",
+                               SavestateRequestKind::Load, true));
+   }
++  if (mOwners.OpenForge) {
++    tab.Rows.push_back(Heading("Mods and textures"));
++    Row row;
++    row.Key = "Open TriAevum Forge";
++    row.Kind = RowKind::Action;
++    row.Help = (mOwners.ForgeStatus ? mOwners.ForgeStatus() + " " : std::string()) +
++               "Forge installs the HD textures and mods and prepares the game. TriAevum restarts "
++               "into it: progress since your last save is lost.";
++    row.Activate = [this] {
++      mOwners.OpenForge();
++      return WriteResult{"Restarting into TriAevum Forge", false};
++    };
++    tab.Rows.push_back(std::move(row));
++  }
+   document.Tabs.push_back(std::move(tab));
+ }
+ 
+diff --git a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.h b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.h
+index fd373ef8..29b51522 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_in_game_menu.h
++++ b/tools/oot3d/native_game_runtime/oot3d_in_game_menu.h
+@@ -23,6 +23,7 @@
+ 
+ #include <chrono>
+ #include <cstdint>
++#include <functional>
+ #include <memory>
+ #include <optional>
+ #include <string>
+@@ -61,6 +62,11 @@ struct InGameMenuOwners {
+   std::shared_ptr<SavestateLibrary> Savestates;
+   std::shared_ptr<DevFreeCamera> FreeCamera;
+   std::shared_ptr<PhotoModeState> PhotoMode;
++  // The PS4's console Forge (HD textures, mods, the game): when set, the
++  // Game tab offers it; it restarts the app into Forge.
++  std::function<void()> OpenForge;
++  // One line on what Forge installed, shown beside that action.
++  std::function<std::string()> ForgeStatus;
+ };
+ 
+ class InGameMenu {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
 index 571e4752..eb393c6f 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
@@ -1375,6 +1428,31 @@ index bddcb6b9..7205000f 100644
      // The mouse for the menu: its window position with the presentation
      // picture the menu is drawn in, the left button, and the wheel while a
      // host surface is up (gameplay never sees it then). The window's wheel
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
+index 81150d82..35212d02 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
+@@ -1,4 +1,7 @@
+ // Native A32 window session: setup (process image, host services, renderer, UI, initial state).
++#if defined(__ORBIS__)
++#include "fast/backends/gfx_orbis.h"
++#endif
+ #include "oot3d_native_a32_window_session.h"
+ #include "oot3d_native_direct_aot.h"
+ #include "oot3d_title_grass_rules.h"
+@@ -968,7 +971,11 @@ void NativeA32WindowSession::Setup() {
+   inGameMenuStorage.emplace(Oot3dNativeGame::InGameMenuOwners{
+       controlConfigRuntime,
+       launch.UiProfile == Oot3dNativeGame::Oot3dUiProfile::TopScreen ? topScreenConfigRuntime : nullptr,
+-      languageSettings, savestateLibrary, nativeCandidateDispatch.DevFreeCamera, photoMode});
++      languageSettings, savestateLibrary, nativeCandidateDispatch.DevFreeCamera, photoMode
++#if defined(__ORBIS__)
++      , [] { Fast::OrbisOpenForge(); }, [] { return Fast::OrbisForgeStatus(); }
++#endif
++  });
+ #if defined(__SWITCH__)
+   WriteSwitchBootStage("opengl_renderer_initialized");
+ #endif
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
 index 8071a191..f5b254c9 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h

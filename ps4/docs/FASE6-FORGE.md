@@ -139,3 +139,28 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
   TLS (handshake travado); a mensagem de erro sugere o teste de conexão do
   PS4 ou o zip por FTP. A varredura da tela não lança mais exceção a cada
   2 s quando o pack não existe.
+
+## 1.39 no console / 1.40 (2026-10-24)
+
+- 1.39: o download funcionou (Daniel: um pouco lento) e o Forge instalou o
+  pack, mas o jogo não mostrou as texturas HD. Duas causas:
+  - `AzaharTexturePackRuntime` só liga depois de um `Configure()`, que no
+    desktop o renderer Vulkan chama a cada revisão das configurações
+    gráficas (`gfx_vulkan_frame.cpp`). O renderer do PS4 nunca chamava: o
+    `SetBaseDirectories` do Forge ficava guardado e toda consulta respondia
+    "Disabled" (nem o HUD do TopScreen, que usa esse runtime, mudava).
+  - O backend Vulkan do PS4 não consultava o pack ao enviar texturas PICA
+    (o desktop faz em `gfx_vulkan_pica_textures.cpp`).
+- 1.40:
+  - `gfx_orbis_rendering.cpp` chama `Configure()` com as configurações de
+    texture pack a cada revisão, como o desktop.
+  - `Ps4VkPicaRenderBackend::SetTextureReplacements`: no primeiro envio de
+    uma textura o nível base vai para `ResolveOrQueue`; pendente, é
+    consultado (`PollQueued`) nos usos seguintes; pronto, a imagem nativa é
+    trocada por uma RGBA8 de um nível com a HD. O backend continua sem
+    depender do runtime de texturas (callbacks do produto).
+  - Menu do jogo (touchpad), aba Game: seção "Mods and textures" com o
+    status do pack e "Open TriAevum Forge", que grava
+    `/data/triaevum/forge/open-forge` e reinicia o app direto no Forge.
+  - O Forge também escreve em `/data/triaevum/forge/forge.log` (o boot log é
+    sobrescrito no reinício para o jogo); o download registra MB/s.

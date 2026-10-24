@@ -1,4 +1,7 @@
 // Native A32 window session: setup (process image, host services, renderer, UI, initial state).
+#if defined(__ORBIS__)
+#include "fast/backends/gfx_orbis.h"
+#endif
 #include "oot3d_native_a32_window_session.h"
 #include "oot3d_native_direct_aot.h"
 #include "oot3d_title_grass_rules.h"
@@ -968,7 +971,11 @@ void NativeA32WindowSession::Setup() {
   inGameMenuStorage.emplace(Oot3dNativeGame::InGameMenuOwners{
       controlConfigRuntime,
       launch.UiProfile == Oot3dNativeGame::Oot3dUiProfile::TopScreen ? topScreenConfigRuntime : nullptr,
-      languageSettings, savestateLibrary, nativeCandidateDispatch.DevFreeCamera, photoMode});
+      languageSettings, savestateLibrary, nativeCandidateDispatch.DevFreeCamera, photoMode
+#if defined(__ORBIS__)
+      , [] { Fast::OrbisOpenForge(); }, [] { return Fast::OrbisForgeStatus(); }
+#endif
+  });
 #if defined(__SWITCH__)
   WriteSwitchBootStage("opengl_renderer_initialized");
 #endif

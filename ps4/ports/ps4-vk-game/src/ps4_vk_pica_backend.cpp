@@ -1276,7 +1276,21 @@ Ps4VkPicaRenderBackend::Impl::Image *Ps4VkPicaRenderBackend::Impl::GetTexture(
                          view.NativeContentHashAvailable ? 0U : view.NativeBytes.size(),
                          view.Width, view.Height, view.NativeFormat, view.MaxMipLevel};
     auto found = textures.find(key);
-    if (found != textures.end()) return &found->second;
+    if (found != textures.end()) {
+        if (auto replacement = replacements.find(key); replacement != replacements.end()) {
+            auto &state = replacement->second;
+            if (state.ready) return &state.image;
+            if (state.pending && pollReplacement) {
+                const auto polled = pollReplacement(state.hash);
+                if (polled.state == TextureReplacement::State::Ready) {
+                    if (Image *image = UploadReplacement(key, state, polled)) return image;
+                } else if (polled.state != TextureReplacement::State::Pending) {
+                    state.pending = false;
+                }
+            }
+        }
+        return &found->second;
+    }
 
     // Desktop NativePicaMipLevelCount / NativePicaEncodedMipSize.
     uint32_t wantedLevels = 1U;
@@ -1287,6 +1301,8 @@ Ps4VkPicaRenderBackend::Impl::Image *Ps4VkPicaRenderBackend::Impl::GetTexture(
     decoded.clear();
     std::vector<VkBufferImageCopy> regions;
     std::vector<uint8_t> level;
+    std::vector<uint8_t> baseLevel;  // the replacement lookup's pixels
+    size_t baseNativeBytes = 0;
     size_t nativeOffset = 0;
     std::string decodeError;
     for (uint32_t index = 0; index < wantedLevels; ++index) {
@@ -1309,6 +1325,10 @@ Ps4VkPicaRenderBackend::Impl::Image *Ps4VkPicaRenderBackend::Impl::GetTexture(
         copy.imageExtent = {w, h, 1};
         regions.push_back(copy);
         decoded.insert(decoded.end(), level.begin(), level.end());
+        if (index == 0U && resolveReplacement) {
+            baseLevel = level;
+            baseNativeBytes = bytes;
+        }
         nativeOffset += bytes;
     }
     if (regions.empty()) {
@@ -1340,7 +1360,66 @@ Ps4VkPicaRenderBackend::Impl::Image *Ps4VkPicaRenderBackend::Impl::GetTexture(
     uploadsRecorded = true;
     ++stats.textures;
     stats.textureUploadBytes += bytes;
-    return &textures.emplace(key, image).first->second;
+    Image *native = &textures.emplace(key, image).first->second;
+    if (baseNativeBytes != 0U) {
+        const auto resolved = resolveReplacement({view.Width, view.Height, view.NativeFormat,
+                                                  view.NativeBytes.first(baseNativeBytes),
+                                                  std::span<const uint8_t>(baseLevel)});
+        if (resolved.state != TextureReplacement::State::None) {
+            auto &state = replacements[key];
+            state.hash = resolved.hash;
+            state.pending = resolved.state == TextureReplacement::State::Pending;
+            if (resolved.state == TextureReplacement::State::Ready) {
+                if (Image *replacement = UploadReplacement(key, state, resolved)) return replacement;
+                state.pending = true;  // the ring was full: next use
+            }
+        }
+    }
+    return native;
+}
+
+Ps4VkPicaRenderBackend::Impl::Image *Ps4VkPicaRenderBackend::Impl::UploadReplacement(
+    const TextureKey &key, Replacement &replacement, const TextureReplacement &found) {
+    (void)key;
+    if (found.rgba8 == nullptr || found.width == 0U || found.height == 0U ||
+        found.rgba8->size() != size_t{found.width} * found.height * 4U) {
+        replacement.pending = false;
+        return nullptr;
+    }
+    const VkDeviceSize bytes = found.rgba8->size();
+    if (!RingReserve(bytes + 16U)) {
+        NoteError("HD texture %ux%u exceeds the upload ring", found.width, found.height);
+        replacement.pending = false;
+        return nullptr;
+    }
+    Image image;
+    if (!CreateImage(image, found.width, found.height, VK_FORMAT_R8G8B8A8_UNORM,
+                     VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                     VK_IMAGE_ASPECT_COLOR_BIT, true, 1U)) {
+        replacement.pending = false;
+        return nullptr;
+    }
+    const VkDeviceSize offset = RingAlloc(bytes, 16U);
+    std::memcpy(ringPointer + offset, found.rgba8->data(), bytes);
+    VkBufferImageCopy copy{};
+    copy.bufferOffset = offset;
+    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.imageExtent = {found.width, found.height, 1};
+    ToGeneral(uploadCb, image);
+    vk.vkCmdCopyBufferToImage(uploadCb, ring, image.image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+    uploadsRecorded = true;
+    ++stats.textures;
+    stats.textureUploadBytes += bytes;
+    replacement.image = image;
+    replacement.ready = true;
+    replacement.pending = false;
+    return &replacement.image;
+}
+
+void Ps4VkPicaRenderBackend::SetTextureReplacements(ResolveReplacementFn resolve,
+                                                    PollReplacementFn poll) {
+    mImpl->resolveReplacement = std::move(resolve);
+    mImpl->pollReplacement = std::move(poll);
 }
 
 // The 24 lighting LUTs x 256 packed words as an R32_UINT image the
@@ -2549,6 +2628,10 @@ void Ps4VkPicaRenderBackend::Impl::DestroyResources() {
     DestroyTargetsAndDisplays();
     for (auto &entry : textures) DestroyImage(entry.second);
     textures.clear();
+    for (auto &entry : replacements) {
+        if (entry.second.ready) DestroyImage(entry.second.image);
+    }
+    replacements.clear();
     for (auto &entry : lightingLuts) DestroyImage(entry.second);
     lightingLuts.clear();
     FreePools();

@@ -3,7 +3,10 @@
 #include "forge/forge_sha256.h"
 
 #include <chrono>
+#include <cstdarg>
+#include <ctime>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <vector>
 
@@ -23,6 +26,24 @@ extern "C" int32_t TriaevumHttpSetAutoRedirect(int32_t id, int32_t enable) __asm
     "sceHttpSetAutoRedirect");
 
 namespace triaevum::ps4 {
+
+void ForgeLog(const char* format, ...) {
+    char text[1024];
+    va_list arguments;
+    va_start(arguments, format);
+    std::vsnprintf(text, sizeof(text), format, arguments);
+    va_end(arguments);
+    ForgeLog("%s", text);
+    const int fd = ::open("/data/triaevum/forge/forge.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) return;
+    char stamp[32];
+    const std::time_t now = std::time(nullptr);
+    std::strftime(stamp, sizeof(stamp), "%Y-%m-%d %H:%M:%S ", std::localtime(&now));
+    (void)!::write(fd, stamp, std::strlen(stamp));
+    (void)!::write(fd, text, std::strlen(text));
+    ::close(fd);
+}
+
 namespace {
 namespace fs = std::filesystem;
 using forge::ForgeError;
@@ -52,7 +73,7 @@ const HttpContext& Context() {
         context.Net = sceNetPoolCreate("triaevum_forge", 256 * 1024, 0);
         context.Ssl = sceSslInit(512 * 1024);
         context.Http = sceHttpInit(context.Net, context.Ssl, 512 * 1024);
-        std::printf("[forge] network: net pool %d, ssl %d, http %d\n", context.Net, context.Ssl,
+        ForgeLog("network: net pool %d, ssl %d, http %d\n", context.Net, context.Ssl,
                     context.Http);
         // The system's network configuration, for the log.
         sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NETCTL);
@@ -72,7 +93,7 @@ const HttpContext& Context() {
             sceNetCtlGetInfo(ORBIS_NET_CTL_INFO_HTTP_PROXY_PORT, &port);
             proxyServer = std::string(server.http_proxy_server) + ":" + std::to_string(port.http_proxy_port);
         }
-        std::printf("[forge] network: ip %s, netmask %s, gateway %s, dns %s / %s, http proxy %s\n",
+        ForgeLog("network: ip %s, netmask %s, gateway %s, dns %s / %s, http proxy %s\n",
                     text(ORBIS_NET_CTL_INFO_IP_ADDRESS).c_str(), text(ORBIS_NET_CTL_INFO_NETMASK).c_str(),
                     text(ORBIS_NET_CTL_INFO_DEFAULT_ROUTE).c_str(),
                     text(ORBIS_NET_CTL_INFO_PRIMARY_DNS).c_str(),
@@ -107,7 +128,7 @@ std::string Resolve(const std::string& host) {
     const uint32_t a = ip & 0xFF, b = (ip >> 8) & 0xFF, c = (ip >> 16) & 0xFF, d = ip >> 24;
     char text[64];
     std::snprintf(text, sizeof(text), "%u.%u.%u.%u", a, b, c, d);
-    std::printf("[forge] %s -> %s (%.1f s)\n", host.c_str(), text, seconds);
+    ForgeLog("%s -> %s (%.1f s)\n", host.c_str(), text, seconds);
     if (ip == 0 || a == 127 || a == 10 || (a == 192 && b == 168) || (a == 172 && (b & 0xF0) == 16)) {
         throw ForgeError(host + " resolves to " + text +
                          ": the console's DNS blocks the Internet (a setting often used to stay off "
@@ -154,7 +175,7 @@ bool Attempt(const std::string& url, const fs::path& destination, const forge::I
     const int32_t sent = sceHttpSendRequest(http.Request, nullptr, 0);
     const double sendSeconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - sendStarted).count();
-    std::printf("[forge] %s: send = %s after %.1f s\n", url.c_str(), Hex(sent).c_str(), sendSeconds);
+    ForgeLog("%s: send = %s after %.1f s\n", url.c_str(), Hex(sent).c_str(), sendSeconds);
     if (sent < 0) {
         // libSceSsl's errors (0x8095xxxx) and libSceHttp's HTTPS ones
         // (0x804350xx: certificate, handshake): the TLS check failed.
@@ -162,7 +183,7 @@ bool Attempt(const std::string& url, const fs::path& destination, const forge::I
         // A stalled handshake ends as SCE_HTTP_ERROR_TIMEOUT (0x80431068).
         if (verifyServer &&
             ((code >> 16) == 0x8095U || (code >> 8) == 0x804350U || code == 0x80431068U)) {
-            std::printf("[forge] %s: TLS check failed (%s), retrying without it\n", url.c_str(),
+            ForgeLog("%s: TLS check failed (%s), retrying without it\n", url.c_str(),
                         Hex(sent).c_str());
             return false;
         }
@@ -260,7 +281,7 @@ std::string Probe(const std::string& url) {
             std::snprintf(text, sizeof(text), "plain HTTP to %s answered %d in %.1f s",
                           probe.c_str(), status, seconds);
         }
-        std::printf("[forge] probe: %s\n", text);
+        ForgeLog("probe: %s\n", text);
         return text;
     } catch (const std::exception& error) {
         return error.what();
@@ -288,8 +309,9 @@ void DownloadVerified(const std::string& url, const fs::path& destination,
     }
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-    std::printf("[forge] downloaded %s (%llu bytes) in %.0f s\n", url.c_str(),
-                static_cast<unsigned long long>(expected.Bytes), seconds);
+    ForgeLog("downloaded %s (%llu bytes) in %.0f s, %.1f MB/s\n", url.c_str(),
+             static_cast<unsigned long long>(expected.Bytes), seconds,
+             seconds > 0.0 ? expected.Bytes / 1048576.0 / seconds : 0.0);
 }
 
 } // namespace triaevum::ps4

@@ -8,6 +8,10 @@
 
 namespace triaevum::ps4 {
 
+// "[forge] ..." to the boot log and to /data/triaevum/forge/forge.log, which
+// survives the restart into the game (the boot log does not).
+void ForgeLog(const char* format, ...) __attribute__((format(printf, 1, 2)));
+
 // Downloads `url` (redirects followed) to `destination`, keeping it only when
 // its size and SHA-256 are `expected`. The certificate chain is checked
 // first; when the console's CA store rejects the server, the download is

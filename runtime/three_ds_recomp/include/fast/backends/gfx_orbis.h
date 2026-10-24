@@ -69,6 +69,10 @@ bool OrbisPrepareGame();
 // Runtime arguments for what the Forge installed (the HD UI texture pack and
 // its TopScreen atlas), appended to the PS4 launch arguments.
 std::vector<std::string> OrbisForgeLaunchArguments();
+// The in-game menu's way back to Forge: restarts the app into its screen.
+void OrbisOpenForge();
+// One line on what Forge installed (the in-game menu shows it).
+std::string OrbisForgeStatus();
 
 // The game's busy threads ("main", "render", "pica plan") register: each is
 // kept on its cores of the CPU's first cluster, and the sampling profiler

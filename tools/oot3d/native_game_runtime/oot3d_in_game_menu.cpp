@@ -834,6 +834,20 @@ void InGameMenu::BuildGameTab(Menu::Document &document) {
     tab.Rows.push_back(action("Load last state + settings", "Loads the most recent save state and applies the settings it carries.",
                               SavestateRequestKind::Load, true));
   }
+  if (mOwners.OpenForge) {
+    tab.Rows.push_back(Heading("Mods and textures"));
+    Row row;
+    row.Key = "Open TriAevum Forge";
+    row.Kind = RowKind::Action;
+    row.Help = (mOwners.ForgeStatus ? mOwners.ForgeStatus() + " " : std::string()) +
+               "Forge installs the HD textures and mods and prepares the game. TriAevum restarts "
+               "into it: progress since your last save is lost.";
+    row.Activate = [this] {
+      mOwners.OpenForge();
+      return WriteResult{"Restarting into TriAevum Forge", false};
+    };
+    tab.Rows.push_back(std::move(row));
+  }
   document.Tabs.push_back(std::move(tab));
 }
 

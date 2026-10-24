@@ -20,6 +20,7 @@
 #include "fast/oot3d/renderer_presentation_controller.h"
 #include "fast/renderer/compatibility_combiner.h"
 #include "fast/renderer/compatibility_shader_sources.h"
+#include "oot3d/renderer/azahar_texture_pack.h"
 
 #include <imgui.h>
 #include <imgui_impl_vulkan.h>
@@ -183,6 +184,37 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
                 return mPhysicalMemoryCommit && mPhysicalMemoryCommit(writes);
             },
             nullptr, nullptr, nullptr);
+        // Texture packs (Forge's HD UI pack, the user's Azahar pack) replace
+        // native PICA textures, as gfx_vulkan_pica_textures.cpp does.
+        auto toBackend = [](const ::Oot3d::Renderer::AzaharTextureResolveResult& result) {
+            using State = Backend::TextureReplacement::State;
+            Backend::TextureReplacement replacement;
+            replacement.hash = result.NativeHash;
+            if (result.State == ::Oot3d::Renderer::AzaharTextureResolveState::Pending) {
+                replacement.state = State::Pending;
+            } else if (result.State == ::Oot3d::Renderer::AzaharTextureResolveState::Ready &&
+                       result.Replacement && result.Replacement->Rgba8) {
+                replacement.state = State::Ready;
+                replacement.width = result.Replacement->Width;
+                replacement.height = result.Replacement->Height;
+                replacement.rgba8 = result.Replacement->Rgba8;
+            }
+            return replacement;
+        };
+        mPica->SetTextureReplacements(
+            [toBackend](const Backend::TextureReplacementRequest& request) {
+                return toBackend(::Oot3d::Renderer::AzaharTexturePackRuntime::Instance().ResolveOrQueue({
+                    .Width = request.width,
+                    .Height = request.height,
+                    .NativeFormat = request.nativeFormat,
+                    .MipLevel = 0U,
+                    .NativeBytes = request.nativeBase,
+                    .NativeRgba8 = request.rgba8Base,
+                }));
+            },
+            [toBackend](uint64_t hash) {
+                return toBackend(::Oot3d::Renderer::AzaharTexturePackRuntime::Instance().PollQueued(hash));
+            });
         CreateFast3dObjects();
         mInitialized = true;
     }
@@ -582,6 +614,15 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
         if (rendering.Revision == mRenderResolutionRevision) return;
         mRenderResolutionRevision = rendering.Revision;
         const auto& settings = rendering.Value;
+        // The texture pack runtime stays off until configured: the desktop
+        // renderer configures it from the same settings every revision
+        // (gfx_vulkan_frame.cpp); Forge's base directories need it too.
+        ::Oot3d::Renderer::AzaharTexturePackRuntime::Instance().Configure({
+            .DumpTextures = settings.TexturePacks.Azahar.DumpTextures,
+            .LoadCustomTextures = settings.TexturePacks.Azahar.LoadCustomTextures,
+            .LoadDirectory = settings.TexturePacks.Azahar.LoadDirectory,
+            .DumpDirectory = settings.TexturePacks.Azahar.DumpDirectory,
+        });
         const float lines = static_cast<float>(std::max<uint32_t>(settings.OutputHeight, 240U)) *
                             Oot3d::ResolveInternalResolutionScale(settings);
         auto options = mPica->CurrentPresentOptions();
