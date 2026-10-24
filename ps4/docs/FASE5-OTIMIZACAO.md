@@ -332,3 +332,47 @@ interpolado para 60; GPU em 4K: 14–17 ms).
   pode usar o `noalias`; o assembly lê e grava `state.R[]` a cada instrução
   do guest (`addl $-44, 52(%r14)`), não só depois das escritas na memória.
   A versão não foi para o console: o código é praticamente o da 1.48.
+
+## 1.50 — cache de dispatch, `Mtx3x4Multiply` em AVX, entrada de bloco mais curta
+
+- Cache de dispatch: `FindDispatchEntry` (`oot3d_whole_aot_generated.cpp`)
+  fazia busca binária numa tabela de 162.757 entradas (2,6 MB) a cada
+  retorno, desvio e chamada indireta; as sondagens erravam o cache (1,3% da
+  thread do jogo no perfil da 1.48). Agora um cache direto por thread de
+  1024 entradas (pc -> índice, chave `~pc`, faltas também guardadas) fica na
+  frente da busca. O gerador emite assim (`whole_aot_cpp.py`) e
+  `ps4/tools/aot_dispatch_cache.py` aplica o mesmo texto ao arquivo já
+  gerado (idempotente, `--check`).
+- `TryFastMtx3x4Multiply` com AVX: os quatro componentes de uma linha de
+  uma vez, com as mesmas contas em double e o mesmo arredondamento do
+  caminho escalar; entradas e valores arredondados conferidos no fim (algum
+  valor fora do caminho rápido recusa a chamada inteira). Teste no PC: 20
+  milhões de matrizes aleatórias (com zeros, denormais, inf/NaN e extremos),
+  resultado, flag de inexato e recusa idênticos ao escalar.
+- Entrada de bloco (item 8): cada bloco testava hook nulo, pulo do primeiro
+  bloco, lista vazia, filtro nulo e o filtro. No PS4 o contexto guarda
+  `ActiveBlockEntryFilter`, resolvido no primeiro bloco (antes dele um
+  filtro cheio manda esse bloco ao caminho lento, que resolve e aplica o
+  teste exato do primeiro bloco): o caminho inline vira orçamento + um
+  ponteiro + um bit. Mesma semântica.
+- Shards: os da 1.48 (`aot-cpp.batched`) com `__restrict` e o cache de
+  dispatch. Recompila todos.
+
+## Medição da 1.50 (2026-10-24)
+
+- Sessão na Árvore Deku e arredores, comparada com a última da 1.48 (só
+  janelas com o jogo rodando: >= 40 quadros do jogo/s e >= 20 draws; as de
+  menu/pausa/carregamento ficam de fora):
+
+| Draws | 1.48 fps | 1.50 fps | 1.48 thread do jogo | 1.50 thread do jogo |
+|---|---|---|---|---|
+| < 100 | 56,7 | 54,2 | 12,3 ms | 12,4 ms |
+| 100–140 | 43,1 | 46,0 | 18,6 ms | 17,6 ms |
+| 140–180 | 28,5 | **30,0** | 30,4 ms | **27,6 ms** |
+| 180–250 | 25,2 | **25,6** | 33,7 ms | **32,5 ms** |
+
+- Ganho pequeno e no sentido certo: -4% a -9% de CPU na thread do jogo nas
+  áreas pesadas. Abaixo de 100 draws o jogo já fica perto dos 60.
+- Perfil: `FindDispatchEntry` 1,3% -> 0,12%; `Mtx3x4Multiply` 0,15%;
+  `Oot3dAotNotifyBlock` ainda 1,1% (com `ObserveBlockEntry` 0,6%): hooks de
+  verdade, a investigar. Código gerado 54% da thread.

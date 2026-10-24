@@ -863,7 +863,7 @@ index 4bdfc850..a60db74d 100644
          value, true, ControlFromFpscr(fpscr));
      return {result.value, result.flags & kExceptionFlags};
 diff --git a/tools/oot3d/native_a32_runtime/whole_aot_cpp.py b/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
-index 42f991d1..196c78f9 100644
+index 42f991d1..dcec3e5c 100644
 --- a/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
 +++ b/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
 @@ -1074,11 +1074,17 @@ def _emit_block_transfer(item: Instruction) -> list[str]:
@@ -1005,8 +1005,49 @@ index 42f991d1..196c78f9 100644
                  "    uint32_t entryPc);",
              ]
          )
-@@ -2461,7 +2492,7 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
+@@ -2439,7 +2470,7 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
+         [
+             "}};",
              "",
+-            "const DispatchEntry* FindDispatchEntry(uint32_t pc) noexcept {",
++            "const DispatchEntry* SearchDispatchEntry(uint32_t pc) noexcept {",
+             "    const uint32_t page = pc >> kDispatchPageShift;",
+             "    if (page < kDispatchBasePage || page > kDispatchLastPage) {",
+                 "        return nullptr;",
+@@ -2459,9 +2490,39 @@ def _render_registry_source(functions: tuple[Function, ...]) -> str:
+             "               : nullptr;",
+             "}",
+             "",
++            "// Function returns, branches and indirect calls dispatch here; the",
++            "// search's probes into the large entry table missed the cache (most of",
++            "// the dispatcher's time on the PS4). A small per-thread direct-mapped",
++            "// cache of pc -> entry index answers repeats; Key is ~pc so that the",
++            "// zeroed table matches nothing (no A32 pc is 0xFFFFFFFF).",
++            "struct DispatchCacheSlot {",
++            "    uint32_t Key = 0U;",
++            "    uint32_t Index = 0U;",
++            "};",
++            "constexpr uint32_t kDispatchCacheLog2 = 10U;",
++            "constexpr uint32_t kDispatchCacheMissing = 0xFFFFFFFFU;",
++            "thread_local std::array<DispatchCacheSlot, size_t{1} << kDispatchCacheLog2>",
++            "    tDispatchCache{};",
++            "",
++            "const DispatchEntry* FindDispatchEntry(uint32_t pc) noexcept {",
++            "    DispatchCacheSlot& slot =",
++            "        tDispatchCache[((pc >> 2U) * 2654435761U) >> (32U - kDispatchCacheLog2)];",
++            "    if (slot.Key == ~pc) {",
++            "        return slot.Index == kDispatchCacheMissing",
++            "                   ? nullptr",
++            "                   : &kDispatchEntries[slot.Index];",
++            "    }",
++            "    const DispatchEntry* found = SearchDispatchEntry(pc);",
++            "    slot.Key = ~pc;",
++            "    slot.Index = found == nullptr",
++            "                     ? kDispatchCacheMissing",
++            "                     : static_cast<uint32_t>(found - kDispatchEntries.data());",
++            "    return found;",
++            "}",
++            "",
              "Oot3dWholeAotFlow ExecuteOot3dWholeAotIndirect(",
              "    uint32_t pc, Oot3dWholeAotFrame& frame,",
 -            "    Oot3dWholeAotContext& context, Oot3dAotArchitecturalState& state) {",
@@ -1014,7 +1055,7 @@ index 42f991d1..196c78f9 100644
              "    const DispatchEntry* entry = FindDispatchEntry(pc);",
              "    if (entry == nullptr) {",
              "        return Oot3dAotCallExternal(context, pc, frame, state);",
-@@ -2740,7 +2771,7 @@ def _existing_shard_assignments(
+@@ -2740,7 +2801,7 @@ def _existing_shard_assignments(
      pattern = re.compile(
          r"^Oot3dWholeAotFlow Execute_.*_([0-9A-F]{8})\(\n"
          r"\s+Oot3dWholeAotFrame& frame, Oot3dWholeAotContext& context,\n"
@@ -1728,6 +1769,98 @@ index 8071a191..f5b254c9 100644
    // raw devices every poll.
    Oot3dNativeGame::InGameMenuHostInput Menu;
  };
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp b/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp
+index 8d432189..d501044d 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp
+@@ -16,6 +16,9 @@
+ #include <chrono>
+ #include <cstddef>
+ #include <cstdint>
++#if defined(__AVX__)
++#include <immintrin.h>
++#endif
+ #include <span>
+ #include <vector>
+ 
+@@ -143,6 +146,69 @@ bool TryFastMtx3x4Multiply(const std::array<uint32_t, 12>& left,
+          (kFpscrRoundingModeMask | kFpscrExceptionEnableMask)) != 0U) {
+         return false;
+     }
++#if defined(__AVX__)
++    // The four components of a row at once, with exactly the scalar path's
++    // arithmetic: each product and sum in double, rounded to float, every
++    // input and rounded value checked once at the end instead of branching
++    // after each step (any non-fast value still declines the whole call).
++    const auto good = [](__m128 value) noexcept {
++        const __m128i magnitude = _mm_and_si128(
++            _mm_castps_si128(value), _mm_set1_epi32(0x7FFFFFFF));
++        const __m128i normal = _mm_and_si128(
++            _mm_cmpgt_epi32(magnitude, _mm_set1_epi32(0x007FFFFF)),
++            _mm_cmpgt_epi32(_mm_set1_epi32(0x7F800000), magnitude));
++        return _mm_or_si128(
++            normal, _mm_cmpeq_epi32(magnitude, _mm_setzero_si128()));
++    };
++    const auto load = [](const uint32_t* words) noexcept {
++        return _mm_loadu_ps(reinterpret_cast<const float*>(words));
++    };
++    __m128i allGood = _mm_set1_epi32(-1);
++    __m256d inexact = _mm256_setzero_pd();
++    const auto round = [&](__m256d exact) noexcept {
++        const __m128 rounded = _mm256_cvtpd_ps(exact);
++        allGood = _mm_and_si128(allGood, good(rounded));
++        inexact = _mm256_or_pd(
++            inexact, _mm256_cmp_pd(_mm256_cvtps_pd(rounded), exact,
++                                   _CMP_NEQ_UQ));
++        return rounded;
++    };
++    const __m128 columns[3] = {load(right.data()), load(right.data() + 4),
++                               load(right.data() + 8)};
++    const __m256d wideColumns[3] = {_mm256_cvtps_pd(columns[0]),
++                                    _mm256_cvtps_pd(columns[1]),
++                                    _mm256_cvtps_pd(columns[2])};
++    for (size_t row = 0U; row < 3U; ++row) {
++        const __m128 rowValues = load(left.data() + row * 4U);
++        allGood = _mm_and_si128(_mm_and_si128(allGood, good(rowValues)),
++                                good(columns[row]));
++        const auto lane = [&](size_t index) noexcept {
++            return static_cast<double>(
++                std::bit_cast<float>(left[row * 4U + index]));
++        };
++        // Components 0-2 start with the product; component 3 adds it to
++        // the row's fourth value (only that lane takes the sum, so a -0
++        // product stays -0 elsewhere).
++        const __m128 product =
++            round(_mm256_mul_pd(wideColumns[0], _mm256_set1_pd(lane(0))));
++        const __m128 withTranslation = round(_mm256_add_pd(
++            _mm256_cvtps_pd(product), _mm256_set_pd(lane(3), 0.0, 0.0, 0.0)));
++        __m128 value = _mm_blend_ps(product, withTranslation, 0x8);
++        for (size_t step = 1U; step < 3U; ++step) {
++            const __m128 term = round(
++                _mm256_mul_pd(wideColumns[step], _mm256_set1_pd(lane(step))));
++            value = round(_mm256_add_pd(_mm256_cvtps_pd(value),
++                                        _mm256_cvtps_pd(term)));
++        }
++        _mm_storeu_ps(reinterpret_cast<float*>(output->data() + row * 4U),
++                      value);
++    }
++    if (_mm_movemask_epi8(allGood) != 0xFFFF) {
++        return false;
++    }
++    *exceptionFlags = _mm256_movemask_pd(inexact) != 0 ? kFpscrInexact : 0U;
++    return true;
++#else
+     uint32_t flags = 0U;
+     for (size_t row = 0U; row < 3U; ++row) {
+         const size_t leftBase = row * 4U;
+@@ -169,6 +235,7 @@ bool TryFastMtx3x4Multiply(const std::array<uint32_t, 12>& left,
+     }
+     *exceptionFlags = flags;
+     return true;
++#endif
+ }
+ 
+ void ComputeSoftMtx3x4Multiply(const std::array<uint32_t, 12>& left,
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
 index 2487dd8f..6598bbcf 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
@@ -2336,7 +2469,7 @@ index 29e449f5..1ea336bf 100644
      for (;;) {
          mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
-index a9811221..b2d58167 100644
+index a9811221..9229af31 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 @@ -10,6 +10,7 @@
@@ -2375,7 +2508,30 @@ index a9811221..b2d58167 100644
      }
  
      void Insert(uint32_t pc) noexcept {
-@@ -128,6 +139,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
+@@ -90,6 +101,22 @@ struct Oot3dAotBlockEntryFilter final {
+     }
+ };
+ 
++#if defined(__ORBIS__)
++constexpr Oot3dAotBlockEntryFilter Oot3dAotFullBlockEntryFilter() noexcept {
++    Oot3dAotBlockEntryFilter filter;
++    filter.Words.fill(~uint64_t{0});
++    return filter;
++}
++
++// Oot3dWholeAotContext::ActiveBlockEntryFilter before the first block
++// resolves it (it passes every pc, so that block takes the slow path)...
++inline constexpr Oot3dAotBlockEntryFilter kOot3dAotUnresolvedBlockEntryFilter =
++    Oot3dAotFullBlockEntryFilter();
++// ...and after, when a hook runs for every listed pc without a filter.
++inline constexpr Oot3dAotBlockEntryFilter kOot3dAotEveryBlockEntryFilter =
++    Oot3dAotFullBlockEntryFilter();
++#endif
++
+ inline thread_local bool gOot3dWholeAotExecutionActive = false;
+ inline thread_local Oot3dWholeAotObservableExitSnapshot
+     gOot3dWholeAotObservableExitSnapshot{};
+@@ -128,6 +155,33 @@ inline bool Oot3dWholeAotExecutionActive() noexcept {
      throw Oot3dWholeAotObservableExit{pc};
  }
  
@@ -2409,7 +2565,21 @@ index a9811221..b2d58167 100644
  inline bool Oot3dWholeAotTakeObservableExitSnapshot(
      uint32_t pc, oot3d::recomp::a32::GuestState* state) noexcept {
      auto& snapshot = gOot3dWholeAotObservableExitSnapshot;
-@@ -196,7 +234,20 @@ constexpr Oot3dAotExternalStateAccess Oot3dAotExternalStateAccessFor(
+@@ -159,6 +213,13 @@ struct Oot3dWholeAotContext {
+     bool SkipFirstBlockEntry = false;
+     uint32_t BlocksRemaining = 0;
+     uint32_t BlocksConsumed = 0;
++#if defined(__ORBIS__)
++    // What every block tests, resolved from the hook fields above at the
++    // first block: null when no hook can run, else a filter that passes at
++    // least every pc the hook runs for.
++    const Oot3dAotBlockEntryFilter* ActiveBlockEntryFilter =
++        &kOot3dAotUnresolvedBlockEntryFilter;
++#endif
+ };
+ 
+ struct Oot3dAotExternalStateAccess final {
+@@ -196,7 +257,20 @@ constexpr Oot3dAotExternalStateAccess Oot3dAotExternalStateAccessFor(
      }
  }
  
@@ -2431,7 +2601,7 @@ index a9811221..b2d58167 100644
      if (context.BlocksRemaining == 0U) {
          return false;
      }
-@@ -205,59 +256,113 @@ inline bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& context) noexcept {
+@@ -205,76 +279,172 @@ inline bool Oot3dAotConsumeBlock(Oot3dWholeAotContext& context) noexcept {
      return true;
  }
  
@@ -2446,11 +2616,23 @@ index a9811221..b2d58167 100644
          return false;
      }
 -    if (context.BlockEntryPcCount == 0U) {
+-        return true;
+-    }
+-    if (context.BlockEntryFilter != nullptr &&
+-        !context.BlockEntryFilter->MayContain(pc)) {
+-        return false;
+-    }
+-    return std::binary_search(
+-        context.BlockEntryPcs,
+-        context.BlockEntryPcs + context.BlockEntryPcCount, pc);
 +    return context.BlockEntryPcCount == 0U ||
 +           context.BlockEntryFilter == nullptr ||
 +           context.BlockEntryFilter->MayContain(pc);
-+}
-+
+ }
+ 
+-inline bool Oot3dAotEnterBlock(
+-    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
+-    uint32_t pc) {
 +inline bool Oot3dAotBlockEntryListed(
 +    const Oot3dWholeAotContext& context, uint32_t pc) noexcept {
 +    return context.BlockEntryPcCount == 0U ||
@@ -2466,6 +2648,60 @@ index a9811221..b2d58167 100644
 +           Oot3dAotBlockEntryListed(context, pc);
 +}
 +
++enum class Oot3dAotBlockEntryStep : uint8_t { Stop, Proceed, Notify };
++
++// The inline part of every block entry: the budget, then whether a hook may
++// run. On the PS4 that is one filter resolved at the first block
++// (ActiveBlockEntryFilter) instead of testing the hook, the first-block skip,
++// the list and the filter at every block; Notify still needs
++// Oot3dAotBlockEntryResolved and Oot3dAotBlockEntryListed.
++OOT3D_AOT_BLOCK_FAST_PATH Oot3dAotBlockEntryStep Oot3dAotBeginBlock(
++    Oot3dWholeAotContext& context, uint32_t pc) noexcept {
++#if defined(__ORBIS__)
++    if (!Oot3dAotConsumeBlock(context)) {
++        return Oot3dAotBlockEntryStep::Stop;
++    }
++    const Oot3dAotBlockEntryFilter* filter = context.ActiveBlockEntryFilter;
++    return filter != nullptr && filter->MayContain(pc)
++               ? Oot3dAotBlockEntryStep::Notify
++               : Oot3dAotBlockEntryStep::Proceed;
++#else
+     const bool firstBlock = context.BlocksConsumed == 0U;
+     if (!Oot3dAotConsumeBlock(context)) {
+-        return false;
++        return Oot3dAotBlockEntryStep::Stop;
+     }
+-    if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
++    return Oot3dAotMayNotifyBlock(context, pc, firstBlock)
++               ? Oot3dAotBlockEntryStep::Notify
++               : Oot3dAotBlockEntryStep::Proceed;
++#endif
++}
++
++// False when no hook runs for pc after all. On the PS4 the first block
++// (always here: the unresolved filter passes every pc) resolves the context's
++// filter and applies the exact first-block test; later blocks reached here
++// through a filter that already matched.
++inline bool Oot3dAotBlockEntryResolved(
++    Oot3dWholeAotContext& context, uint32_t pc) noexcept {
++#if defined(__ORBIS__)
++    if (context.ActiveBlockEntryFilter != &kOot3dAotUnresolvedBlockEntryFilter) {
+         return true;
+     }
++    context.ActiveBlockEntryFilter =
++        context.BlockEntry == nullptr ? nullptr
++        : context.BlockEntryPcCount == 0U || context.BlockEntryFilter == nullptr
++            ? &kOot3dAotEveryBlockEntryFilter
++            : context.BlockEntryFilter;
++    // This block was already consumed.
++    return Oot3dAotMayNotifyBlock(context, pc, context.BlocksConsumed == 1U);
++#else
++    (void)context;
++    (void)pc;
++    return true;
++#endif
++}
++
 +// Runs the block-entry hook; false when it deferred an observable exit
 +// (Oot3dWholeAotDeferObservableExit), which stops the block like the budget.
 +inline bool Oot3dAotRunBlockEntryHook(
@@ -2475,112 +2711,98 @@ index a9811221..b2d58167 100644
 +        HookScope() noexcept { gOot3dWholeAotBlockEntryHookActive = true; }
 +        ~HookScope() { gOot3dWholeAotBlockEntryHookActive = Previous; }
 +    } scope;
-+    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
-+                       context.BlockEntryUser);
+     context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
+                        context.BlockEntryUser);
+-    return true;
 +    return !gOot3dWholeAotDeferredExitPending;
 +}
 +
 +OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
 +    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame, uint32_t pc) {
-+    if (!Oot3dAotBlockEntryListed(context, pc)) {
-         return true;
-     }
--    if (context.BlockEntryFilter != nullptr &&
--        !context.BlockEntryFilter->MayContain(pc)) {
--        return false;
-+    return Oot3dAotRunBlockEntryHook(context, frame, pc);
-+}
-+
-+OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
-+    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
-+    Oot3dAotArchitecturalState& state, uint32_t pc) {
-+    if (!Oot3dAotBlockEntryListed(context, pc)) {
-+        return true;
-     }
--    return std::binary_search(
--        context.BlockEntryPcs,
--        context.BlockEntryPcs + context.BlockEntryPcCount, pc);
-+    state.Flush(0x7FFFU, true);
-+    const bool proceed = Oot3dAotRunBlockEntryHook(context, frame, pc);
-+    state.Reload(0x7FFFU, true);
-+    return proceed;
- }
- 
--inline bool Oot3dAotEnterBlock(
-+template <typename CommitState, typename ReloadState>
-+OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
-+    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
-+    Oot3dAotArchitecturalState& state, uint32_t pc,
-+    CommitState&& commitState, ReloadState&& reloadState) {
-+    if (!Oot3dAotBlockEntryListed(context, pc)) {
++    if (!Oot3dAotBlockEntryResolved(context, pc) ||
++        !Oot3dAotBlockEntryListed(context, pc)) {
 +        return true;
 +    }
-+    commitState();
-+    state.Flush(0x7FFFU, true);
-+    const bool proceed = Oot3dAotRunBlockEntryHook(context, frame, pc);
-+    state.Reload(0x7FFFU, true);
-+    reloadState();
-+    return proceed;
-+}
-+
-+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
-     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
-     uint32_t pc) {
-     const bool firstBlock = context.BlocksConsumed == 0U;
-     if (!Oot3dAotConsumeBlock(context)) {
-         return false;
-     }
--    if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
-+    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
-         return true;
-     }
--    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
--                       context.BlockEntryUser);
--    return true;
-+    return Oot3dAotNotifyBlock(context, frame, pc);
++    return Oot3dAotRunBlockEntryHook(context, frame, pc);
  }
  
 -inline bool Oot3dAotEnterBlock(
-+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
++OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
      Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
      Oot3dAotArchitecturalState& state, uint32_t pc) {
-     const bool firstBlock = context.BlocksConsumed == 0U;
-     if (!Oot3dAotConsumeBlock(context)) {
-         return false;
-     }
+-    const bool firstBlock = context.BlocksConsumed == 0U;
+-    if (!Oot3dAotConsumeBlock(context)) {
+-        return false;
+-    }
 -    if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
-+    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
++    if (!Oot3dAotBlockEntryResolved(context, pc) ||
++        !Oot3dAotBlockEntryListed(context, pc)) {
          return true;
      }
--    state.Flush(0x7FFFU, true);
+     state.Flush(0x7FFFU, true);
 -    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
 -                       context.BlockEntryUser);
--    state.Reload(0x7FFFU, true);
++    const bool proceed = Oot3dAotRunBlockEntryHook(context, frame, pc);
+     state.Reload(0x7FFFU, true);
 -    return true;
-+    return Oot3dAotNotifyBlock(context, frame, state, pc);
++    return proceed;
  }
  
  template <typename CommitState, typename ReloadState>
 -inline bool Oot3dAotEnterBlock(
-+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
++OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
      Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
      Oot3dAotArchitecturalState& state, uint32_t pc,
      CommitState&& commitState, ReloadState&& reloadState) {
-@@ -265,16 +370,12 @@ inline bool Oot3dAotEnterBlock(
-     if (!Oot3dAotConsumeBlock(context)) {
-         return false;
-     }
+-    const bool firstBlock = context.BlocksConsumed == 0U;
+-    if (!Oot3dAotConsumeBlock(context)) {
+-        return false;
+-    }
 -    if (!Oot3dAotShouldNotifyBlock(context, pc, firstBlock)) {
-+    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
++    if (!Oot3dAotBlockEntryResolved(context, pc) ||
++        !Oot3dAotBlockEntryListed(context, pc)) {
          return true;
      }
--    commitState();
--    state.Flush(0x7FFFU, true);
+     commitState();
+     state.Flush(0x7FFFU, true);
 -    context.BlockEntry(pc, frame.Guest, context.CallbackMemory,
 -                       context.BlockEntryUser);
--    state.Reload(0x7FFFU, true);
--    reloadState();
++    const bool proceed = Oot3dAotRunBlockEntryHook(context, frame, pc);
+     state.Reload(0x7FFFU, true);
+     reloadState();
 -    return true;
++    return proceed;
++}
++
++OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
++    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
++    uint32_t pc) {
++    const Oot3dAotBlockEntryStep step = Oot3dAotBeginBlock(context, pc);
++    if (step != Oot3dAotBlockEntryStep::Notify) [[likely]] {
++        return step == Oot3dAotBlockEntryStep::Proceed;
++    }
++    return Oot3dAotNotifyBlock(context, frame, pc);
++}
++
++OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
++    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
++    Oot3dAotArchitecturalState& state, uint32_t pc) {
++    const Oot3dAotBlockEntryStep step = Oot3dAotBeginBlock(context, pc);
++    if (step != Oot3dAotBlockEntryStep::Notify) [[likely]] {
++        return step == Oot3dAotBlockEntryStep::Proceed;
++    }
++    return Oot3dAotNotifyBlock(context, frame, state, pc);
++}
++
++template <typename CommitState, typename ReloadState>
++OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
++    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
++    Oot3dAotArchitecturalState& state, uint32_t pc,
++    CommitState&& commitState, ReloadState&& reloadState) {
++    const Oot3dAotBlockEntryStep step = Oot3dAotBeginBlock(context, pc);
++    if (step != Oot3dAotBlockEntryStep::Notify) [[likely]] {
++        return step == Oot3dAotBlockEntryStep::Proceed;
++    }
 +    return Oot3dAotNotifyBlock(context, frame, state, pc,
 +                               std::forward<CommitState>(commitState),
 +                               std::forward<ReloadState>(reloadState));

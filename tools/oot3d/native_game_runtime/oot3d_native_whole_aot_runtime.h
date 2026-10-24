@@ -101,6 +101,22 @@ struct Oot3dAotBlockEntryFilter final {
     }
 };
 
+#if defined(__ORBIS__)
+constexpr Oot3dAotBlockEntryFilter Oot3dAotFullBlockEntryFilter() noexcept {
+    Oot3dAotBlockEntryFilter filter;
+    filter.Words.fill(~uint64_t{0});
+    return filter;
+}
+
+// Oot3dWholeAotContext::ActiveBlockEntryFilter before the first block
+// resolves it (it passes every pc, so that block takes the slow path)...
+inline constexpr Oot3dAotBlockEntryFilter kOot3dAotUnresolvedBlockEntryFilter =
+    Oot3dAotFullBlockEntryFilter();
+// ...and after, when a hook runs for every listed pc without a filter.
+inline constexpr Oot3dAotBlockEntryFilter kOot3dAotEveryBlockEntryFilter =
+    Oot3dAotFullBlockEntryFilter();
+#endif
+
 inline thread_local bool gOot3dWholeAotExecutionActive = false;
 inline thread_local Oot3dWholeAotObservableExitSnapshot
     gOot3dWholeAotObservableExitSnapshot{};
@@ -197,6 +213,13 @@ struct Oot3dWholeAotContext {
     bool SkipFirstBlockEntry = false;
     uint32_t BlocksRemaining = 0;
     uint32_t BlocksConsumed = 0;
+#if defined(__ORBIS__)
+    // What every block tests, resolved from the hook fields above at the
+    // first block: null when no hook can run, else a filter that passes at
+    // least every pc the hook runs for.
+    const Oot3dAotBlockEntryFilter* ActiveBlockEntryFilter =
+        &kOot3dAotUnresolvedBlockEntryFilter;
+#endif
 };
 
 struct Oot3dAotExternalStateAccess final {
@@ -285,6 +308,58 @@ inline bool Oot3dAotShouldNotifyBlock(
            Oot3dAotBlockEntryListed(context, pc);
 }
 
+enum class Oot3dAotBlockEntryStep : uint8_t { Stop, Proceed, Notify };
+
+// The inline part of every block entry: the budget, then whether a hook may
+// run. On the PS4 that is one filter resolved at the first block
+// (ActiveBlockEntryFilter) instead of testing the hook, the first-block skip,
+// the list and the filter at every block; Notify still needs
+// Oot3dAotBlockEntryResolved and Oot3dAotBlockEntryListed.
+OOT3D_AOT_BLOCK_FAST_PATH Oot3dAotBlockEntryStep Oot3dAotBeginBlock(
+    Oot3dWholeAotContext& context, uint32_t pc) noexcept {
+#if defined(__ORBIS__)
+    if (!Oot3dAotConsumeBlock(context)) {
+        return Oot3dAotBlockEntryStep::Stop;
+    }
+    const Oot3dAotBlockEntryFilter* filter = context.ActiveBlockEntryFilter;
+    return filter != nullptr && filter->MayContain(pc)
+               ? Oot3dAotBlockEntryStep::Notify
+               : Oot3dAotBlockEntryStep::Proceed;
+#else
+    const bool firstBlock = context.BlocksConsumed == 0U;
+    if (!Oot3dAotConsumeBlock(context)) {
+        return Oot3dAotBlockEntryStep::Stop;
+    }
+    return Oot3dAotMayNotifyBlock(context, pc, firstBlock)
+               ? Oot3dAotBlockEntryStep::Notify
+               : Oot3dAotBlockEntryStep::Proceed;
+#endif
+}
+
+// False when no hook runs for pc after all. On the PS4 the first block
+// (always here: the unresolved filter passes every pc) resolves the context's
+// filter and applies the exact first-block test; later blocks reached here
+// through a filter that already matched.
+inline bool Oot3dAotBlockEntryResolved(
+    Oot3dWholeAotContext& context, uint32_t pc) noexcept {
+#if defined(__ORBIS__)
+    if (context.ActiveBlockEntryFilter != &kOot3dAotUnresolvedBlockEntryFilter) {
+        return true;
+    }
+    context.ActiveBlockEntryFilter =
+        context.BlockEntry == nullptr ? nullptr
+        : context.BlockEntryPcCount == 0U || context.BlockEntryFilter == nullptr
+            ? &kOot3dAotEveryBlockEntryFilter
+            : context.BlockEntryFilter;
+    // This block was already consumed.
+    return Oot3dAotMayNotifyBlock(context, pc, context.BlocksConsumed == 1U);
+#else
+    (void)context;
+    (void)pc;
+    return true;
+#endif
+}
+
 // Runs the block-entry hook; false when it deferred an observable exit
 // (Oot3dWholeAotDeferObservableExit), which stops the block like the budget.
 inline bool Oot3dAotRunBlockEntryHook(
@@ -301,7 +376,8 @@ inline bool Oot3dAotRunBlockEntryHook(
 
 OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame, uint32_t pc) {
-    if (!Oot3dAotBlockEntryListed(context, pc)) {
+    if (!Oot3dAotBlockEntryResolved(context, pc) ||
+        !Oot3dAotBlockEntryListed(context, pc)) {
         return true;
     }
     return Oot3dAotRunBlockEntryHook(context, frame, pc);
@@ -310,7 +386,8 @@ OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
 OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
     Oot3dAotArchitecturalState& state, uint32_t pc) {
-    if (!Oot3dAotBlockEntryListed(context, pc)) {
+    if (!Oot3dAotBlockEntryResolved(context, pc) ||
+        !Oot3dAotBlockEntryListed(context, pc)) {
         return true;
     }
     state.Flush(0x7FFFU, true);
@@ -324,7 +401,8 @@ OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
     Oot3dAotArchitecturalState& state, uint32_t pc,
     CommitState&& commitState, ReloadState&& reloadState) {
-    if (!Oot3dAotBlockEntryListed(context, pc)) {
+    if (!Oot3dAotBlockEntryResolved(context, pc) ||
+        !Oot3dAotBlockEntryListed(context, pc)) {
         return true;
     }
     commitState();
@@ -338,12 +416,9 @@ OOT3D_AOT_BLOCK_SLOW_PATH bool Oot3dAotNotifyBlock(
 OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
     uint32_t pc) {
-    const bool firstBlock = context.BlocksConsumed == 0U;
-    if (!Oot3dAotConsumeBlock(context)) {
-        return false;
-    }
-    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
-        return true;
+    const Oot3dAotBlockEntryStep step = Oot3dAotBeginBlock(context, pc);
+    if (step != Oot3dAotBlockEntryStep::Notify) [[likely]] {
+        return step == Oot3dAotBlockEntryStep::Proceed;
     }
     return Oot3dAotNotifyBlock(context, frame, pc);
 }
@@ -351,12 +426,9 @@ OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
 OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
     Oot3dAotArchitecturalState& state, uint32_t pc) {
-    const bool firstBlock = context.BlocksConsumed == 0U;
-    if (!Oot3dAotConsumeBlock(context)) {
-        return false;
-    }
-    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
-        return true;
+    const Oot3dAotBlockEntryStep step = Oot3dAotBeginBlock(context, pc);
+    if (step != Oot3dAotBlockEntryStep::Notify) [[likely]] {
+        return step == Oot3dAotBlockEntryStep::Proceed;
     }
     return Oot3dAotNotifyBlock(context, frame, state, pc);
 }
@@ -366,12 +438,9 @@ OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
     Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
     Oot3dAotArchitecturalState& state, uint32_t pc,
     CommitState&& commitState, ReloadState&& reloadState) {
-    const bool firstBlock = context.BlocksConsumed == 0U;
-    if (!Oot3dAotConsumeBlock(context)) {
-        return false;
-    }
-    if (!Oot3dAotMayNotifyBlock(context, pc, firstBlock)) [[likely]] {
-        return true;
+    const Oot3dAotBlockEntryStep step = Oot3dAotBeginBlock(context, pc);
+    if (step != Oot3dAotBlockEntryStep::Notify) [[likely]] {
+        return step == Oot3dAotBlockEntryStep::Proceed;
     }
     return Oot3dAotNotifyBlock(context, frame, state, pc,
                                std::forward<CommitState>(commitState),

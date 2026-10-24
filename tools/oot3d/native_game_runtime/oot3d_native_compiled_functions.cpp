@@ -16,6 +16,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#if defined(__AVX__)
+#include <immintrin.h>
+#endif
 #include <span>
 #include <vector>
 
@@ -143,6 +146,69 @@ bool TryFastMtx3x4Multiply(const std::array<uint32_t, 12>& left,
          (kFpscrRoundingModeMask | kFpscrExceptionEnableMask)) != 0U) {
         return false;
     }
+#if defined(__AVX__)
+    // The four components of a row at once, with exactly the scalar path's
+    // arithmetic: each product and sum in double, rounded to float, every
+    // input and rounded value checked once at the end instead of branching
+    // after each step (any non-fast value still declines the whole call).
+    const auto good = [](__m128 value) noexcept {
+        const __m128i magnitude = _mm_and_si128(
+            _mm_castps_si128(value), _mm_set1_epi32(0x7FFFFFFF));
+        const __m128i normal = _mm_and_si128(
+            _mm_cmpgt_epi32(magnitude, _mm_set1_epi32(0x007FFFFF)),
+            _mm_cmpgt_epi32(_mm_set1_epi32(0x7F800000), magnitude));
+        return _mm_or_si128(
+            normal, _mm_cmpeq_epi32(magnitude, _mm_setzero_si128()));
+    };
+    const auto load = [](const uint32_t* words) noexcept {
+        return _mm_loadu_ps(reinterpret_cast<const float*>(words));
+    };
+    __m128i allGood = _mm_set1_epi32(-1);
+    __m256d inexact = _mm256_setzero_pd();
+    const auto round = [&](__m256d exact) noexcept {
+        const __m128 rounded = _mm256_cvtpd_ps(exact);
+        allGood = _mm_and_si128(allGood, good(rounded));
+        inexact = _mm256_or_pd(
+            inexact, _mm256_cmp_pd(_mm256_cvtps_pd(rounded), exact,
+                                   _CMP_NEQ_UQ));
+        return rounded;
+    };
+    const __m128 columns[3] = {load(right.data()), load(right.data() + 4),
+                               load(right.data() + 8)};
+    const __m256d wideColumns[3] = {_mm256_cvtps_pd(columns[0]),
+                                    _mm256_cvtps_pd(columns[1]),
+                                    _mm256_cvtps_pd(columns[2])};
+    for (size_t row = 0U; row < 3U; ++row) {
+        const __m128 rowValues = load(left.data() + row * 4U);
+        allGood = _mm_and_si128(_mm_and_si128(allGood, good(rowValues)),
+                                good(columns[row]));
+        const auto lane = [&](size_t index) noexcept {
+            return static_cast<double>(
+                std::bit_cast<float>(left[row * 4U + index]));
+        };
+        // Components 0-2 start with the product; component 3 adds it to
+        // the row's fourth value (only that lane takes the sum, so a -0
+        // product stays -0 elsewhere).
+        const __m128 product =
+            round(_mm256_mul_pd(wideColumns[0], _mm256_set1_pd(lane(0))));
+        const __m128 withTranslation = round(_mm256_add_pd(
+            _mm256_cvtps_pd(product), _mm256_set_pd(lane(3), 0.0, 0.0, 0.0)));
+        __m128 value = _mm_blend_ps(product, withTranslation, 0x8);
+        for (size_t step = 1U; step < 3U; ++step) {
+            const __m128 term = round(
+                _mm256_mul_pd(wideColumns[step], _mm256_set1_pd(lane(step))));
+            value = round(_mm256_add_pd(_mm256_cvtps_pd(value),
+                                        _mm256_cvtps_pd(term)));
+        }
+        _mm_storeu_ps(reinterpret_cast<float*>(output->data() + row * 4U),
+                      value);
+    }
+    if (_mm_movemask_epi8(allGood) != 0xFFFF) {
+        return false;
+    }
+    *exceptionFlags = _mm256_movemask_pd(inexact) != 0 ? kFpscrInexact : 0U;
+    return true;
+#else
     uint32_t flags = 0U;
     for (size_t row = 0U; row < 3U; ++row) {
         const size_t leftBase = row * 4U;
@@ -169,6 +235,7 @@ bool TryFastMtx3x4Multiply(const std::array<uint32_t, 12>& left,
     }
     *exceptionFlags = flags;
     return true;
+#endif
 }
 
 void ComputeSoftMtx3x4Multiply(const std::array<uint32_t, 12>& left,
