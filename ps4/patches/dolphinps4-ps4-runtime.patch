@@ -666,3 +666,36 @@ index aa89572..8787672 100644
  }
  
  // 64 KiB chunks of JIT code sampled since the last dump (dumpJitCode).
+diff --git a/port/ps4_sampler.cpp b/port/ps4_sampler.cpp
+--- a/port/ps4_sampler.cpp
++++ b/port/ps4_sampler.cpp
+@@ -176,22 +176,23 @@
+     snprintf(line, sizeof(line), "== %.0f s, %s: %d samples, %d in eboot code (%.0f%%)\n",
+              window_start, t.name, n, eboot_samples, 100.0 * eboot_samples / n);
+     writeLine(fd, line);
+-    // Every bucket seen at least twice (up to 1500): a function spread over many 16-byte buckets
+-    // fell below a top-60 cut, hiding about half of a busy thread. Aggregated per function
++    // Every bucket, with three decimals (one sample is 0.010%): a recompiled title spreads
++    // most of its time over thousands of functions with a sample or two each, which a
++    // two-sample cut hid (two thirds of the TriAevum game thread). Aggregated per function
+     // offline (symbolizer, JIT block map).
+-    for (int i = 0; i < unique && i < 1500 && entries[i].count >= 2; i++) {
++    for (int i = 0; i < unique; i++) {
+         if (entries[i].key >> 63) {
+             const uint64_t address = entries[i].key & ~(1ULL << 63);
+-            snprintf(line, sizeof(line), "  %5.1f%% jit 0x%llx\n", 100.0 * entries[i].count / n,
++            snprintf(line, sizeof(line), "  %7.3f%% jit 0x%llx\n", 100.0 * entries[i].count / n,
+                      static_cast<unsigned long long>(address));
+             noteHotJit(address, entries[i].count);
+         }
+         else if (entries[i].key & kCallerTag)
+-            snprintf(line, sizeof(line), "  %5.1f%% sys 0x%llx\n",
++            snprintf(line, sizeof(line), "  %7.3f%% sys 0x%llx\n",
+                      100.0 * entries[i].count / n,
+                      static_cast<unsigned long long>(entries[i].key & ~kCallerTag));
+         else
+-            snprintf(line, sizeof(line), "  %5.1f%% elf 0x%llx\n", 100.0 * entries[i].count / n,
++            snprintf(line, sizeof(line), "  %7.3f%% elf 0x%llx\n", 100.0 * entries[i].count / n,
+                      static_cast<unsigned long long>(entries[i].key));
+         writeLine(fd, line);
+     }

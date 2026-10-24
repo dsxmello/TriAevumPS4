@@ -272,3 +272,21 @@ interpolado para 60; GPU em 4K: 14–17 ms).
   originais em `title-content/aot-cpp.orig`): 18.595 LDM e 18.220 STM,
   166.262 palavras, 37% dos acessos estáticos à memória do código gerado.
   Idempotente.
+
+## Medição da 1.47 (2026-10-24)
+
+- Interiores 35,9 -> **43,1** fps (trechos de 55–58); médias (~210 draws)
+  21,3 -> **24,4** fps. Nas áreas pesadas a thread do jogo trabalha o tempo
+  todo (espera 0,2–0,6%) e a de render fica 60–70% parada: o limite é a
+  thread do jogo. Visível nela: frontend PICA 5,6%, mem* 4,5%, VFP 3,6%,
+  funções nativas à mão 3,3% (`Mtx3x4Multiply`, VFP exato em double),
+  áudio 2%; ~65% é a cauda do código AOT, abaixo do corte do profiler.
+- Decisão (Daniel): foco no código AOT do jogo.
+
+## 1.48 — profiler sem corte
+
+- `ps4_sampler.cpp` (DolphinPS4, diff anexado ao patch): toda bucket de 16
+  bytes de cada janela, com três casas (uma amostra = 0,010%); antes só as
+  com 2+ amostras e no máximo 1500, o que escondia ~2/3 da thread do jogo.
+  Para achar as funções do jogo mais quentes e o peso dos acessos à memória
+  dentro delas.

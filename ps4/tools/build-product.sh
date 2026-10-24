@@ -79,5 +79,5 @@ atlas = Path("runtime/triaevum_resources/topscreen/singlescreen-3.0/custom_ui01.
 Path(sys.argv[1]).write_bytes(build_texture_pack(singlescreen_ui_atlas=atlas))
 ' "$stage/forge/topscreen/atlas_overrides.o3tu" )
 pkg="$(SFO_STYLE=plain NO_PIGLET_MODULES=1 "$HERE/make-pkg.sh" "$stage" "${PRODUCT_TITLE_ID:-TRIA00005}" \
-    "TriAevum PS4" "${PRODUCT_VERSION:-01.47}" TRIAEVUMPRODUCT0 "$PS4_BUILD_ROOT/out" | tail -1)"
+    "TriAevum PS4" "${PRODUCT_VERSION:-01.48}" TRIAEVUMPRODUCT0 "$PS4_BUILD_ROOT/out" | tail -1)"
 echo "product: $(basename "$pkg")"
