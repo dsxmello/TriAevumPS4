@@ -37,6 +37,7 @@
 #include <sys/stat.h>
 
 #include <orbis/SystemService.h>
+#include <orbis/UserService.h>
 #include <orbis/libkernel.h>
 
 #include "ps4_display.h"
@@ -298,13 +299,57 @@ struct ScreenState {
     std::chrono::steady_clock::time_point LastScan{};
     bool LaunchRequested = false;
     std::string LaunchError;
+    bool FirstFrame = true;
+    bool DeleteOffered = false;  // after a successful preparation, once
+    std::string DeleteResult;
 };
+
+// The ROM is only needed to prepare the game: offer to free its space.
+void DrawDeletePrompt(ScreenState& screen, float width) {
+    constexpr const char* kTitle = "Delete the ROM?";
+    if (!screen.DeleteOffered && screen.Rom) {
+        screen.DeleteOffered = true;
+        ImGui::OpenPopup(kTitle);
+    }
+    const ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x / 2, io.DisplaySize.y / 2), ImGuiCond_Always,
+                            ImVec2(0.5F, 0.5F));
+    ImGui::SetNextWindowSize(ImVec2(width * 0.7F, 0));
+    if (!ImGui::BeginPopupModal(kTitle, nullptr,
+                                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
+        return;
+    }
+    ImGui::TextWrapped(
+        "The game is installed. TriAevum does not need %s any more: delete it from "
+        "/data/triaevum/forge/ to free %.0f MB? Keep it to prepare the game again later.",
+        screen.Rom->Path.filename().c_str(), screen.Rom->Bytes / 1048576.0);
+    ImGui::Spacing();
+    const float button = width * 0.22F;
+    if (ImGui::Button("Delete ROM", ImVec2(button, 0))) {
+        try {
+            forge::RemoveFile(screen.Rom->Path);
+            screen.DeleteResult = "The ROM was deleted.";
+            screen.Rom.reset();
+        } catch (const std::exception& error) {
+            screen.DeleteResult = error.what();
+        }
+        std::printf("[forge] delete ROM: %s\n", screen.DeleteResult.c_str());
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Keep ROM", ImVec2(button, 0))) ImGui::CloseCurrentPopup();
+    ImGui::SetItemDefaultFocus();
+    ImGui::EndPopup();
+}
 
 void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
     const ImGuiIO& io = ImGui::GetIO();
     const float width = std::min(io.DisplaySize.x - 160.0F, 1500.0F);
     ImGui::SetNextWindowPos(ImVec2((io.DisplaySize.x - width) / 2, 40));
     ImGui::SetNextWindowSize(ImVec2(width, io.DisplaySize.y - 80));
+    // Gamepad navigation acts on the focused window: there is no mouse click.
+    if (screen.FirstFrame) ImGui::SetNextWindowFocus();
+    screen.FirstFrame = false;
     ImGui::Begin("TriAevum Forge", nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoSavedSettings);
@@ -316,7 +361,8 @@ void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
 
     // The folder is watched: the ROM may arrive over FTP while this is open.
     const auto now = std::chrono::steady_clock::now();
-    if (!running && now - screen.LastScan > std::chrono::seconds(2)) {
+    if (!running && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+        now - screen.LastScan > std::chrono::seconds(2)) {
         screen.Rom = FindRom();
         screen.LastScan = now;
     }
@@ -398,6 +444,7 @@ void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
         else if (GameReady()) status = "A game is installed. Send a ROM to prepare it again.";
         else status = "No active title is installed. Send a decrypted ROM to /data/triaevum/forge/.";
     }
+    if (succeeded && !screen.DeleteResult.empty()) status += " " + screen.DeleteResult;
     if (!screen.LaunchError.empty()) status = screen.LaunchError;
     if (failed || !screen.LaunchError.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65F, 0.10F, 0.10F, 1.0F));
@@ -424,6 +471,7 @@ void DrawForge(ScreenState& screen, PrepareJob& job, ImFont* title) {
 
     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - line - ImGui::GetStyle().WindowPadding.y);
     ImGui::TextDisabled("Cross: select    D-pad: move    Hold L1+R1 when starting TriAevum to open Forge again");
+    if (succeeded) DrawDeletePrompt(screen, width);
     ImGui::End();
 }
 
@@ -487,6 +535,8 @@ void RunForgeScreen() {
     ScreenState screen;
     for (;;) {
         Fast::gOrbisFrameHeartbeat.fetch_add(1, std::memory_order_relaxed);
+        // SDL finds the DualShock (and its hot-plug) while pumping events.
+        SDL_PumpEvents();
         display.WaitPendingFlip();
         pica->BeginFrame(display.NextBuffer());
         vk->OpenScanoutPass();
@@ -522,8 +572,15 @@ void RunForgeScreen() {
 }
 
 bool ForgeRequestedByUser() {
-    // L1+R1 held while TriAevum starts.
-    SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+    // L1+R1 held while TriAevum starts. SDL's PS4 joystick driver asks the
+    // user service for the logged-in users (0x80960002 before it starts),
+    // and it finds the pad while pumping events.
+    sceUserServiceInitialize(nullptr);
+    SDL_InitSubSystem(SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
+    for (int attempt = 0; attempt < 30 && SDL_NumJoysticks() == 0; ++attempt) {
+        SDL_PumpEvents();
+        SDL_Delay(10);
+    }
     SDL_GameControllerUpdate();
     bool held = false;
     for (int index = 0; index < SDL_NumJoysticks() && !held; ++index) {

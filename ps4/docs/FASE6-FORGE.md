@@ -77,3 +77,16 @@ No-Intro/Rev 1 e USA via adaptador para a canônica EUR).
   processo limpo. Texturas HD, Vanilla+ e idioma aparecem desabilitados
   ("not available yet on PS4") até as fases 2, 3 e 5.
 - Fonte DroidSans (Apache 2.0, do Dear ImGui vendorizado) em `/app0/forge`.
+
+## 1.34 no console / 1.35 (2026-10-24)
+
+- 1.34: preparação no console funcionou (USA -> canônica EUR verificada) e o
+  "Launch game" reiniciou o app direto no jogo. O controle não funcionava na
+  tela do Forge: o subsistema de controle do SDL era ligado antes de
+  `sceUserServiceInitialize` (`PS4_JoystickDetect ... 0x80960002`) e o loop
+  do Forge nunca chamava `SDL_PumpEvents`, que é onde o SDL detecta o pad.
+- 1.35: user service antes do SDL, `SDL_PumpEvents` a cada quadro (e até
+  300 ms antes de checar L1+R1), foco na janela no primeiro quadro (a
+  navegação por controle age na janela focada). Depois de instalar, um
+  diálogo pergunta se a ROM deve ser apagada de `/data/triaevum/forge/`
+  ("Delete ROM" / "Keep ROM").
