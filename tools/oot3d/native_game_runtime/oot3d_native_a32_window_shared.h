@@ -709,6 +709,11 @@ bool ExecuteNativeCandidate(uint32_t pc, oot3d::recomp::a32::GuestState &state,
 void ApplyNativeWidescreenProjectionPolicy(
     uint32_t pc, oot3d::recomp::a32::GuestState &state,
     oot3d::recomp::a32::MemoryBus &memory, void *user);
+#if defined(__ORBIS__)
+// PS4 diagnostics log: the policy's calls per second and its busiest guest
+// PCs since the previous call, then starts counting again.
+std::string TakeBlockEntryHookCounts(double seconds);
+#endif
 
 Oot3dNativeGame::NativeA32InputFrame
 // `picture` is the presentation picture in the window (the aspect ratio's

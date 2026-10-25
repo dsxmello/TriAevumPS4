@@ -103,7 +103,7 @@ int main() {
     draw.FragmentShader.Uniforms.LightingProgram.Luts[6] = {5,1,0.25F,1};
     draw.FragmentShader.Uniforms.FragmentControl = {0x10005,0x31,0,0};
     draw.FragmentShader.Uniforms.ProcTexProgram.Registers[1] = {1,2,3,4};
-    draw.FragmentShader.Uniforms.ProcTexProgram.Lut[223] = {0x12345678,0x87654321,0xFEDCBA98,0x89ABCDEF};
+    draw.FragmentShader.Uniforms.ProcTexProgram.MutableLut()[223] = {0x12345678,0x87654321,0xFEDCBA98,0x89ABCDEF};
     auto lightingLuts = std::make_shared<Oot3dPicaLightingLutState>();
     lightingLuts->Entry(0U, 0U) = 0x00123ABCU;
     lightingLuts->Entry(23U, 255U) = 0x00FEDCBAU;
@@ -167,8 +167,8 @@ int main() {
     Require(decoded.Scheduler.Accumulator.NextSequence == 6U &&
                 decoded.Scheduler.Accumulator.PendingDraws[0].FragmentShader.Uniforms.ProcTexProgram.Registers ==
                     draw.FragmentShader.Uniforms.ProcTexProgram.Registers &&
-                decoded.Scheduler.Accumulator.PendingDraws[0].FragmentShader.Uniforms.ProcTexProgram.Lut ==
-                    draw.FragmentShader.Uniforms.ProcTexProgram.Lut &&
+                decoded.Scheduler.Accumulator.PendingDraws[0].FragmentShader.Uniforms.ProcTexProgram.Lut() ==
+                    draw.FragmentShader.Uniforms.ProcTexProgram.Lut() &&
                 decoded.Scheduler.Accumulator.PendingDraws.size() == 1U &&
                 decoded.Scheduler.Accumulator.PendingDraws[0].SubmissionId ==
                     7U &&

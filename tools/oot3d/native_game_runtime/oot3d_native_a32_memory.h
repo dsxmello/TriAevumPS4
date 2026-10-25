@@ -192,12 +192,10 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
         if (value == nullptr) {
             return false;
         }
-        const size_t group = address >> FastGroupShift;
-        const size_t page = (address >> PageShift) & FastGroupPageMask;
+        const FastPage* pages = mFastPages.get();
         const size_t offset = address & PageMask;
-        if (offset <= PageSize - sizeof(T) &&
-            mFastPageGroups[group] != nullptr) {
-            const uint8_t* source = mFastPageGroups[group][page].Read;
+        if (offset <= PageSize - sizeof(T) && pages != nullptr) {
+            const uint8_t* source = pages[address >> PageShift].Read;
             if (source != nullptr) {
                 std::memcpy(value, source + offset, sizeof(T));
                 if (kFastPagesMayBeTraced && mTraceWriteFingerprint) [[unlikely]] {
@@ -248,12 +246,10 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
         static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 ||
                       sizeof(T) == 8);
         static_assert(std::endian::native == std::endian::little);
-        const size_t group = address >> FastGroupShift;
-        const size_t page = (address >> PageShift) & FastGroupPageMask;
+        FastPage* pages = mFastPages.get();
         const size_t offset = address & PageMask;
-        if (offset <= PageSize - sizeof(T) &&
-            mFastPageGroups[group] != nullptr) {
-            auto& entry = mFastPageGroups[group][page];
+        if (offset <= PageSize - sizeof(T) && pages != nullptr) {
+            auto& entry = pages[address >> PageShift];
             uint8_t* destination = entry.Write;
             if (destination != nullptr) {
                 std::memcpy(destination + offset, &value, sizeof(T));
@@ -389,8 +385,7 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
         if (size == 0U || size > PageSize - offset) {
             return nullptr;
         }
-        const auto& group = mFastPageGroups[address >> FastGroupShift];
-        return group ? &group[(address >> PageShift) & FastGroupPageMask] : nullptr;
+        return mFastPages ? &mFastPages[address >> PageShift] : nullptr;
     }
     void RebuildPageTable();
     [[nodiscard]] bool Watches(uint32_t address, size_t size) const noexcept {
@@ -450,9 +445,9 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
         if (generation == 0U || generation < CurrentRangeGeneration()) [[unlikely]]
             mRangeVersionsValid = false;
         const size_t last = (uint64_t{address} + size - 1U) >> PageShift;
+        if (!mFastPages) return;
         for (size_t page = address >> PageShift; page <= last; ++page) {
-            auto& group = mFastPageGroups[page / FastGroupPageCount];
-            if (group) group[page & FastGroupPageMask].WriteGeneration = generation;
+            mFastPages[page].WriteGeneration = generation;
         }
     }
 
@@ -461,15 +456,15 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
     static constexpr size_t PageSize = size_t{1} << PageShift;
     static constexpr size_t PageMask = PageSize - 1U;
     static constexpr size_t PageCount = size_t{1} << (32U - PageShift);
-    static constexpr uint32_t FastGroupShift = 20U;
-    static constexpr size_t FastGroupCount =
-        size_t{1} << (32U - FastGroupShift);
-    static constexpr size_t FastGroupPageCount =
-        size_t{1} << (FastGroupShift - PageShift);
-    static constexpr size_t FastGroupPageMask = FastGroupPageCount - 1U;
     static constexpr uint16_t AmbiguousPage = 0xFFFFU;
     std::vector<uint16_t> mPageRegions;
-    std::array<std::unique_ptr<FastPage[]>, FastGroupCount> mFastPageGroups;
+    // One entry per guest page (PageCount x 24 bytes, allocated at the first
+    // rebuild): a typed access is one indexed load of the entry, where the
+    // previous two-level table (1 MiB groups) loaded the group first and
+    // tested it. Only the pages of mapped regions are ever set
+    // (mFastPageSpans, inclusive, cleared on the next rebuild).
+    std::unique_ptr<FastPage[]> mFastPages;
+    std::vector<std::pair<size_t, size_t>> mFastPageSpans;
     // Every write steps this once: the architectural write generation plus
     // the certificate epoch (mRangeGenerationBias), kept summed so that the
     // inline writes update one counter.

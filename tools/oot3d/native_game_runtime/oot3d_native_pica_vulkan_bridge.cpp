@@ -150,8 +150,9 @@ PackFragmentUniforms(
                 &uniforms.LightingProgram, sizeof(uniforms.LightingProgram));
     std::memcpy(bytes.data() + Fast::Oot3d::kPicaPackedFragmentControlOffset,
                 uniforms.FragmentControl.data(), sizeof(uniforms.FragmentControl));
-    std::memcpy(bytes.data() + Fast::Oot3d::kPicaPackedFragmentProcTexOffset,
-                &uniforms.ProcTexProgram, sizeof(uniforms.ProcTexProgram));
+    static_assert(sizeof(Oot3dPicaProcTexUniform::Program) == 3616U);
+    uniforms.ProcTexProgram.WriteProgram(
+        bytes.data() + Fast::Oot3d::kPicaPackedFragmentProcTexOffset);
     return bytes;
 }
 

@@ -1,9 +1,12 @@
 #include "oot3d_native_pica_proctex.h"
+#include "oot3d_native_pica_fragment_shader_gen.h"
 
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
+#include <cstddef>
+#include <cstring>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -409,6 +412,48 @@ void AppendMainSampler(std::ostringstream& source,
 }
 
 } // namespace
+
+namespace {
+const Oot3dPicaProcTexUniform::LutWords kZeroProcTexLut{};
+} // namespace
+
+Oot3dPicaProcTexUniform& Oot3dPicaProcTexUniform::operator=(const Program& program) {
+    Registers = program.Registers;
+    mOwnedLut.reset();
+    if (std::memcmp(program.Lut.data(), kZeroProcTexLut.data(), sizeof(LutWords)) == 0) {
+        mLut.reset();
+        return *this;
+    }
+    // Consecutive draws use the same tables: share the previous LUT.
+    thread_local std::shared_ptr<const LutWords> previous;
+    if (previous == nullptr ||
+        std::memcmp(previous->data(), program.Lut.data(), sizeof(LutWords)) != 0) {
+        previous = std::make_shared<const LutWords>(program.Lut);
+    }
+    mLut = previous;
+    return *this;
+}
+
+const Oot3dPicaProcTexUniform::LutWords& Oot3dPicaProcTexUniform::Lut() const noexcept {
+    return mOwnedLut != nullptr ? *mOwnedLut : mLut != nullptr ? *mLut : kZeroProcTexLut;
+}
+
+Oot3dPicaProcTexUniform::LutWords& Oot3dPicaProcTexUniform::MutableLut() {
+    if (mOwnedLut == nullptr) {
+        mOwnedLut = std::make_shared<LutWords>(Lut());
+        mLut.reset();
+    } else if (mOwnedLut.use_count() != 1) {
+        // A copy of this uniform shares it: write to a LUT of its own.
+        mOwnedLut = std::make_shared<LutWords>(*mOwnedLut);
+    }
+    return *mOwnedLut;
+}
+
+void Oot3dPicaProcTexUniform::WriteProgram(void* destination) const noexcept {
+    auto* bytes = static_cast<uint8_t*>(destination);
+    std::memcpy(bytes + offsetof(Program, Registers), Registers.data(), sizeof(Registers));
+    std::memcpy(bytes + offsetof(Program, Lut), Lut().data(), sizeof(LutWords));
+}
 
 Fast::Renderer3ds::PicaProcTexProgram BuildOot3dPicaProcTexProgram(const Oot3dPicaDrawPacket& packet) {
     Fast::Renderer3ds::PicaProcTexProgram result;

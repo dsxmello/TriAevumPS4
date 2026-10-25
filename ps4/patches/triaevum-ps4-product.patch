@@ -1241,7 +1241,7 @@ index 571e4752..eb393c6f 100644
                          submitted = QueueGspInterrupt(
                              memory, static_cast<uint8_t>(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp
-index d02560bf..c842604f 100644
+index d02560bf..996e6b3c 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp
 @@ -50,7 +50,7 @@ NativeA32Memory::NativeA32Memory(const NativeA32Memory& other)
@@ -1265,19 +1265,73 @@ index d02560bf..c842604f 100644
          mRangeVersionsValid = mRangeVersionsValid && nextRangeGeneration != 0U;
          mWriteTraceFingerprint = other.mWriteTraceFingerprint;
          mTraceWriteFingerprint = other.mTraceWriteFingerprint;
-@@ -96,8 +97,9 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
+@@ -95,9 +96,12 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
+         mRangeVersionsValid && other.mRangeVersionsValid && nextRangeGeneration != 0U;
      mRegions = std::move(other.mRegions);
      mPageRegions = std::move(other.mPageRegions);
-     mFastPageGroups = std::move(other.mFastPageGroups);
+-    mFastPageGroups = std::move(other.mFastPageGroups);
 -    mWriteGeneration = other.mWriteGeneration;
 -    mRangeGenerationBias = nextRangeGeneration - mWriteGeneration;
++    mFastPages = std::move(other.mFastPages);
++    mFastPageSpans = std::move(other.mFastPageSpans);
++    other.mFastPageSpans.clear();
 +    mRangeGenerationBias =
 +        nextRangeGeneration - other.ArchitecturalWriteGeneration();
 +    mRangeGeneration = nextRangeGeneration;
      mRangeVersionsValid = versionsValid;
      mWriteTraceFingerprint = other.mWriteTraceFingerprint;
      mTraceWriteFingerprint = other.mTraceWriteFingerprint;
-@@ -220,7 +222,7 @@ void NativeA32Memory::RebuildPageTable() {
+@@ -120,10 +124,9 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
+     mDeferredPages = std::move(other.mDeferredPages);
+     // Backing allocations and their fast pointers move together. Only the
+     // destination's certificate epoch changes; no page-table allocation.
+-    for (auto& group : mFastPageGroups) {
+-        if (!group) continue;
+-        for (size_t page = 0; page < FastGroupPageCount; ++page)
+-            group[page].WriteGeneration = nextRangeGeneration;
++    for (const auto& [first, last] : mFastPageSpans) {
++        for (size_t page = first; page <= last; ++page)
++            mFastPages[page].WriteGeneration = nextRangeGeneration;
+     }
+     // A reused moved-from image must not revive its old certificates either.
+     other.mRangeVersionsValid = false;
+@@ -181,9 +184,14 @@ bool NativeA32Memory::MapRegion(const NativeA32MemoryRegionConfig& config,
+ 
+ void NativeA32Memory::RebuildPageTable() {
+     mPageRegions.assign(PageCount, 0U);
+-    for (auto& group : mFastPageGroups) {
+-        group.reset();
++    if (!mFastPages) {
++        mFastPages = std::make_unique<FastPage[]>(PageCount);
++    } else {
++        for (const auto& [first, last] : mFastPageSpans) {
++            std::fill(mFastPages.get() + first, mFastPages.get() + last + 1U, FastPage{});
++        }
+     }
++    mFastPageSpans.clear();
+     for (size_t regionIndex = 0; regionIndex < mRegions.size();
+          ++regionIndex) {
+         auto& region = mRegions[regionIndex];
+@@ -194,6 +202,7 @@ void NativeA32Memory::RebuildPageTable() {
+         const size_t lastPage = static_cast<size_t>(lastAddress >> PageShift);
+         const uint16_t pageValue =
+             static_cast<uint16_t>(regionIndex + 1U);
++        mFastPageSpans.emplace_back(firstPage, lastPage);
+         for (size_t page = firstPage; page <= lastPage; ++page) {
+             auto& entry = mPageRegions[page];
+             if (entry == 0U) {
+@@ -201,9 +210,7 @@ void NativeA32Memory::RebuildPageTable() {
+             } else if (entry != pageValue) {
+                 entry = AmbiguousPage;
+             }
+-            auto& group = mFastPageGroups[page / FastGroupPageCount];
+-            if (!group) group = std::make_unique<FastPage[]>(FastGroupPageCount);
+-            auto& fastPage = group[page & FastGroupPageMask];
++            auto& fastPage = mFastPages[page];
+             fastPage.WriteGeneration = CurrentRangeGeneration();
+ 
+             const uint64_t pageAddress =
+@@ -220,7 +227,7 @@ void NativeA32Memory::RebuildPageTable() {
                  const bool trapped =
                      std::binary_search(mTrappedPages.begin(), mTrappedPages.end(), page) ||
                      std::binary_search(mDeferredPages.begin(), mDeferredPages.end(), page);
@@ -1286,7 +1340,7 @@ index d02560bf..c842604f 100644
                      continue;
                  }
                  fastPage.Read = region.Bytes.data() + offset;
-@@ -295,7 +297,7 @@ size_t NativeA32Memory::RegionCount() const {
+@@ -295,7 +302,7 @@ size_t NativeA32Memory::RegionCount() const {
  }
  
  uint64_t NativeA32Memory::WriteGeneration() const {
@@ -1295,7 +1349,17 @@ index d02560bf..c842604f 100644
  }
  
  std::optional<uint64_t>
-@@ -314,9 +316,12 @@ NativeA32Memory::RangeWriteGeneration(uint32_t address,
+@@ -306,17 +313,19 @@ NativeA32Memory::RangeWriteGeneration(uint32_t address,
+   uint64_t generation = 0;
+   const size_t last = (uint64_t{address} + size - 1U) >> PageShift;
+   for (size_t page = address >> PageShift; page <= last; ++page) {
+-      const auto& group = mFastPageGroups[page / FastGroupPageCount];
+-      if (!group || !group[page & FastGroupPageMask].WriteGeneration) return std::nullopt;
+-      generation = std::max(generation, group[page & FastGroupPageMask].WriteGeneration);
++      if (!mFastPages || !mFastPages[page].WriteGeneration) return std::nullopt;
++      generation = std::max(generation, mFastPages[page].WriteGeneration);
+   }
+   return generation;
  }
  
  void NativeA32Memory::EnableWriteTraceFingerprint(bool enabled) noexcept {
@@ -1308,7 +1372,7 @@ index d02560bf..c842604f 100644
  }
  
  uint64_t NativeA32Memory::WriteTraceFingerprint() noexcept {
-@@ -410,7 +415,8 @@ uint64_t NativeA32Memory::StateFingerprint() const {
+@@ -410,7 +419,8 @@ uint64_t NativeA32Memory::StateFingerprint() const {
              hash *= 1099511628211ULL;
          }
      };
@@ -1318,7 +1382,7 @@ index d02560bf..c842604f 100644
      for (const auto& region : mRegions) {
          append(region.Name.data(), region.Name.size());
          append(&region.BaseAddress, sizeof(region.BaseAddress));
-@@ -438,7 +444,7 @@ nlohmann::json NativeA32Memory::CaptureState() const {
+@@ -438,7 +448,7 @@ nlohmann::json NativeA32Memory::CaptureState() const {
      }
      return {
          {"format", "oot3d_native_a32_memory_state_v1"},
@@ -1327,7 +1391,7 @@ index d02560bf..c842604f 100644
          {"regions", std::move(regions)},
      };
  }
-@@ -473,9 +479,9 @@ bool NativeA32Memory::RestoreState(const nlohmann::json& state,
+@@ -473,9 +483,9 @@ bool NativeA32Memory::RestoreState(const nlohmann::json& state,
                  return false;
              }
          }
@@ -1340,7 +1404,17 @@ index d02560bf..c842604f 100644
              SetError(error,
                       "native A32 memory write generation is invalid");
              return false;
-@@ -594,6 +600,10 @@ void NativeA32Memory::PreserveAccessObserversFrom(const NativeA32Memory& memory)
+@@ -563,8 +573,7 @@ bool NativeA32Memory::ObserveWrites(uint32_t address, size_t size) {
+         const auto position = std::lower_bound(mObservedWritePages.begin(), mObservedWritePages.end(), page);
+         if (position == mObservedWritePages.end() || *position != page)
+             mObservedWritePages.insert(position, page);
+-        auto& group = mFastPageGroups[page / FastGroupPageCount];
+-        if (group) group[page & FastGroupPageMask].Write = nullptr;
++        if (mFastPages) mFastPages[page].Write = nullptr;
+     }
+     return true;
+ }
+@@ -594,14 +603,17 @@ void NativeA32Memory::PreserveAccessObserversFrom(const NativeA32Memory& memory)
  
  void NativeA32Memory::ReleaseDeferredPageTraps() const {
      if (!mDeferredWrites.empty()) return;
@@ -1349,9 +1423,29 @@ index d02560bf..c842604f 100644
 +        return;
 +    }
      for (const size_t page : mDeferredPages) {
-         auto& group = mFastPageGroups[page / FastGroupPageCount];
-         if (!group || std::binary_search(mTrappedPages.begin(), mTrappedPages.end(), page))
-@@ -665,7 +675,7 @@ bool NativeA32Memory::DeferWrites(
+-        auto& group = mFastPageGroups[page / FastGroupPageCount];
+-        if (!group || std::binary_search(mTrappedPages.begin(), mTrappedPages.end(), page))
++        if (!mFastPages || std::binary_search(mTrappedPages.begin(), mTrappedPages.end(), page))
+             continue;
+         const uint32_t address = static_cast<uint32_t>(page << PageShift);
+         const auto* region = FindRegion(address, PageSize);
+         if (!region) continue;
+-        auto& entry = group[page & FastGroupPageMask];
++        auto& entry = mFastPages[page];
+         auto* bytes = region->Bytes.data() + (address - region->BaseAddress);
+         entry.Read = bytes;
+         entry.Write = region->Writable &&
+@@ -658,14 +670,13 @@ bool NativeA32Memory::DeferWrites(
+         for (size_t page = address >> PageShift; page <= last; ++page) {
+             const auto at = std::lower_bound(mDeferredPages.begin(), mDeferredPages.end(), page);
+             if (at == mDeferredPages.end() || *at != page) mDeferredPages.insert(at, page);
+-            auto& group = mFastPageGroups[page / FastGroupPageCount];
+-            if (group) {
+-                group[page & FastGroupPageMask].Read = nullptr;
+-                group[page & FastGroupPageMask].Write = nullptr;
++            if (mFastPages) {
++                mFastPages[page].Read = nullptr;
++                mFastPages[page].Write = nullptr;
              }
          }
          // A logical device write invalidates exclusives now, not at readback.
@@ -1360,7 +1454,7 @@ index d02560bf..c842604f 100644
          MarkRangeWritten(address, size, CurrentRangeGeneration());
      }
      return true;
-@@ -766,7 +776,7 @@ uint8_t* NativeA32Memory::GetWritePointer(uint32_t address, size_t size) {
+@@ -766,7 +777,7 @@ uint8_t* NativeA32Memory::GetWritePointer(uint32_t address, size_t size) {
      }
      AddWriteRange(mEscapedWritePointers, address, size);
      NotifyObservedWrite(address, size);
@@ -1369,7 +1463,7 @@ index d02560bf..c842604f 100644
      MarkRangeWritten(address, size, CurrentRangeGeneration());
      return destination;
  }
-@@ -827,7 +837,7 @@ bool NativeA32Memory::WriteBytes(uint32_t address,
+@@ -827,7 +838,7 @@ bool NativeA32Memory::WriteBytes(uint32_t address,
      if (mTraceWriteFingerprint) [[unlikely]] {
          RecordTracedWrite(address, bytes);
      }
@@ -1378,7 +1472,7 @@ index d02560bf..c842604f 100644
      MarkRangeWritten(address, bytes.size(), CurrentRangeGeneration());
      NotifyObservedWrite(address, bytes.size());
      return true;
-@@ -848,7 +858,7 @@ bool NativeA32Memory::WriteHostBytes(
+@@ -848,7 +859,7 @@ bool NativeA32Memory::WriteHostBytes(
      if (mTraceWriteFingerprint) [[unlikely]] {
          RecordTracedWrite(address, bytes);
      }
@@ -1387,7 +1481,7 @@ index d02560bf..c842604f 100644
      MarkRangeWritten(address, bytes.size(), CurrentRangeGeneration());
      if (!mWatchSuppressed && Watches(address, bytes.size())) [[unlikely]] {
          ++mWatchCounters.HostByteWrites;
-@@ -873,7 +883,7 @@ bool NativeA32Memory::Fill(uint32_t address, size_t size, uint8_t value) {
+@@ -873,7 +884,7 @@ bool NativeA32Memory::Fill(uint32_t address, size_t size, uint8_t value) {
              address,
              std::span<const uint8_t>(region->Bytes.data() + offset, size));
      }
@@ -1396,7 +1490,7 @@ index d02560bf..c842604f 100644
      MarkRangeWritten(address, size, CurrentRangeGeneration());
      if (!mWatchSuppressed && Watches(address, size)) [[unlikely]] {
          ++mWatchCounters.Fills;
-@@ -942,7 +952,7 @@ bool NativeA32Memory::WriteSized(uint32_t address, uint8_t size,
+@@ -942,7 +953,7 @@ bool NativeA32Memory::WriteSized(uint32_t address, uint8_t size,
              address,
              std::span<const uint8_t>(region->Bytes.data() + offset, size));
      }
@@ -1405,7 +1499,7 @@ index d02560bf..c842604f 100644
      MarkRangeWritten(address, size, CurrentRangeGeneration());
      if (Watches(address, size)) [[unlikely]] {
          NoteWatchedWrite(address, size);
-@@ -991,14 +1001,14 @@ bool NativeA32Memory::LoadExclusive(uint32_t address, uint8_t size,
+@@ -991,14 +1002,14 @@ bool NativeA32Memory::LoadExclusive(uint32_t address, uint8_t size,
      if (token == nullptr || !ReadSized(address, size, value, faultAddress)) {
          return false;
      }
@@ -1423,7 +1517,7 @@ index d02560bf..c842604f 100644
      }
      if (!WriteSized(address, size, value, faultAddress)) {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
-index 170d0788..29cd7116 100644
+index 170d0788..0940c5f6 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
 @@ -19,6 +19,14 @@
@@ -1470,8 +1564,19 @@ index 170d0788..29cd7116 100644
          static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>);
          static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 ||
                        sizeof(T) == 8);
-@@ -179,20 +200,26 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
-             const uint8_t* source = mFastPageGroups[group][page].Read;
+@@ -171,28 +192,32 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+         if (value == nullptr) {
+             return false;
+         }
+-        const size_t group = address >> FastGroupShift;
+-        const size_t page = (address >> PageShift) & FastGroupPageMask;
++        const FastPage* pages = mFastPages.get();
+         const size_t offset = address & PageMask;
+-        if (offset <= PageSize - sizeof(T) &&
+-            mFastPageGroups[group] != nullptr) {
+-            const uint8_t* source = mFastPageGroups[group][page].Read;
++        if (offset <= PageSize - sizeof(T) && pages != nullptr) {
++            const uint8_t* source = pages[address >> PageShift].Read;
              if (source != nullptr) {
                  std::memcpy(value, source + offset, sizeof(T));
 -                if (mTraceWriteFingerprint) [[unlikely]] {
@@ -1507,7 +1612,7 @@ index 170d0788..29cd7116 100644
          uint64_t decoded = 0;
          if (!ReadSized(address, static_cast<uint8_t>(sizeof(T)), &decoded,
                         faultAddress)) {
-@@ -202,9 +229,21 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+@@ -202,35 +227,51 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
          return true;
      }
  
@@ -1531,7 +1636,16 @@ index 170d0788..29cd7116 100644
          static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>);
          static_assert(sizeof(T) == 1 || sizeof(T) == 2 || sizeof(T) == 4 ||
                        sizeof(T) == 8);
-@@ -218,19 +257,25 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+         static_assert(std::endian::native == std::endian::little);
+-        const size_t group = address >> FastGroupShift;
+-        const size_t page = (address >> PageShift) & FastGroupPageMask;
++        FastPage* pages = mFastPages.get();
+         const size_t offset = address & PageMask;
+-        if (offset <= PageSize - sizeof(T) &&
+-            mFastPageGroups[group] != nullptr) {
+-            auto& entry = mFastPageGroups[group][page];
++        if (offset <= PageSize - sizeof(T) && pages != nullptr) {
++            auto& entry = pages[address >> PageShift];
              uint8_t* destination = entry.Write;
              if (destination != nullptr) {
                  std::memcpy(destination + offset, &value, sizeof(T));
@@ -1561,7 +1675,7 @@ index 170d0788..29cd7116 100644
          return WriteSized(address, static_cast<uint8_t>(sizeof(T)), value,
                            faultAddress);
      }
-@@ -261,14 +306,41 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+@@ -261,14 +302,41 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
          std::memcpy(bytes.data(), page->Read + (address & PageMask), bytes.size());
          return true;
      }
@@ -1605,7 +1719,17 @@ index 170d0788..29cd7116 100644
          if (page->WriteGeneration == 0U) [[unlikely]] mRangeVersionsValid = false;
          return true;
      }
-@@ -364,7 +436,15 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+@@ -317,8 +385,7 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+         if (size == 0U || size > PageSize - offset) {
+             return nullptr;
+         }
+-        const auto& group = mFastPageGroups[address >> FastGroupShift];
+-        return group ? &group[(address >> PageShift) & FastGroupPageMask] : nullptr;
++        return mFastPages ? &mFastPages[address >> PageShift] : nullptr;
+     }
+     void RebuildPageTable();
+     [[nodiscard]] bool Watches(uint32_t address, size_t size) const noexcept {
+@@ -364,15 +431,23 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
      static void SetError(std::string* error, std::string_view message);
      void NotifyObservedWrite(uint32_t address, size_t size);
      uint64_t CurrentRangeGeneration() const noexcept {
@@ -1622,11 +1746,37 @@ index 170d0788..29cd7116 100644
      }
      void MarkRangeWritten(uint32_t address, size_t size, uint64_t generation) noexcept {
          if (generation == 0U || generation < CurrentRangeGeneration()) [[unlikely]]
-@@ -390,7 +470,10 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+             mRangeVersionsValid = false;
+         const size_t last = (uint64_t{address} + size - 1U) >> PageShift;
++        if (!mFastPages) return;
+         for (size_t page = address >> PageShift; page <= last; ++page) {
+-            auto& group = mFastPageGroups[page / FastGroupPageCount];
+-            if (group) group[page & FastGroupPageMask].WriteGeneration = generation;
++            mFastPages[page].WriteGeneration = generation;
+         }
+     }
+ 
+@@ -381,16 +456,19 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+     static constexpr size_t PageSize = size_t{1} << PageShift;
+     static constexpr size_t PageMask = PageSize - 1U;
+     static constexpr size_t PageCount = size_t{1} << (32U - PageShift);
+-    static constexpr uint32_t FastGroupShift = 20U;
+-    static constexpr size_t FastGroupCount =
+-        size_t{1} << (32U - FastGroupShift);
+-    static constexpr size_t FastGroupPageCount =
+-        size_t{1} << (FastGroupShift - PageShift);
+-    static constexpr size_t FastGroupPageMask = FastGroupPageCount - 1U;
      static constexpr uint16_t AmbiguousPage = 0xFFFFU;
      std::vector<uint16_t> mPageRegions;
-     std::array<std::unique_ptr<FastPage[]>, FastGroupCount> mFastPageGroups;
+-    std::array<std::unique_ptr<FastPage[]>, FastGroupCount> mFastPageGroups;
 -    uint64_t mWriteGeneration = 1;
++    // One entry per guest page (PageCount x 24 bytes, allocated at the first
++    // rebuild): a typed access is one indexed load of the entry, where the
++    // previous two-level table (1 MiB groups) loaded the group first and
++    // tested it. Only the pages of mapped regions are ever set
++    // (mFastPageSpans, inclusive, cleared on the next rebuild).
++    std::unique_ptr<FastPage[]> mFastPages;
++    std::vector<std::pair<size_t, size_t>> mFastPageSpans;
 +    // Every write steps this once: the architectural write generation plus
 +    // the certificate epoch (mRangeGenerationBias), kept summed so that the
 +    // inline writes update one counter.
@@ -1689,10 +1839,86 @@ index f1a959fb..7d2cc2d0 100644
              result.ManifestPath, source.at("code_bin_path").get<std::string>());
          result.CodeBinSha256 = source.at("code_bin_sha256").get<std::string>();
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
-index 5f59a070..9c84472c 100644
+index 5f59a070..0805bee9 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
-@@ -208,6 +208,9 @@ void ApplyNativeWidescreenProjectionPolicy(
+@@ -1,12 +1,75 @@
+ // Block-entry policy of the A32 window: widescreen projection and guest observation hooks.
+ #include "oot3d_native_a32_window_shared.h"
+ 
++#if defined(__ORBIS__)
++#include <algorithm>
++#include <array>
++#include <cstdio>
++#endif
++
+ namespace Oot3dA32Window {
+ 
++#if defined(__ORBIS__)
++namespace {
++// Which guest PCs reach the block-entry policy how often (the hooks, with
++// the policy and its observers, are ~5% of the game thread). Game thread
++// only; a small open-addressed table, overflow counted.
++struct BlockEntryHookCount {
++  uint32_t Pc = 0;
++  uint32_t Count = 0;
++};
++std::array<BlockEntryHookCount, 1024> gBlockEntryHookCounts{};
++uint64_t gBlockEntryHookCalls = 0;
++uint64_t gBlockEntryHookUncounted = 0;
++
++void CountBlockEntryHook(uint32_t pc) noexcept {
++  ++gBlockEntryHookCalls;
++  size_t slot = ((pc >> 2U) * 2654435761U) >> 22U;
++  for (size_t probe = 0; probe < 8U; ++probe, slot = (slot + 1U) & 1023U) {
++    auto &entry = gBlockEntryHookCounts[slot];
++    if (entry.Count == 0U) {
++      entry = {pc, 1U};
++      return;
++    }
++    if (entry.Pc == pc) {
++      ++entry.Count;
++      return;
++    }
++  }
++  ++gBlockEntryHookUncounted;
++}
++} // namespace
++
++std::string TakeBlockEntryHookCounts(double seconds) {
++  std::array<BlockEntryHookCount, 8> top{};
++  for (const auto &entry : gBlockEntryHookCounts) {
++    if (entry.Count <= top.back().Count) continue;
++    top.back() = entry;
++    std::sort(top.begin(), top.end(),
++              [](const auto &a, const auto &b) { return a.Count > b.Count; });
++  }
++  char text[512];
++  int length = std::snprintf(text, sizeof(text), "%.0f calls/s (%.0f uncounted) | top:",
++                             gBlockEntryHookCalls / seconds, gBlockEntryHookUncounted / seconds);
++  for (const auto &entry : top) {
++    if (entry.Count == 0U || length < 0 || static_cast<size_t>(length) >= sizeof(text)) break;
++    length += std::snprintf(text + length, sizeof(text) - length, " %08X=%.0f",
++                            entry.Pc, entry.Count / seconds);
++  }
++  gBlockEntryHookCounts.fill({});
++  gBlockEntryHookCalls = 0;
++  gBlockEntryHookUncounted = 0;
++  return text;
++}
++#endif
++
+ void ApplyNativeWidescreenProjectionPolicy(
+     uint32_t pc, oot3d::recomp::a32::GuestState &state,
+     oot3d::recomp::a32::MemoryBus &memory, void *user) {
+   auto &runtime = *static_cast<NativeWidescreenProjectionState *>(user);
++#if defined(__ORBIS__)
++  CountBlockEntryHook(pc);
++#endif
+   (void)Oot3dNativeGame::ApplyNativeActorVisibilityHook(
+       pc, state, memory, runtime.ActorVisibility);
+   if (pc == Oot3dNativeGame::kNativeQbfA4Blit && runtime.HdFonts && runtime.TraceMemory)
+@@ -208,6 +271,9 @@ void ApplyNativeWidescreenProjectionPolicy(
        questDrawExit()) {
      if (runtime.ObservedExitPc != nullptr)
        *runtime.ObservedExitPc = pc;
@@ -1703,7 +1929,7 @@ index 5f59a070..9c84472c 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..d514b1ec 100644
+index 01026912..edd91fcc 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 @@ -4,10 +4,149 @@
@@ -1870,7 +2096,7 @@ index 01026912..d514b1ec 100644
    static const bool inputAdmission =
        inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
    static const bool lateInputSample =
-@@ -637,6 +782,105 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +782,107 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -1962,6 +2188,8 @@ index 01026912..d514b1ec 100644
 +                   audioPlayer != nullptr && audioPlayer->IsInitialized() ? audioPlayer->Buffered() : -1,
 +                   static_cast<double>(dspStats.FramesMixed - windowDspFrames) / seconds,
 +                   static_cast<double>(vblankCount - windowVblanks) / seconds, scene);
++      std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
++                   TakeBlockEntryHookCounts(seconds).c_str());
 +      windowStart = now;
 +      windowGuestFrames = frameCount;
 +      windowHostFrames = runFrameCount;
@@ -1976,7 +2204,7 @@ index 01026912..d514b1ec 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1444,6 +1688,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1690,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -1997,7 +2225,7 @@ index 01026912..d514b1ec 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1464,14 +1722,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1724,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
            suppressTopScreenFrontendBackdrop &&
            targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
@@ -2079,7 +2307,7 @@ index 81150d82..86f14e1c 100644
    WriteSwitchBootStage("opengl_renderer_initialized");
  #endif
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
-index 8071a191..f5b254c9 100644
+index 8071a191..0f97c190 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
 @@ -690,7 +690,7 @@ struct NativeControlPollingState {
@@ -2091,6 +2319,18 @@ index 8071a191..f5b254c9 100644
    // raw devices every poll.
    Oot3dNativeGame::InGameMenuHostInput Menu;
  };
+@@ -709,6 +709,11 @@ bool ExecuteNativeCandidate(uint32_t pc, oot3d::recomp::a32::GuestState &state,
+ void ApplyNativeWidescreenProjectionPolicy(
+     uint32_t pc, oot3d::recomp::a32::GuestState &state,
+     oot3d::recomp::a32::MemoryBus &memory, void *user);
++#if defined(__ORBIS__)
++// PS4 diagnostics log: the policy's calls per second and its busiest guest
++// PCs since the previous call, then starts counting again.
++std::string TakeBlockEntryHookCounts(double seconds);
++#endif
+ 
+ Oot3dNativeGame::NativeA32InputFrame
+ // `picture` is the presentation picture in the window (the aspect ratio's
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp b/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp
 index 8d432189..d501044d 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp
@@ -2369,6 +2609,28 @@ index 00a6f526..d87b7c52 100644
      if (launch.Host.Renderer == "opengl") {
          launch.Host.BackendId = Fast::WindowBackend::FAST3D_SDL_OPENGL;
      } else if (launch.Host.Renderer == "nri" || launch.Host.Renderer == "vulkan") {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_fragment_uniform_codec.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_fragment_uniform_codec.h
+index f7ef0f39..a2dc8484 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_fragment_uniform_codec.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_fragment_uniform_codec.h
+@@ -45,7 +45,7 @@ void WriteFragmentUniforms(Writer& writer,
+     for (const auto word : value.FragmentControl) writer.U32(word);
+     for (const auto& vector : value.ProcTexProgram.Registers)
+         for (const auto word : vector) writer.U32(word);
+-    for (const auto& vector : value.ProcTexProgram.Lut)
++    for (const auto& vector : value.ProcTexProgram.Lut())
+         for (const auto word : vector) writer.U32(word);
+ }
+ 
+@@ -114,7 +114,7 @@ bool ReadFragmentUniforms(Reader& reader,
+     if (procTexProgram) {
+         for (auto& vector : value.ProcTexProgram.Registers)
+             for (auto& word : vector) if (!reader.U32(word)) return false;
+-        for (auto& vector : value.ProcTexProgram.Lut)
++        for (auto& vector : value.ProcTexProgram.MutableLut())
+             for (auto& word : vector) if (!reader.U32(word)) return false;
+     }
+     return true;
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp
 index 4cd4764e..69b39631 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp
@@ -2657,11 +2919,47 @@ index 71c2412b..da7a519b 100644
      void Append(Oot3dPicaMemoryFillSubmission fill);
      void Append(Oot3dPicaDisplayTransferSubmission transfer);
      std::optional<Oot3dPicaVisualFrame>
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_savestate_tests.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_savestate_tests.cpp
+index 54e611c8..6f29265f 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_savestate_tests.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_savestate_tests.cpp
+@@ -103,7 +103,7 @@ int main() {
+     draw.FragmentShader.Uniforms.LightingProgram.Luts[6] = {5,1,0.25F,1};
+     draw.FragmentShader.Uniforms.FragmentControl = {0x10005,0x31,0,0};
+     draw.FragmentShader.Uniforms.ProcTexProgram.Registers[1] = {1,2,3,4};
+-    draw.FragmentShader.Uniforms.ProcTexProgram.Lut[223] = {0x12345678,0x87654321,0xFEDCBA98,0x89ABCDEF};
++    draw.FragmentShader.Uniforms.ProcTexProgram.MutableLut()[223] = {0x12345678,0x87654321,0xFEDCBA98,0x89ABCDEF};
+     auto lightingLuts = std::make_shared<Oot3dPicaLightingLutState>();
+     lightingLuts->Entry(0U, 0U) = 0x00123ABCU;
+     lightingLuts->Entry(23U, 255U) = 0x00FEDCBAU;
+@@ -167,8 +167,8 @@ int main() {
+     Require(decoded.Scheduler.Accumulator.NextSequence == 6U &&
+                 decoded.Scheduler.Accumulator.PendingDraws[0].FragmentShader.Uniforms.ProcTexProgram.Registers ==
+                     draw.FragmentShader.Uniforms.ProcTexProgram.Registers &&
+-                decoded.Scheduler.Accumulator.PendingDraws[0].FragmentShader.Uniforms.ProcTexProgram.Lut ==
+-                    draw.FragmentShader.Uniforms.ProcTexProgram.Lut &&
++                decoded.Scheduler.Accumulator.PendingDraws[0].FragmentShader.Uniforms.ProcTexProgram.Lut() ==
++                    draw.FragmentShader.Uniforms.ProcTexProgram.Lut() &&
+                 decoded.Scheduler.Accumulator.PendingDraws.size() == 1U &&
+                 decoded.Scheduler.Accumulator.PendingDraws[0].SubmissionId ==
+                     7U &&
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp
-index 387bd3f4..50f16f2e 100644
+index 387bd3f4..ead2a883 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_bridge.cpp
-@@ -289,6 +289,11 @@ bool WithOot3dPicaVulkanDrawView(
+@@ -150,8 +150,9 @@ PackFragmentUniforms(
+                 &uniforms.LightingProgram, sizeof(uniforms.LightingProgram));
+     std::memcpy(bytes.data() + Fast::Oot3d::kPicaPackedFragmentControlOffset,
+                 uniforms.FragmentControl.data(), sizeof(uniforms.FragmentControl));
+-    std::memcpy(bytes.data() + Fast::Oot3d::kPicaPackedFragmentProcTexOffset,
+-                &uniforms.ProcTexProgram, sizeof(uniforms.ProcTexProgram));
++    static_assert(sizeof(Oot3dPicaProcTexUniform::Program) == 3616U);
++    uniforms.ProcTexProgram.WriteProgram(
++        bytes.data() + Fast::Oot3d::kPicaPackedFragmentProcTexOffset);
+     return bytes;
+ }
+ 
+@@ -289,6 +290,11 @@ bool WithOot3dPicaVulkanDrawView(
      // Immutable title-owned family: the backend selects the effective program
      // after applying typed instrumentation, never by a scene/material identity.
      draw.VertexArtifacts = TitleVertexArtifacts();
@@ -3242,6 +3540,60 @@ index b029e2eb..02447581 100644
    if (literal.find_first_of(".e") == std::string::npos) literal += ".0";
    return literal;
  }
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.h b/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.h
+index 6a88ae77..dbbc61ae 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.h
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.h
+@@ -10,12 +10,40 @@
+ 
+ #include <array>
+ #include <cstdint>
++#include <memory>
+ #include <string>
+ 
+ namespace Oot3dNativeGame {
+ 
+ enum class Oot3dPicaTevMode { Specialized, Parametric };
+ 
++// A plan's procedural-texture uniform. Every draw plan carried the whole
++// std140 program (3.6 KiB, mostly the LUT) through each move, while draws
++// without proctex have an all-zero LUT and those with it reuse one: the
++// registers stay inline and the LUT is shared and immutable, null when
++// every word is zero. WriteProgram lays out the same bytes as the program.
++struct Oot3dPicaProcTexUniform {
++    using Program = Fast::Renderer3ds::PicaProcTexProgram;
++    using LutWords = decltype(Program::Lut);
++
++    Oot3dPicaProcTexUniform() = default;
++    Oot3dPicaProcTexUniform& operator=(const Program& program);
++
++    // The LUT, all zero when none is stored.
++    [[nodiscard]] const LutWords& Lut() const noexcept;
++    // A writable LUT of its own (copied from a shared one first).
++    [[nodiscard]] LutWords& MutableLut();
++    // The std140 bytes of Program at destination.
++    void WriteProgram(void* destination) const noexcept;
++
++    decltype(Program::Registers) Registers{};
++
++  private:
++    std::shared_ptr<const LutWords> mLut;
++    // Set only by MutableLut, which the shared ones never are.
++    std::shared_ptr<LutWords> mOwnedLut;
++};
++
+ struct Oot3dPicaFragmentUniformState {
+     std::array<std::array<float, 4>, 6> TevConstants{};
+     std::array<float, 4> CombinerBufferColor{};
+@@ -31,7 +59,7 @@ struct Oot3dPicaFragmentUniformState {
+     Fast::Renderer3ds::PicaTevProgram TevProgram;
+     Fast::Renderer3ds::PicaLightingProgram LightingProgram;
+     std::array<uint32_t, 4> FragmentControl{}; // native fog, alpha-test, texture main/config0
+-    Fast::Renderer3ds::PicaProcTexProgram ProcTexProgram;
++    Oot3dPicaProcTexUniform ProcTexProgram;
+ };
+ 
+ struct Oot3dPicaGeneratedFragmentShader {
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
 index 7cc1eeec..4aaf5ac7 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
@@ -3431,6 +3783,72 @@ index 7cc1eeec..4aaf5ac7 100644
              }
              if (id == kPicaIrqRequest && supported) {
                  const uint32_t request = mPicaRegisters[kPicaIrqRequest];
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp
+index 7394e26c..5d047aae 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp
+@@ -1,9 +1,12 @@
+ #include "oot3d_native_pica_proctex.h"
++#include "oot3d_native_pica_fragment_shader_gen.h"
+ 
+ #include <algorithm>
+ #include <array>
+ #include <bit>
+ #include <cmath>
++#include <cstddef>
++#include <cstring>
+ #include <iomanip>
+ #include <limits>
+ #include <sstream>
+@@ -410,6 +413,48 @@ void AppendMainSampler(std::ostringstream& source,
+ 
+ } // namespace
+ 
++namespace {
++const Oot3dPicaProcTexUniform::LutWords kZeroProcTexLut{};
++} // namespace
++
++Oot3dPicaProcTexUniform& Oot3dPicaProcTexUniform::operator=(const Program& program) {
++    Registers = program.Registers;
++    mOwnedLut.reset();
++    if (std::memcmp(program.Lut.data(), kZeroProcTexLut.data(), sizeof(LutWords)) == 0) {
++        mLut.reset();
++        return *this;
++    }
++    // Consecutive draws use the same tables: share the previous LUT.
++    thread_local std::shared_ptr<const LutWords> previous;
++    if (previous == nullptr ||
++        std::memcmp(previous->data(), program.Lut.data(), sizeof(LutWords)) != 0) {
++        previous = std::make_shared<const LutWords>(program.Lut);
++    }
++    mLut = previous;
++    return *this;
++}
++
++const Oot3dPicaProcTexUniform::LutWords& Oot3dPicaProcTexUniform::Lut() const noexcept {
++    return mOwnedLut != nullptr ? *mOwnedLut : mLut != nullptr ? *mLut : kZeroProcTexLut;
++}
++
++Oot3dPicaProcTexUniform::LutWords& Oot3dPicaProcTexUniform::MutableLut() {
++    if (mOwnedLut == nullptr) {
++        mOwnedLut = std::make_shared<LutWords>(Lut());
++        mLut.reset();
++    } else if (mOwnedLut.use_count() != 1) {
++        // A copy of this uniform shares it: write to a LUT of its own.
++        mOwnedLut = std::make_shared<LutWords>(*mOwnedLut);
++    }
++    return *mOwnedLut;
++}
++
++void Oot3dPicaProcTexUniform::WriteProgram(void* destination) const noexcept {
++    auto* bytes = static_cast<uint8_t*>(destination);
++    std::memcpy(bytes + offsetof(Program, Registers), Registers.data(), sizeof(Registers));
++    std::memcpy(bytes + offsetof(Program, Lut), Lut().data(), sizeof(LutWords));
++}
++
+ Fast::Renderer3ds::PicaProcTexProgram BuildOot3dPicaProcTexProgram(const Oot3dPicaDrawPacket& packet) {
+     Fast::Renderer3ds::PicaProcTexProgram result;
+     result.Registers[0] = {packet.Registers[0x80],packet.Registers[0xA8],packet.Registers[0xA9],packet.Registers[0xAA]};
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
 index 62b0f054..46e87420 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
@@ -3837,3 +4255,16 @@ index 19d0ada5..7edf6c5b 100644
  }
  
  bool ExecuteOot3dPicaDisplayTransfer(
+diff --git a/tools/renderer/tev_program/uniform_codec_tests.cpp b/tools/renderer/tev_program/uniform_codec_tests.cpp
+index 83388c4e..126fade8 100644
+--- a/tools/renderer/tev_program/uniform_codec_tests.cpp
++++ b/tools/renderer/tev_program/uniform_codec_tests.cpp
+@@ -38,7 +38,7 @@ int main() {
+         input.LightingProgram.Luts[6]={5,1,0.25F,1};
+         input.FragmentControl={0x10005,0x31,0,0};
+         input.ProcTexProgram.Registers[1]={1,2,3,4};
+-        for(unsigned i=0;i<224;++i) input.ProcTexProgram.Lut[i]={i,~i,i*17,0xFEDCBA98};
++        for(unsigned i=0;i<224;++i) input.ProcTexProgram.MutableLut()[i]={i,~i,i*17,0xFEDCBA98};
+         Writer encoded; WriteFragmentUniforms(encoded,input);
+         Reader reader{encoded.Bytes}; Oot3dPicaFragmentUniformState decoded;
+         Check(ReadFragmentUniforms(reader,decoded,true,true,true,true,true,true),"V12 decode failed");

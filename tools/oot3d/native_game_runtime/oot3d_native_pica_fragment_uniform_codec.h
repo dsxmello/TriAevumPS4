@@ -45,7 +45,7 @@ void WriteFragmentUniforms(Writer& writer,
     for (const auto word : value.FragmentControl) writer.U32(word);
     for (const auto& vector : value.ProcTexProgram.Registers)
         for (const auto word : vector) writer.U32(word);
-    for (const auto& vector : value.ProcTexProgram.Lut)
+    for (const auto& vector : value.ProcTexProgram.Lut())
         for (const auto word : vector) writer.U32(word);
 }
 
@@ -114,7 +114,7 @@ bool ReadFragmentUniforms(Reader& reader,
     if (procTexProgram) {
         for (auto& vector : value.ProcTexProgram.Registers)
             for (auto& word : vector) if (!reader.U32(word)) return false;
-        for (auto& vector : value.ProcTexProgram.Lut)
+        for (auto& vector : value.ProcTexProgram.MutableLut())
             for (auto& word : vector) if (!reader.U32(word)) return false;
     }
     return true;

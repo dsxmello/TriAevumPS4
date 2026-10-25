@@ -537,3 +537,52 @@ Perfil da 1.51s (thread do jogo): frontend PICA ~10% — `SubmitGspCommand`
   35 janelas (1.53: 15,3 / 16,3). Ganhos de ~2% somem no ruído entre sessões
   (±0,5 ms nas retas): ficam pelo perfil. Para medir ganhos pequenos é
   preciso um trecho repetível (mesmo lugar e câmera por um minuto).
+
+## 1.56 — plano de draw menor, tabela de páginas plana, contagem dos hooks
+
+- mem* na thread do jogo (perfil da 1.55, chamadores atribuídos): o move do
+  `Oot3dPicaVulkanDrawPlan` 2,6%, o `resize` que constrói os planos
+  prontos 0,7%, `operator=` 0,2% — ~4%, mais que as cópias do pacote
+  (submissão 0,9%, frontend 0,6%). O plano tinha 9.680 bytes, 6.112 nos
+  uniforms do fragment shader, 3.616 deles no `ProcTexProgram` (LUT de 3,5
+  KB, toda zero em draw sem proctex).
+  `Oot3dPicaProcTexUniform`: registradores inline, LUT compartilhada e
+  imutável (nula quando zero; a anterior é reaproveitada enquanto não
+  muda), `WriteProgram` grava os mesmos bytes std140 no uniform buffer.
+  64 bytes em vez de 3.616: plano ~6,1 KB, cada move e construção ~37% menor.
+  Teste no PC: 200 mil programas (LUT zero, compartilhada, mudando), bytes
+  idênticos ao programa; cópia que escreve (`MutableLut`) não afeta a outra.
+- Tabela de páginas da memória do guest plana: uma entrada por página (1M x
+  24 bytes, alocada no primeiro rebuild) em vez de grupos de 1 MiB. O acesso
+  inline carrega o ponteiro da tabela (independente do endereço) e a entrada;
+  antes carregava o grupo indexado pelo endereço, testava e então a entrada.
+  Só as páginas das regiões mapeadas são preenchidas (`mFastPageSpans`) e o
+  rebuild limpa só elas. Teste diferencial da 1.51 (antiga, nova, nova com a
+  regra do trace do PS4; 60 sementes x 60 mil operações): idêntico.
+- Hooks de entrada de bloco (~5% somando `NotifyBlock`, a política e os
+  observadores): o despacho tem centenas de linhas e condições; antes de
+  mexer, a contagem por PC. A cada 5 s o log ganha
+  `[triaevum] block-entry hooks: N calls/s | top: PC=chamadas/s ...`.
+
+## Medição da 1.56 (2026-10-25) — A/B parado
+
+Método novo: ~60 s parado no mesmo ponto, câmera fixa (Kokiri: porta da
+casa do Link; Hyrule Field: mesmo ponto nas duas). Desvio padrão por janela
+0,02–0,09 ms (no roteiro livre as retas variavam ±0,5 ms).
+
+| Cena | 1.55 | 1.56 |
+|---|---|---|
+| 85 Floresta Kokiri | 17,46 ms, 353 draws, 22,9 fps | **17,25 ms, 355 draws, 23,7 fps** |
+| 81 Hyrule Field | 19,48 ms, 394 draws, 21,3 fps | 19,42 ms, 384 draws, 21,8 fps |
+
+- Kokiri: -1,2% de CPU por quadro do jogo com 2 draws a mais, +3,5% fps.
+  Hyrule: 10 draws a menos na 1.56; corrigido pela inclinação (~0,02–0,035
+  ms por draw) fica empatado. Sem regressão; fica.
+- Hooks de entrada de bloco: 10–15 mil chamadas/s, ~5% da thread: 3–5 µs
+  por chamada. Os PCs mais chamados (~2 mil/s cada) são de submissão de
+  render (`MeshCommandPacket_Submit` 0x00466E2C, `CmbRenderer_SubmitDrawHandle`
+  0x0030F4D0, `ModelPreview_SetSlotTransformRows`/`SetSlotTranslation`,
+  `oot3d_field_80x4_positive`, 0x00313444, 0x003FBC5C, 0x003FB5EC,
+  0x003FB998), quase todos do rastreador de composição, e cada chamada
+  percorre a política inteira (sonda de visibilidade de atores, dezenas de
+  comparações e buscas). Próximo: caminho rápido para esses PCs.

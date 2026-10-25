@@ -870,6 +870,8 @@ bool NativeA32WindowSession::RunFrame() {
                    audioPlayer != nullptr && audioPlayer->IsInitialized() ? audioPlayer->Buffered() : -1,
                    static_cast<double>(dspStats.FramesMixed - windowDspFrames) / seconds,
                    static_cast<double>(vblankCount - windowVblanks) / seconds, scene);
+      std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
+                   TakeBlockEntryHookCounts(seconds).c_str());
       windowStart = now;
       windowGuestFrames = frameCount;
       windowHostFrames = runFrameCount;

@@ -10,11 +10,39 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace Oot3dNativeGame {
 
 enum class Oot3dPicaTevMode { Specialized, Parametric };
+
+// A plan's procedural-texture uniform. Every draw plan carried the whole
+// std140 program (3.6 KiB, mostly the LUT) through each move, while draws
+// without proctex have an all-zero LUT and those with it reuse one: the
+// registers stay inline and the LUT is shared and immutable, null when
+// every word is zero. WriteProgram lays out the same bytes as the program.
+struct Oot3dPicaProcTexUniform {
+    using Program = Fast::Renderer3ds::PicaProcTexProgram;
+    using LutWords = decltype(Program::Lut);
+
+    Oot3dPicaProcTexUniform() = default;
+    Oot3dPicaProcTexUniform& operator=(const Program& program);
+
+    // The LUT, all zero when none is stored.
+    [[nodiscard]] const LutWords& Lut() const noexcept;
+    // A writable LUT of its own (copied from a shared one first).
+    [[nodiscard]] LutWords& MutableLut();
+    // The std140 bytes of Program at destination.
+    void WriteProgram(void* destination) const noexcept;
+
+    decltype(Program::Registers) Registers{};
+
+  private:
+    std::shared_ptr<const LutWords> mLut;
+    // Set only by MutableLut, which the shared ones never are.
+    std::shared_ptr<LutWords> mOwnedLut;
+};
 
 struct Oot3dPicaFragmentUniformState {
     std::array<std::array<float, 4>, 6> TevConstants{};
@@ -31,7 +59,7 @@ struct Oot3dPicaFragmentUniformState {
     Fast::Renderer3ds::PicaTevProgram TevProgram;
     Fast::Renderer3ds::PicaLightingProgram LightingProgram;
     std::array<uint32_t, 4> FragmentControl{}; // native fog, alpha-test, texture main/config0
-    Fast::Renderer3ds::PicaProcTexProgram ProcTexProgram;
+    Oot3dPicaProcTexUniform ProcTexProgram;
 };
 
 struct Oot3dPicaGeneratedFragmentShader {

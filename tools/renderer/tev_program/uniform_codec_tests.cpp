@@ -38,7 +38,7 @@ int main() {
         input.LightingProgram.Luts[6]={5,1,0.25F,1};
         input.FragmentControl={0x10005,0x31,0,0};
         input.ProcTexProgram.Registers[1]={1,2,3,4};
-        for(unsigned i=0;i<224;++i) input.ProcTexProgram.Lut[i]={i,~i,i*17,0xFEDCBA98};
+        for(unsigned i=0;i<224;++i) input.ProcTexProgram.MutableLut()[i]={i,~i,i*17,0xFEDCBA98};
         Writer encoded; WriteFragmentUniforms(encoded,input);
         Reader reader{encoded.Bytes}; Oot3dPicaFragmentUniformState decoded;
         Check(ReadFragmentUniforms(reader,decoded,true,true,true,true,true,true),"V12 decode failed");

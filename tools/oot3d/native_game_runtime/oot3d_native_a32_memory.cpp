@@ -96,7 +96,9 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
         mRangeVersionsValid && other.mRangeVersionsValid && nextRangeGeneration != 0U;
     mRegions = std::move(other.mRegions);
     mPageRegions = std::move(other.mPageRegions);
-    mFastPageGroups = std::move(other.mFastPageGroups);
+    mFastPages = std::move(other.mFastPages);
+    mFastPageSpans = std::move(other.mFastPageSpans);
+    other.mFastPageSpans.clear();
     mRangeGenerationBias =
         nextRangeGeneration - other.ArchitecturalWriteGeneration();
     mRangeGeneration = nextRangeGeneration;
@@ -122,10 +124,9 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
     mDeferredPages = std::move(other.mDeferredPages);
     // Backing allocations and their fast pointers move together. Only the
     // destination's certificate epoch changes; no page-table allocation.
-    for (auto& group : mFastPageGroups) {
-        if (!group) continue;
-        for (size_t page = 0; page < FastGroupPageCount; ++page)
-            group[page].WriteGeneration = nextRangeGeneration;
+    for (const auto& [first, last] : mFastPageSpans) {
+        for (size_t page = first; page <= last; ++page)
+            mFastPages[page].WriteGeneration = nextRangeGeneration;
     }
     // A reused moved-from image must not revive its old certificates either.
     other.mRangeVersionsValid = false;
@@ -183,9 +184,14 @@ bool NativeA32Memory::MapRegion(const NativeA32MemoryRegionConfig& config,
 
 void NativeA32Memory::RebuildPageTable() {
     mPageRegions.assign(PageCount, 0U);
-    for (auto& group : mFastPageGroups) {
-        group.reset();
+    if (!mFastPages) {
+        mFastPages = std::make_unique<FastPage[]>(PageCount);
+    } else {
+        for (const auto& [first, last] : mFastPageSpans) {
+            std::fill(mFastPages.get() + first, mFastPages.get() + last + 1U, FastPage{});
+        }
     }
+    mFastPageSpans.clear();
     for (size_t regionIndex = 0; regionIndex < mRegions.size();
          ++regionIndex) {
         auto& region = mRegions[regionIndex];
@@ -196,6 +202,7 @@ void NativeA32Memory::RebuildPageTable() {
         const size_t lastPage = static_cast<size_t>(lastAddress >> PageShift);
         const uint16_t pageValue =
             static_cast<uint16_t>(regionIndex + 1U);
+        mFastPageSpans.emplace_back(firstPage, lastPage);
         for (size_t page = firstPage; page <= lastPage; ++page) {
             auto& entry = mPageRegions[page];
             if (entry == 0U) {
@@ -203,9 +210,7 @@ void NativeA32Memory::RebuildPageTable() {
             } else if (entry != pageValue) {
                 entry = AmbiguousPage;
             }
-            auto& group = mFastPageGroups[page / FastGroupPageCount];
-            if (!group) group = std::make_unique<FastPage[]>(FastGroupPageCount);
-            auto& fastPage = group[page & FastGroupPageMask];
+            auto& fastPage = mFastPages[page];
             fastPage.WriteGeneration = CurrentRangeGeneration();
 
             const uint64_t pageAddress =
@@ -308,9 +313,8 @@ NativeA32Memory::RangeWriteGeneration(uint32_t address,
   uint64_t generation = 0;
   const size_t last = (uint64_t{address} + size - 1U) >> PageShift;
   for (size_t page = address >> PageShift; page <= last; ++page) {
-      const auto& group = mFastPageGroups[page / FastGroupPageCount];
-      if (!group || !group[page & FastGroupPageMask].WriteGeneration) return std::nullopt;
-      generation = std::max(generation, group[page & FastGroupPageMask].WriteGeneration);
+      if (!mFastPages || !mFastPages[page].WriteGeneration) return std::nullopt;
+      generation = std::max(generation, mFastPages[page].WriteGeneration);
   }
   return generation;
 }
@@ -569,8 +573,7 @@ bool NativeA32Memory::ObserveWrites(uint32_t address, size_t size) {
         const auto position = std::lower_bound(mObservedWritePages.begin(), mObservedWritePages.end(), page);
         if (position == mObservedWritePages.end() || *position != page)
             mObservedWritePages.insert(position, page);
-        auto& group = mFastPageGroups[page / FastGroupPageCount];
-        if (group) group[page & FastGroupPageMask].Write = nullptr;
+        if (mFastPages) mFastPages[page].Write = nullptr;
     }
     return true;
 }
@@ -605,13 +608,12 @@ void NativeA32Memory::ReleaseDeferredPageTraps() const {
         return;
     }
     for (const size_t page : mDeferredPages) {
-        auto& group = mFastPageGroups[page / FastGroupPageCount];
-        if (!group || std::binary_search(mTrappedPages.begin(), mTrappedPages.end(), page))
+        if (!mFastPages || std::binary_search(mTrappedPages.begin(), mTrappedPages.end(), page))
             continue;
         const uint32_t address = static_cast<uint32_t>(page << PageShift);
         const auto* region = FindRegion(address, PageSize);
         if (!region) continue;
-        auto& entry = group[page & FastGroupPageMask];
+        auto& entry = mFastPages[page];
         auto* bytes = region->Bytes.data() + (address - region->BaseAddress);
         entry.Read = bytes;
         entry.Write = region->Writable &&
@@ -668,10 +670,9 @@ bool NativeA32Memory::DeferWrites(
         for (size_t page = address >> PageShift; page <= last; ++page) {
             const auto at = std::lower_bound(mDeferredPages.begin(), mDeferredPages.end(), page);
             if (at == mDeferredPages.end() || *at != page) mDeferredPages.insert(at, page);
-            auto& group = mFastPageGroups[page / FastGroupPageCount];
-            if (group) {
-                group[page & FastGroupPageMask].Read = nullptr;
-                group[page & FastGroupPageMask].Write = nullptr;
+            if (mFastPages) {
+                mFastPages[page].Read = nullptr;
+                mFastPages[page].Write = nullptr;
             }
         }
         // A logical device write invalidates exclusives now, not at readback.

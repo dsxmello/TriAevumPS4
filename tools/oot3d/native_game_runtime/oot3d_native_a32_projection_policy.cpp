@@ -1,12 +1,75 @@
 // Block-entry policy of the A32 window: widescreen projection and guest observation hooks.
 #include "oot3d_native_a32_window_shared.h"
 
+#if defined(__ORBIS__)
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#endif
+
 namespace Oot3dA32Window {
+
+#if defined(__ORBIS__)
+namespace {
+// Which guest PCs reach the block-entry policy how often (the hooks, with
+// the policy and its observers, are ~5% of the game thread). Game thread
+// only; a small open-addressed table, overflow counted.
+struct BlockEntryHookCount {
+  uint32_t Pc = 0;
+  uint32_t Count = 0;
+};
+std::array<BlockEntryHookCount, 1024> gBlockEntryHookCounts{};
+uint64_t gBlockEntryHookCalls = 0;
+uint64_t gBlockEntryHookUncounted = 0;
+
+void CountBlockEntryHook(uint32_t pc) noexcept {
+  ++gBlockEntryHookCalls;
+  size_t slot = ((pc >> 2U) * 2654435761U) >> 22U;
+  for (size_t probe = 0; probe < 8U; ++probe, slot = (slot + 1U) & 1023U) {
+    auto &entry = gBlockEntryHookCounts[slot];
+    if (entry.Count == 0U) {
+      entry = {pc, 1U};
+      return;
+    }
+    if (entry.Pc == pc) {
+      ++entry.Count;
+      return;
+    }
+  }
+  ++gBlockEntryHookUncounted;
+}
+} // namespace
+
+std::string TakeBlockEntryHookCounts(double seconds) {
+  std::array<BlockEntryHookCount, 8> top{};
+  for (const auto &entry : gBlockEntryHookCounts) {
+    if (entry.Count <= top.back().Count) continue;
+    top.back() = entry;
+    std::sort(top.begin(), top.end(),
+              [](const auto &a, const auto &b) { return a.Count > b.Count; });
+  }
+  char text[512];
+  int length = std::snprintf(text, sizeof(text), "%.0f calls/s (%.0f uncounted) | top:",
+                             gBlockEntryHookCalls / seconds, gBlockEntryHookUncounted / seconds);
+  for (const auto &entry : top) {
+    if (entry.Count == 0U || length < 0 || static_cast<size_t>(length) >= sizeof(text)) break;
+    length += std::snprintf(text + length, sizeof(text) - length, " %08X=%.0f",
+                            entry.Pc, entry.Count / seconds);
+  }
+  gBlockEntryHookCounts.fill({});
+  gBlockEntryHookCalls = 0;
+  gBlockEntryHookUncounted = 0;
+  return text;
+}
+#endif
 
 void ApplyNativeWidescreenProjectionPolicy(
     uint32_t pc, oot3d::recomp::a32::GuestState &state,
     oot3d::recomp::a32::MemoryBus &memory, void *user) {
   auto &runtime = *static_cast<NativeWidescreenProjectionState *>(user);
+#if defined(__ORBIS__)
+  CountBlockEntryHook(pc);
+#endif
   (void)Oot3dNativeGame::ApplyNativeActorVisibilityHook(
       pc, state, memory, runtime.ActorVisibility);
   if (pc == Oot3dNativeGame::kNativeQbfA4Blit && runtime.HdFonts && runtime.TraceMemory)
