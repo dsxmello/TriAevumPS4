@@ -249,6 +249,13 @@ void Oot3dNativePicaSubmissionQueue::SetRuntimeProfilingEnabled(
     mRuntimeProfilingEnabled = enabled;
 }
 
+void Oot3dNativePicaSubmissionQueue::SetDrawCaptureObserver(
+    DrawCaptureObserver* observer) {
+    std::lock_guard guard(mQueueMutex);
+    QuiesceDrawCaptureObserver();
+    mDrawCaptureObserver = observer;
+}
+
 void Oot3dNativePicaSubmissionQueue::SetTexturePayloadTransform(
     TexturePayloadTransform transform) {
     std::lock_guard guard(mQueueMutex);
@@ -984,6 +991,9 @@ bool Oot3dNativePicaSubmissionQueue::SubmitDrawPacket(
     // Construct the very large PICA packet directly from its source.  The
     // previous default construction zeroed both 4096-word shader stores and
     // immediately overwrote them with the packet copy on every draw.
+    if (mPendingDraws.size() == mPendingDraws.capacity()) {
+        QuiesceDrawCaptureObserver();
+    }
     mPendingDraws.emplace_back(mNextSubmissionId, packet);
     Oot3dPicaDrawSubmission& submission = mPendingDraws.back();
     if (mRuntimeProfilingEnabled) {
@@ -1056,6 +1066,9 @@ bool Oot3dNativePicaSubmissionQueue::SubmitDrawPacket(
             RuntimeProfileElapsedNanoseconds(phaseStart);
         mRuntimeProfile.TotalNanoseconds +=
             RuntimeProfileElapsedNanoseconds(totalStart);
+    }
+    if (mDrawCaptureObserver != nullptr) {
+        mDrawCaptureObserver->DrawCaptured(submission);
     }
     return true;
 }
@@ -1250,6 +1263,7 @@ Oot3dNativePicaSubmissionQueue::PendingDraws() const {
 std::vector<Oot3dPicaDrawSubmission>
 Oot3dNativePicaSubmissionQueue::TakePendingDraws() {
     std::lock_guard guard(mQueueMutex);
+    QuiesceDrawCaptureObserver();
     std::vector<Oot3dPicaDrawSubmission> draws;
     draws.swap(mPendingDraws);
     return draws;
@@ -1258,6 +1272,7 @@ Oot3dNativePicaSubmissionQueue::TakePendingDraws() {
 void Oot3dNativePicaSubmissionQueue::TakePendingDraws(
     std::vector<Oot3dPicaDrawSubmission>& destination) {
     std::lock_guard guard(mQueueMutex);
+    QuiesceDrawCaptureObserver();
     destination.clear();
     destination.swap(mPendingDraws);
 }
@@ -1304,6 +1319,7 @@ Oot3dNativePicaSubmissionQueue::TakePendingMemoryFills() {
 Oot3dPicaSubmissionBatch
 Oot3dNativePicaSubmissionQueue::TakePendingBatch() {
     std::lock_guard guard(mQueueMutex);
+    QuiesceDrawCaptureObserver();
     Oot3dPicaSubmissionBatch batch;
     batch.Draws.swap(mPendingDraws);
     batch.Completions.swap(mPendingCompletions);
@@ -1459,6 +1475,7 @@ nlohmann::json Oot3dNativePicaSubmissionQueue::CaptureState() const {
 bool Oot3dNativePicaSubmissionQueue::RestoreState(
     const nlohmann::json& state, std::string* error) {
     std::lock_guard guard(mQueueMutex);
+    QuiesceDrawCaptureObserver();
     try {
         const std::string format = state.value("format", std::string{});
         const bool copyProducerState =

@@ -674,3 +674,154 @@ antes, recuperar as entradas do gerador), D (PGO).
 - Fase A até aqui (1.55 -> 1.59, mesmos draws): Kokiri ~-3,5%, Hyrule
   ~-1,5%. Falta: compartilhar a LUT de neblina e a iluminação do plano,
   alocações por draw (vetores do plano), aliases da captura.
+
+## 1.60 — "Extended draw distance" desligado por padrão no PS4; fim da fase A
+
+- Daniel (2026-10-25): com a opção *Extended draw distance* ligada o jogo
+  ficava bem pior; desligada, melhorou de forma clara. Ela vinha ligada do
+  preset Enhanced (`EnhancedPresetDocument`, `Camera.ExtendedDrawDistance`):
+  atores desenhados e atualizados até 5x mais longe, grupos de arbustos/
+  pedras/árvores gerados mais longe, caminhada do orçamento de luzes
+  (`BeginBudgetWalk`/`RelieveLightArena`) e banco de objetos — tudo na
+  thread do jogo, que é o limite no console. Mais atores = mais draws, e o
+  custo por draw é ~0,015–0,035 ms.
+- `GraphicsSettingsService::Preset(Enhanced)` zera `ExtendedDrawDistance`
+  sob `__ORBIS__` (instalações novas e quem reaplicar o preset). A config já
+  salva no console continua valendo: quem desligou o menu já está bem; quem
+  não, desliga em Display > Extended draw distance. Desktop não muda.
+- Fase A encerrada. Ficaram de fora, por render ~1% cada e dentro do ruído
+  entre sessões (±0,5 ms): LUT de neblina/iluminação compartilhada no plano,
+  vetores do plano por draw e aliases da captura. Fase B (frontend PICA fora
+  da thread do jogo) é o próximo passo grande.
+- Pendente de medir no console: A/B parado (Kokiri, porta da casa do Link, e
+  Hyrule Field) com a opção ligada contra desligada, mesma versão. Referência
+  1.59 (ligada, se era o caso): Hyrule 19,03 ms @ 384 draws, Kokiri 17,32 ms
+  @ 381.
+
+## Fase B — levantamento e 1.61 (2026-10-25)
+
+Medição da 1.59 (opção de distância desligada, 8 cenas, janelas com >= 40
+quadros do jogo/s): CPU por quadro do jogo Hyrule Field 13,9 ms, Kokiri 14,5
+ms, Floresta Deku 13,5 ms (antes ~19 / ~17 com a opção ligada; pontos e draws
+não eram os mesmos). Por quadro do host: pica submit 4,1 + plan 2,1 ms.
+(A atribuição por função do `samples.log` da 1.59 não vale contra o binário
+da 1.60: layout diferente.)
+
+Caminho do draw: guest escreve o comando GSP -> `SubmitPicaGspCommand`
+(`oot3d_native_a32_ctr_host_gsp.cpp`) -> `Oot3dNativePicaFrontend::
+SubmitGspCommand` (andar na command list, aplicar registradores, montar o
+pacote de ~10 KB a cada disparo) -> `Oot3dNativePicaSubmissionQueue::
+SubmitDrawPacket` (cópia do pacote, decodificação, captura de índices/
+vértices e de texturas da memória do guest, sob mutex). Volta síncrona para o
+guest: flags de display transfer/memory fill adiados à GPU, interrupts
+pendentes, observação de escrita. Os words da command list já chegam
+copiados, só a captura lê o guest.
+
+Desenho: tirar da thread do jogo só o que não lê o guest (identidade
+canônica, decodificação, hashes, montagem do plano), em fila assíncrona com
+número de sequência e barreira em `FinishFrames`; captura de recursos e os
+comandos de memory fill/display transfer/interrupt continuam síncronos.
+
+1.61: o `SubmitDrawPacket` passa a medir sempre no PS4 e o log de 5 s ganha
+`pica submit detail per host frame ms: queue X (packet copy, decode, vertex
+capture, texture capture, enqueue) | N draws`. O que sobra do `pica submit`
+fora da fila é o andar da command list e a montagem do pacote no frontend.
+Próximo: com esses números, decidir o corte antes de mover código.
+
+## Medição da 1.61 (2026-10-25)
+
+Por quadro do host, janelas com >= 40 quadros do jogo/s:
+
+| Cena | pica submit | fila (cópia / decode / vértices / texturas / enqueue) | plan | CPU/quadro do jogo |
+|---|---|---|---|---|
+| 81 Hyrule Field (22 jan.) | 3,90 | 1,58 (0,25 / 0,12 / 0,94 / 0,20 / 0,02) | 2,16 | 14,8 ms |
+| 85 Floresta Kokiri (30 jan.) | 4,11 | 1,41 (0,22 / 0,11 / 0,83 / 0,18 / 0,02) | 2,06 | 14,5 ms |
+
+- A fila é ~35% do `pica submit`; o resto (~2,5–2,7 ms) é o frontend
+  andando na command list e montando o pacote. A captura de vértices
+  (0,8–0,9 ms) lê a memória do guest e fica na thread do jogo; o frontend
+  alimenta a captura, então também fica.
+- O que sai sem tocar no guest é o `plan` (~2,1 ms): ele lê só o snapshot.
+
+## 1.62 — planos montados enquanto o guest roda
+
+- Antes: o guest rodava, parava, e o dreno montava os planos do passe
+  (thread do jogo + 2 helpers) antes de entregá-los ao scheduler; os
+  helpers ficavam parados enquanto o guest rodava.
+- `Oot3dNativePicaSubmissionQueue::DrawCaptureObserver`: `DrawCaptured`
+  (com o lock da fila, depois do draw completo) e `Quiesce` (antes de
+  crescer, de qualquer take e do restore: devolve só quando nenhuma outra
+  thread lê um draw pendente). Fora do PS4 ninguém registra observador.
+- `PicaPlanAhead` (substitui o `PicaPlanWorkers`): os 2 helpers montam o
+  plano de cada draw assim que ele é capturado, com o build que não consome
+  os recursos (`BuildOot3dPicaVulkanDrawPlan`: só copia `shared_ptr`; cópia
+  de bytes só nos misses do cache). No dreno, `Collect` casa os planos pelo
+  `Id` do draw (itens de draws que não chegaram ao dreno são pulados); se
+  não casar, o dreno monta os seus como antes. O `Quiesce` do take faz a
+  thread do jogo montar o que nenhum helper começou. Slots reaproveitados
+  (`std::deque`, endereços estáveis; o build reinicia o plano no lugar).
+- Teste no PC: a classe extraída do arquivo contra uma fila de mentira com
+  as mesmas chamadas, sob ThreadSanitizer: 3.992 passes com crescimento do
+  vetor e restores, 839.572 planos adiantados conferidos, erro de plano
+  propagado, nenhum aviso. (A árvore de testes do host, `build/tri-host`,
+  está quebrada sem o `nlohmann/json_fwd.hpp` no include, sem relação.)
+- Esperado: `plan` de ~2,1 ms para perto de 0 na thread do jogo (só a
+  espera pelos últimos planos), ~7% do quadro do host nas áreas pesadas.
+
+## Medição da 1.62 (2026-10-25) — sem ganho: sincronização por draw
+
+| Kokiri parado | 1.61 (105 draws) | 1.62 (100 draws) |
+|---|---|---|
+| plan na thread do jogo | 2,06 ms | 0,00 ms |
+| código do jogo (guest - submit - plan) por quadro do jogo | 11,3 ms | 13,6 ms |
+| CPU por quadro do jogo | 14,43 ms | 14,76 ms (+2%) |
+
+- O plano saiu da thread do jogo, mas ela ficou mais lenta na mesma medida.
+  Perfil da 1.62 (`samples.log` casa com o binário; endereços `elf` sem
+  deslocamento, `jit` - 0x400000): **9,3% das amostras da thread do jogo em
+  `_umtx_op`** (0x800003710), contra 3–6% de kernel na 1.59. Um lock e um
+  `notify_one` por draw, mais os helpers pegando o mutex a cada 1 ms
+  (`WaitRechecking`), custavam o que o plano liberou. Helpers 95% parados.
+- Sem travamento; 48 esperas/s recuperadas pelo timeout.
+
+## 1.63 — plano adiantado sem lock
+
+- `PicaPlanAhead` sem mutex nem condition variable: cada draw ganha um
+  número de sequência de 64 bits (só cresce, sem ABA) num slot fixo
+  (4.096 em blocos de 32, alocados sob demanda e nunca liberados). Publicar
+  é escrever o slot e um store release no `tail`; os helpers pegam um com
+  compare-exchange no `next` e marcam pronto com store release
+  (`Done = seq + 1`); sem trabalho, `sleep_for(100 µs)`. No dreno a thread
+  do jogo monta o que ninguém começou e espera os prontos (yield). Slots
+  cheios: o draw fica para o build do dreno.
+- Log: `plan helpers: N plans/s ahead, M by the game thread` no lugar das
+  esperas recuperadas.
+- Teste no PC (TSan e -O2): 3.992 passes com crescimento, restores e passes
+  de 5.000 draws (slots cheios -> build do dreno), 839.550 planos
+  adiantados conferidos, erro propagado; nenhum aviso.
+
+## Medição da 1.63 (2026-10-25) — e correção da leitura da 1.62
+
+Quadro do host (ms) parado, janelas com >= 40 quadros do jogo/s:
+
+| | Kokiri 1.61 (105 draws) | Kokiri 1.62 (100) | Kokiri 1.63 (91) | Hyrule 1.63 (86, outro ponto) |
+|---|---|---|---|---|
+| quadros apresentados/s | 29,5 | 31,5 | **33,6** | 40,7 |
+| quadros do jogo/s | 57,6 | 59,0 | **59,6** | 59,4 |
+| quadro do host | 34,2 | 32,2 | **29,8** | 25,4 |
+| guest (com submit e plan) | 28,4 | 28,1 | 25,2 | 20,1 |
+| plan | 2,1 | 0,0 | 0,0 | 0,0 |
+| present (espera do render) | 0,3 | 0,7 | 1,4 | 2,0 |
+| resto sem fase | 3,7 | 1,6 | 1,5 | 1,4 |
+
+- Kokiri: quadro do host -13% (34,2 -> 29,8 ms) com 14 draws a menos
+  (~0,7 ms pela inclinação): **~-11%**. O jogo fica em 60 quadros/s.
+- Helpers: ~2.900 planos/s adiantados, ~130/s pela thread do jogo no dreno.
+- **Correção:** o `_umtx_op` da thread do jogo continua em 8,2% na 1.63 (os
+  helpers não usam mais nenhum: 0,0%), então os 9,3% da 1.62 não eram o
+  pool, e sim a espera pelo render/flip (o `present` sobe à medida que o
+  jogo fica mais rápido). A métrica "CPU do guest por quadro do jogo"
+  escondia o ganho: pelo quadro do host a 1.62 já tinha ~-6%. Daqui em
+  diante a comparação é pelo quadro do host no mesmo ponto e draws.
+- O `present` de 1,4–2,0 ms mostra que o render começa a segurar a thread
+  do jogo nos pontos leves.

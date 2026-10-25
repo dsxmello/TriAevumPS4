@@ -204,6 +204,20 @@ struct Oot3dPicaSubmissionRuntimeProfile {
 
 class Oot3dNativePicaSubmissionQueue final : public Oot3dPicaPacketSink {
   public:
+    // Lets another thread read pending draws in place while the guest keeps
+    // submitting (the PS4 builds their plans ahead). DrawCaptured runs with
+    // the queue lock held after a draw is complete; the submission keeps its
+    // address and contents until Quiesce, which runs before the pending draws
+    // can move, reallocate or be destroyed (growth, every take, restore) and
+    // returns only when no other thread reads any of them.
+    class DrawCaptureObserver {
+      public:
+        virtual ~DrawCaptureObserver() = default;
+        virtual void DrawCaptured(const Oot3dPicaDrawSubmission& submission) = 0;
+        virtual void Quiesce() = 0;
+    };
+    void SetDrawCaptureObserver(DrawCaptureObserver* observer);
+
     using TexturePayloadTransform =
         std::function<void(const Oot3dPicaTextureState&,
                            std::span<std::uint8_t>)>;
@@ -391,6 +405,10 @@ class Oot3dNativePicaSubmissionQueue final : public Oot3dPicaPacketSink {
     GuestWriteRegistrar mGuestWriteRegistrar;
     bool mDeferGpuBackedDisplayTransfers = false;
     bool mRuntimeProfilingEnabled = false;
+    DrawCaptureObserver* mDrawCaptureObserver = nullptr;
+    void QuiesceDrawCaptureObserver() {
+        if (mDrawCaptureObserver != nullptr) mDrawCaptureObserver->Quiesce();
+    }
     TexturePayloadTransform mTexturePayloadTransform;
     TextureSnapshotTransform mTextureSnapshotTransform;
     std::unordered_map<TextureSnapshotKey, TextureSnapshotCacheEntry,

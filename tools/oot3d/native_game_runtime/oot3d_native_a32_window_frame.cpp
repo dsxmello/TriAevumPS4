@@ -8,8 +8,9 @@
 #include "fast/backends/gfx_orbis.h"
 
 #include <atomic>
-#include <condition_variable>
+#include <chrono>
 #include <exception>
+#include <memory>
 #include <mutex>
 #include <thread>
 #endif
@@ -19,24 +20,34 @@ namespace Oot3dA32Window {
 namespace {
 
 #if defined(__ORBIS__)
-// PS4: the draw plans of one drain pass are independent of each other and of
-// the guest (each reads only its own submission's snapshots, and the shader
-// source cache is a memo whose identities do not depend on which cache
-// produced them). The game thread is the PS4's bottleneck, so helpers on the
-// spare cores of its cluster build plans alongside it, each with a cache of
-// its own; the game thread then consumes them in submission order exactly as
-// before (DolphinPS4 likewise moves its GPU-side work off the CPU thread).
-class PicaPlanWorkers final {
+// PS4: the draw plans are independent of each other and of the guest (each
+// reads only its own submission's snapshots, and the shader source cache is a
+// memo whose identities do not depend on which cache produced them). The game
+// thread is the PS4's bottleneck, so helpers on the spare cores build each
+// plan as soon as the queue captures its draw, while the guest keeps running;
+// the drain then only collects them, in submission order, exactly as before.
+// Plans are built without consuming the submission's resources (shared
+// snapshots, a copy only on a cache miss), so a draw whose plan is not used
+// is still whole for the drain's own build.
+//
+// Publishing a draw takes no lock and makes no system call: 1.62 did both
+// (a mutex and a condition-variable notification per draw, helpers taking
+// the mutex every millisecond), and the game thread spent ~9% of its samples
+// in _umtx_op, more than the plans it no longer built. Draws get 64-bit
+// sequence numbers that only grow (no reuse, so no ABA) in fixed slots;
+// helpers claim one with a compare-exchange, mark it done with a release
+// store, and poll with a short sleep when there is nothing to do.
+class PicaPlanAhead final
+    : public Oot3dNativeGame::Oot3dNativePicaSubmissionQueue::DrawCaptureObserver {
 public:
   static constexpr size_t kHelperCount = 2;
-  // Below this a pass is cheaper to plan than to hand out.
-  static constexpr size_t kMinimumDraws = 16;
 
-  explicit PicaPlanWorkers(
-      const Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &settings) {
+  explicit PicaPlanAhead(
+      Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &ownCache)
+      : mOwnCache(ownCache) {
     for (auto &cache : mCaches) {
-      cache.TevMode = settings.TevMode;
-      cache.UberFragments = settings.UberFragments;
+      cache.TevMode = ownCache.TevMode;
+      cache.UberFragments = ownCache.UberFragments;
     }
     // Never joined: the pool lives as long as the process.
     for (size_t helper = 0; helper < kHelperCount; ++helper) {
@@ -44,136 +55,179 @@ public:
     }
   }
 
-  // plans[i] for draws[i]. On a failure, the lowest failing index and its
-  // error.
-  bool Build(std::vector<Oot3dNativeGame::Oot3dPicaDrawSubmission> &draws,
-             std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> &plans,
-             Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &ownCache,
-             std::string &error) {
-    // Every plan is reset by its build: grow only, instead of destroying
-    // and default-constructing every plan of every pass.
-    if (plans.size() < draws.size()) {
-      plans.resize(draws.size());
+  // Queue lock held, game thread.
+  void DrawCaptured(const Oot3dNativeGame::Oot3dPicaDrawSubmission &draw) override {
+    const uint64_t sequence = mTail.load(std::memory_order_relaxed);
+    // Every slot in use (draws the drain has not collected): this one is
+    // planned by the drain itself.
+    if (sequence - mHead == kSlots) {
+      return;
     }
-    mDraws = &draws;
-    mPlans = &plans;
-    mNext.store(0, std::memory_order_relaxed);
-    mFailedIndex = SIZE_MAX;
-    mFailedException = nullptr;
-    {
-      std::lock_guard lock(mMutex);
-      ++mGeneration;
-      mBusy = kHelperCount;
-    }
-    mWake.notify_all();
-    Run(ownCache);
-    {
-      Fast::OrbisWaitScope wait("the PICA plan helpers");
-      std::unique_lock lock(mMutex);
-      WaitRechecking(mDone, lock, [&] { return mBusy == 0; });
-    }
-    if (mFailedIndex == SIZE_MAX) {
-      return true;
-    }
-    if (mFailedException != nullptr) {
-      std::rethrow_exception(std::exchange(mFailedException, nullptr));
-    }
-    error = mFailedError;
-    return false;
+    Item &item = Slot(sequence);
+    item.Id = draw.Id;
+    item.Draw = &draw;
+    item.Built = false;
+    item.Error.clear();
+    item.Exception = nullptr;
+    mTail.store(sequence + 1, std::memory_order_release);
   }
 
-  // Waits that ended on their timeout with the condition already true: a
-  // notification that never arrived (see WaitRechecking).
-  static uint64_t TakeLostWakeups() noexcept {
-    return gLostWakeups.exchange(0, std::memory_order_relaxed);
+  // Game thread: builds what no helper has started, then waits for the rest.
+  void Quiesce() override {
+    const uint64_t tail = mTail.load(std::memory_order_relaxed);
+    uint64_t sequence = 0;
+    while (Claim(sequence)) {
+      Build(sequence, mOwnCache);
+      ++mBuiltByGameThread;
+    }
+    for (; mDoneFrom < tail; ++mDoneFrom) {
+      const Item &item = Slot(mDoneFrom);
+      if (item.Done.load(std::memory_order_acquire) == mDoneFrom + 1) {
+        continue;
+      }
+      Fast::OrbisWaitScope wait("the PICA plan helpers");
+      while (item.Done.load(std::memory_order_acquire) != mDoneFrom + 1) {
+        std::this_thread::yield();
+      }
+    }
+  }
+
+  // The plans of one drain pass: plans[i] for draws[i], or false when they
+  // were not all built ahead (the first draws after the observer was set,
+  // slots full, or a take the drain did not see), and the drain builds its
+  // own. Throws or returns the error of the first failed plan, as a local
+  // build would. The plans stay in place until the guest captures new draws.
+  bool Collect(const std::vector<Oot3dNativeGame::Oot3dPicaDrawSubmission> &draws,
+               std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan *> &plans,
+               bool &failed, std::string &error) {
+    Quiesce();
+    failed = false;
+    plans.clear();
+    const uint64_t tail = mTail.load(std::memory_order_relaxed);
+    // Items of draws that never reached this drain (taken or discarded
+    // elsewhere) come first: skip them.
+    while (mHead < tail && !draws.empty() && Slot(mHead).Id < draws.front().Id) {
+      ++mHead;
+    }
+    bool complete = !draws.empty() && tail - mHead >= draws.size();
+    for (size_t index = 0; complete && index < draws.size(); ++index) {
+      complete = Slot(mHead + index).Id == draws[index].Id;
+    }
+    if (!complete) {
+      return false;
+    }
+    for (size_t index = 0; index < draws.size(); ++index) {
+      Item &item = Slot(mHead + index);
+      item.Draw = nullptr;
+      if (!item.Built && !failed) {
+        if (item.Exception != nullptr) {
+          mHead += draws.size();
+          std::rethrow_exception(std::exchange(item.Exception, nullptr));
+        }
+        failed = true;
+        error = item.Error;
+      }
+      plans.push_back(&item.Plan);
+    }
+    mHead += draws.size();
+    return true;
+  }
+
+  // Plans built per second by the helpers and by the game thread (in the
+  // drain, for draws no helper had started), for the five-second log.
+  struct Counts {
+    uint64_t Helpers = 0;
+    uint64_t GameThread = 0;
+  };
+  Counts TakeCounts() noexcept {
+    Counts counts{mBuiltByHelpers.exchange(0, std::memory_order_relaxed),
+                  mBuiltByGameThread};
+    mBuiltByGameThread = 0;
+    return counts;
   }
 
 private:
-  // The 1.57 console hang: the game thread waited for helpers that were
-  // themselves waiting for work, every thread in a condition-variable wait.
-  // A notification can be lost here (the sampler's signals interrupt these
-  // waits hundreds of times a second), so the condition is checked again
-  // every millisecond instead of trusting the notification alone; the
-  // result is the same, and a lost one costs a millisecond, not the game.
-  static inline std::atomic<uint64_t> gLostWakeups{0};
-  template <typename Predicate>
-  static void WaitRechecking(std::condition_variable &condition,
-                             std::unique_lock<std::mutex> &lock,
-                             Predicate &&ready) {
-    while (!ready()) {
-      if (condition.wait_for(lock, std::chrono::milliseconds(1)) ==
-              std::cv_status::timeout &&
-          ready()) {
-        gLostWakeups.fetch_add(1, std::memory_order_relaxed);
+  struct Item {
+    uint64_t Id = 0;
+    const Oot3dNativeGame::Oot3dPicaDrawSubmission *Draw = nullptr;
+    Oot3dNativeGame::Oot3dPicaVulkanDrawPlan Plan;
+    bool Built = false;
+    std::string Error;
+    std::exception_ptr Exception;
+    // sequence + 1 once built (0: never)
+    std::atomic<uint64_t> Done{0};
+  };
+  static constexpr size_t kSlotsPerChunk = 32;
+  static constexpr size_t kChunks = 128;
+  static constexpr uint64_t kSlots = kSlotsPerChunk * kChunks;
+
+  // Chunks are allocated by the game thread before the slot is published
+  // (the tail's release store) and never freed.
+  Item &Slot(uint64_t sequence) {
+    const size_t slot = static_cast<size_t>(sequence % kSlots);
+    auto &chunk = mChunks[slot / kSlotsPerChunk];
+    if (chunk == nullptr) {
+      chunk = std::make_unique<Item[]>(kSlotsPerChunk);
+    }
+    return chunk[slot % kSlotsPerChunk];
+  }
+
+  bool Claim(uint64_t &sequence) {
+    uint64_t next = mNext.load(std::memory_order_relaxed);
+    for (;;) {
+      if (next >= mTail.load(std::memory_order_acquire)) {
+        return false;
+      }
+      if (mNext.compare_exchange_weak(next, next + 1, std::memory_order_acquire,
+                                      std::memory_order_relaxed)) {
+        sequence = next;
+        return true;
       }
     }
   }
 
-  void Run(Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &cache) {
-    auto &draws = *mDraws;
-    auto &plans = *mPlans;
-    for (;;) {
-      const size_t index = mNext.fetch_add(1, std::memory_order_relaxed);
-      if (index >= draws.size()) {
-        return;
-      }
-      std::string error;
-      std::exception_ptr exception;
-      bool built = false;
-      // A helper must always come back to its loop: one that died here
-      // would leave the game thread waiting for it forever.
-      try {
-        built = Oot3dNativeGame::BuildOot3dPicaVulkanDrawPlanAndConsumeResources(
-            draws[index], plans[index], &error, &cache);
-      } catch (...) {
-        exception = std::current_exception();
-      }
-      if (!built) {
-        std::lock_guard lock(mMutex);
-        if (index < mFailedIndex) {
-          mFailedIndex = index;
-          mFailedError = std::move(error);
-          mFailedException = exception;
-        }
-      }
+  void Build(uint64_t sequence,
+             Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &cache) {
+    Item &item = mChunks[(sequence % kSlots) / kSlotsPerChunk][sequence % kSlotsPerChunk];
+    // A helper must always come back to its loop: one that died here would
+    // leave the game thread waiting for it forever.
+    try {
+      item.Built = Oot3dNativeGame::BuildOot3dPicaVulkanDrawPlan(
+          *item.Draw, item.Plan, &item.Error, &cache);
+    } catch (...) {
+      item.Built = false;
+      item.Exception = std::current_exception();
     }
+    item.Done.store(sequence + 1, std::memory_order_release);
   }
 
   void HelperLoop(size_t helper) {
     Fast::OrbisRegisterThread("pica plan");
-    uint64_t seen = 0;
     for (;;) {
-      {
-        std::unique_lock lock(mMutex);
-        WaitRechecking(mWake, lock, [&] { return mGeneration != seen; });
-        seen = mGeneration;
-      }
-      Run(mCaches[helper]);
-      bool last = false;
-      {
-        std::lock_guard lock(mMutex);
-        last = --mBusy == 0;
-      }
-      if (last) {
-        mDone.notify_one();
+      uint64_t sequence = 0;
+      if (Claim(sequence)) {
+        Build(sequence, mCaches[helper]);
+        mBuiltByHelpers.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
       }
     }
   }
 
+  Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &mOwnCache;
   std::array<Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache, kHelperCount>
       mCaches;
-  std::mutex mMutex;
-  std::condition_variable mWake;
-  std::condition_variable mDone;
-  uint64_t mGeneration = 0;
-  size_t mBusy = 0;
-  std::vector<Oot3dNativeGame::Oot3dPicaDrawSubmission> *mDraws = nullptr;
-  std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> *mPlans = nullptr;
-  std::atomic<size_t> mNext{0};
-  size_t mFailedIndex = SIZE_MAX;
-  std::string mFailedError;
-  std::exception_ptr mFailedException;
+  std::array<std::unique_ptr<Item[]>, kChunks> mChunks;
+  // [mHead, mTail) not yet collected, [mNext, mTail) not yet started; the
+  // game thread alone writes mTail, mHead and mDoneFrom.
+  std::atomic<uint64_t> mTail{0};
+  std::atomic<uint64_t> mNext{0};
+  uint64_t mHead = 0;
+  uint64_t mDoneFrom = 0;
+  std::atomic<uint64_t> mBuiltByHelpers{0};
+  uint64_t mBuiltByGameThread = 0;
 };
+PicaPlanAhead *gPicaPlanAhead = nullptr;  // for the five-second log
 #endif
 
 uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
@@ -856,6 +910,7 @@ bool NativeA32WindowSession::RunFrame() {
     static uint64_t windowShortfall = audioOutputDiagnostics.EstimatedShortfallFrames;
     static uint64_t windowDspFrames = dspStats.FramesMixed;
     static uint64_t windowVblanks = vblankCount;
+    static auto windowQueue = submissionQueueStorage->RuntimeProfile();
     const auto now = std::chrono::steady_clock::now();
     const double seconds = std::chrono::duration<double>(now - windowStart).count();
     if (seconds >= 5.0 && Fast::gOrbisDiagnosticLogs.load(std::memory_order_relaxed)) {
@@ -899,10 +954,36 @@ bool NativeA32WindowSession::RunFrame() {
                    audioPlayer != nullptr && audioPlayer->IsInitialized() ? audioPlayer->Buffered() : -1,
                    static_cast<double>(dspStats.FramesMixed - windowDspFrames) / seconds,
                    static_cast<double>(vblankCount - windowVblanks) / seconds, scene);
+      {
+        // Where the frontend's submit time goes, per host frame: the draw
+        // packet copy, state decode, vertex/index and texture capture (guest
+        // memory reads), and the queue bookkeeping; the rest of "pica submit"
+        // is the command-list walk and packet build in the frontend itself.
+        const auto queue = submissionQueueStorage->RuntimeProfile();
+        const auto qms = [&](uint64_t current, uint64_t previous) {
+          return hostFrames > 0.0 ? static_cast<double>(current - previous) * 1.0e-6 / hostFrames : 0.0;
+        };
+        std::fprintf(stderr,
+                     "[triaevum] pica submit detail per host frame ms: queue %.2f (packet copy %.2f,"
+                     " decode %.2f, vertex capture %.2f, texture capture %.2f, enqueue %.2f) |"
+                     " %.1f draws\n",
+                     qms(queue.TotalNanoseconds, windowQueue.TotalNanoseconds),
+                     qms(queue.PacketCopyNanoseconds, windowQueue.PacketCopyNanoseconds),
+                     qms(queue.DecodeNanoseconds, windowQueue.DecodeNanoseconds),
+                     qms(queue.VertexCaptureNanoseconds, windowQueue.VertexCaptureNanoseconds),
+                     qms(queue.TextureCaptureNanoseconds, windowQueue.TextureCaptureNanoseconds),
+                     qms(queue.EnqueueNanoseconds, windowQueue.EnqueueNanoseconds),
+                     hostFrames > 0.0 ? static_cast<double>(queue.DrawCalls - windowQueue.DrawCalls) / hostFrames : 0.0);
+        windowQueue = queue;
+      }
       std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
                    TakeBlockEntryHookCounts(seconds).c_str());
-      std::fprintf(stderr, "[triaevum] plan helpers: %llu waits recovered by their timeout\n",
-                   static_cast<unsigned long long>(PicaPlanWorkers::TakeLostWakeups()));
+      if (gPicaPlanAhead != nullptr) {
+        const auto counts = gPicaPlanAhead->TakeCounts();
+        std::fprintf(stderr, "[triaevum] plan helpers: %.0f plans/s ahead, %.0f by the game thread\n",
+                     static_cast<double>(counts.Helpers) / seconds,
+                     static_cast<double>(counts.GameThread) / seconds);
+      }
       windowStart = now;
       windowGuestFrames = frameCount;
       windowHostFrames = runFrameCount;
@@ -1722,14 +1803,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
       submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
     }
 #if defined(__ORBIS__)
-    static PicaPlanWorkers *const planWorkers =
-        new PicaPlanWorkers(shaderSourceCache);
-    static std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> prebuiltPlans;
-    const bool plansPrebuilt = draws.size() >= PicaPlanWorkers::kMinimumDraws;
-    if (plansPrebuilt) {
+    // Set at the first drain: the draws captured before it are planned here.
+    static PicaPlanAhead *const planAhead = [&] {
+      auto *const pool = new PicaPlanAhead(shaderSourceCache);
+      submissionQueue.SetDrawCaptureObserver(pool);
+      gPicaPlanAhead = pool;
+      return pool;
+    }();
+    static std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan *> prebuiltPlans;
+    bool plansPrebuilt = false;
+    {
       const auto planStart = std::chrono::steady_clock::now();
-      if (!planWorkers->Build(draws, prebuiltPlans, shaderSourceCache,
-                              error)) {
+      bool planFailed = false;
+      plansPrebuilt = planAhead->Collect(draws, prebuiltPlans, planFailed, error);
+      if (planFailed) {
         throw std::runtime_error("native PICA Vulkan plan failed: " + error);
       }
       phaseTiming.PicaPlanSeconds += SecondsSince(planStart);
@@ -1762,7 +1849,7 @@ void NativeA32WindowSession::RunGuestRefresh() {
       auto drawPhaseStart = std::chrono::steady_clock::now();
 #if defined(__ORBIS__)
       if (plansPrebuilt) {
-        builtPlan = &prebuiltPlans[&draw - draws.data()];
+        builtPlan = prebuiltPlans[&draw - draws.data()];
       } else
 #endif
       {

@@ -198,6 +198,11 @@ GraphicsSettings GraphicsSettingsService::Preset(GraphicsPreset preset) {
     if (preset == GraphicsPreset::Enhanced) {
         // A tuned play configuration (EnhancedPresetDocument).
         value = EnhancedPresetSettings();
+#if defined(__ORBIS__)
+        // Actors up to 5x farther (draw, update, light budget walk) cost the
+        // console's game thread more than the picture is worth: off by default.
+        value.ExtendedDrawDistance = false;
+#endif
     } else if (preset == GraphicsPreset::Toon) {
         // The toon look keeps its own base: FXAA, VSM, GTAO and Medium grass.
         value.AntiAliasing = AntiAliasingMode::Fxaa;

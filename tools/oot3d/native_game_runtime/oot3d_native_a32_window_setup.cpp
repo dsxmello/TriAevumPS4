@@ -804,7 +804,12 @@ void NativeA32WindowSession::Setup() {
           topScreenTextureOverrideRuntime->Transform(texture, payload);
         });
   }
+#if defined(__ORBIS__)
+  // The per-draw split of the frontend's time goes to the five-second log.
+  submissionQueue.SetRuntimeProfilingEnabled(true);
+#else
   submissionQueue.SetRuntimeProfilingEnabled(launch.ProfileA32Runtime);
+#endif
   picaFrontend.SetPacketSink(&submissionQueue);
 
   hostArgs = launch.Host;
