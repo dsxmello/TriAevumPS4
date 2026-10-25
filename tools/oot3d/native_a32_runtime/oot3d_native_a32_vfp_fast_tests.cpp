@@ -5,6 +5,7 @@
 #include "oot3d_native_a32_vfp_fast.h"
 
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <iostream>
 #include <random>
@@ -35,8 +36,10 @@ void Expect(const char* name, const a32::VfpBinary32Result& fast,
             std::uint32_t a, std::uint32_t b, std::uint32_t c,
             std::uint32_t fpscr) {
     ++gChecks;
+    // Flags are ORed into FPSCR; with IXC already there the fast path may
+    // leave it out (oot3d_native_a32_vfp_fast.h).
     if (fast.value == reference.value &&
-        fast.exception_flags == reference.exception_flags) {
+        (fast.exception_flags | fpscr) == (reference.exception_flags | fpscr)) {
         return;
     }
     if (++gFailures <= 20) {
@@ -95,14 +98,36 @@ void CheckOperands(std::uint32_t a, std::uint32_t b, std::uint32_t c,
            a32::VfpBinary32NegativeMultiplySubtract(c, a, b, fpscr), a, b, c, fpscr);
     Expect("from_signed", Oot3dVfpFromSigned(a, fpscr),
            a32::VfpBinary32FromSigned(a, fpscr), a, b, c, fpscr);
+    // VCMP/VCMPE against the host comparison of the same values (not under
+    // host DAZ, which would compare denormals as zero; VCMP never does).
+#if defined(_M_X64) || defined(__x86_64__)
+    if ((_mm_getcsr() & 0x0040U) != 0U) return;
+#endif
+    for (const bool signalAll : {false, true}) {
+        const float x = std::bit_cast<float>(a);
+        const float y = std::bit_cast<float>(b);
+        const auto signaling = [](std::uint32_t bits) {
+            return (bits & 0x7F800000U) == 0x7F800000U && (bits & 0x007FFFFFU) != 0U &&
+                   (bits & 0x00400000U) == 0U;
+        };
+        a32::VfpBinary32Result reference{};
+        if (x != x || y != y) {
+            reference = {0x30000000U, signalAll || signaling(a) || signaling(b) ? 1U : 0U};
+        } else {
+            reference = {x == y ? 0x60000000U : x < y ? 0x80000000U : 0x20000000U, 0U};
+        }
+        Expect(signalAll ? "cmpe" : "cmp", a32::VfpBinary32Compare(a, b, signalAll), reference,
+               a, b, c, 0U);
+    }
 }
 
 void RunCampaign(std::uint64_t seed, int iterations) {
     // RN, RP, RM, RZ, each with and without FZ and DN.
-    std::array<std::uint32_t, 16> modes{};
+    // The second half with IXC already set in FPSCR.
+    std::array<std::uint32_t, 32> modes{};
     for (std::uint32_t i = 0; i < modes.size(); ++i) {
         modes[i] = ((i & 3U) << 22U) | (((i >> 2U) & 1U) << 24U) |
-                   (((i >> 3U) & 1U) << 25U);
+                   (((i >> 3U) & 1U) << 25U) | (((i >> 4U) & 1U) << 4U);
     }
     std::mt19937_64 random(seed);
     for (int i = 0; i < iterations; ++i) {

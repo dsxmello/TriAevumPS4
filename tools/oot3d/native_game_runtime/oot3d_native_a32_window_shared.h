@@ -503,6 +503,11 @@ struct NativeWidescreenProjectionState {
   // is active (TopScreenRainAdapter::ShouldObserve).
   const Oot3dNativeGame::TopScreenRainAdapter *Rain = nullptr;
   std::span<const uint32_t> WholeAotObservableExitPcs;
+  // Sorted hook PCs that only the composition tracker observes: in no other
+  // hook list, not an observable exit, not a PC the policy names
+  // (NativeWidescreenProjectionPolicyPcs). The policy calls only the
+  // tracker for them.
+  std::vector<uint32_t> CompositionOnlyHookPcs;
   // Set to the pc of each observable exit this policy raises (see
   // NativeCandidateDispatchState::ObservedExitPc).
   std::optional<uint32_t> *ObservedExitPc = nullptr;
@@ -709,6 +714,7 @@ bool ExecuteNativeCandidate(uint32_t pc, oot3d::recomp::a32::GuestState &state,
 void ApplyNativeWidescreenProjectionPolicy(
     uint32_t pc, oot3d::recomp::a32::GuestState &state,
     oot3d::recomp::a32::MemoryBus &memory, void *user);
+std::span<const uint32_t> NativeWidescreenProjectionPolicyPcs() noexcept;
 #if defined(__ORBIS__)
 // PS4 diagnostics log: the policy's calls per second and its busiest guest
 // PCs since the previous call, then starts counting again.

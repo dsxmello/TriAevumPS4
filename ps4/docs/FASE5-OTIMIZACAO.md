@@ -586,3 +586,59 @@ casa do Link; Hyrule Field: mesmo ponto nas duas). Desvio padrão por janela
   0x003FB998), quase todos do rastreador de composição, e cada chamada
   percorre a política inteira (sonda de visibilidade de atores, dezenas de
   comparações e buscas). Próximo: caminho rápido para esses PCs.
+
+## Plano da fase A (2026-10-25)
+
+Perfil da 1.56 parada, thread do jogo: AOT 50%, frontend/plano PICA 15%,
+mem* 7%, hooks 6%, VFP 5%, memória pelo caminho checado 2%, malloc/free 2%,
+funções nativas 2%, áudio 1%. Fase A = ajustes locais: hooks, VFP, plano e
+pacote de draw, captura de recursos por draw, alocações. Depois: B
+(frontend PICA fora da thread do jogo, áudio em thread), C (gerador do AOT;
+antes, recuperar as entradas do gerador), D (PGO).
+
+## 1.57 — hooks: caminho rápido da composição; VFP: IXC acumulado, VCMP inline
+
+- `CompositionOnlyHookPcs` (calculado no `Setup`): PCs do rastreador de
+  composição que nenhuma outra lista de hooks adicionou (aparecem uma vez
+  antes do `unique`), que não são saída observável e que a política não
+  compara pelo nome (`NativeWidescreenProjectionPolicyPcs`, os 42 da
+  política e os 3 de `ApplyTopScreenGuestHook`). Os observadores chamados
+  com qualquer PC (visibilidade de atores, `PlayerTemporalBridge`,
+  `UiLifecycleBridge`) filtram pela própria lista, então para esses PCs a
+  política só chama o rastreador. Sem trace de blocos.
+- VFP: IXC é acumulativo e o código gerado só faz `fpscr |= flags`
+  (`Oot3dAotCommitVfp`). Com IXC já no FPSCR o caminho rápido não calcula o
+  erro (TwoSum na soma, comparação do produto em double): `fpscr | flags`
+  igual. `VfpBinary32Compare` (VCMP, ~3.900 no código gerado) virou inline
+  no header, mesma lógica do `F32Compare`.
+- Teste no PC: o teste do caminho rápido do VFP com os 16 modos de FPSCR
+  também com IXC ligado e VCMP/VCMPE contra a comparação do host: 198
+  milhões de verificações, iguais (o teste compara `fpscr | flags`).
+
+## Travamento da 1.57 e 1.58 (2026-10-25)
+
+- A 1.57 congelou duas vezes parada (após ~1 e ~3 min): "stall: no frame
+  for 10 s, game thread waiting at the PICA plan helpers"; no profiler,
+  todas as threads 100% no kernel no mesmo ponto.
+- 1.57h: o watchdog (`ps4_process_init.cpp`) grava
+  `ps4_dump_thread_stacks` em `/data/triaevum_hang.log` aos 10 e 30 s sem
+  quadro (IP, endereços do eboot na pilha e, em `_umtx_op`, objeto e dono).
+  Resultado: as quatro threads em `_umtx_op` op 8 (`UMTX_OP_CV_WAIT`); as
+  duas auxiliares no mesmo cv com pilha rasa (ociosas no `mWake`), a do jogo
+  noutro (`mDone`, dentro de `RunGuestRefresh`), a de render esperando
+  trabalho. Nenhuma em mutex: não é o malloc. `mBusy > 0` com as auxiliares
+  achando que não há trabalho novo: notificação perdida. A lógica do pool
+  está certa no papel; o sampler interrompe essas esperas centenas de vezes
+  por segundo com sinais (`SA_RESTART`), suspeita principal.
+- 1.58: `PicaPlanWorkers::WaitRechecking` espera com `wait_for` de 1 ms e
+  confere a condição de novo (mesmo resultado; uma notificação perdida custa
+  1 ms, não o jogo). O log de 5 s conta as esperas salvas pelo timeout
+  (`[triaevum] plan helpers: N waits recovered by their timeout`). O dump de
+  travamento fica.
+- Medição da 1.58: 58 janelas (~5 min) parada sem travar (a 1.57h travou
+  duas vezes na sessão anterior). 6.054 esperas salvas pelo timeout em 57
+  janelas (~20/s; uma parte pode ser timeout coincidindo com uma notificação
+  a caminho): as notificações perdidas ou atrasadas são frequentes nesse
+  pool no PS4. Kokiri parado: 17,10 ms, 353 draws, 23,8 fps (1.56: 17,25 ms,
+  355 draws, 23,7 fps): -0,9% com hooks + VFP. Hyrule Field noutro ponto
+  (348 draws), sem comparação.

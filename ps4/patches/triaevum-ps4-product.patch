@@ -680,6 +680,222 @@ index f7498800..fdbcaf55 100644
        throw std::runtime_error("save root is invalid");
      }
      return std::unique_ptr<RootedFilesystemBackendV1>(
+diff --git a/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_fast.h b/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_fast.h
+index 57e74025..66c4e6f9 100644
+--- a/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_fast.h
++++ b/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_fast.h
+@@ -15,7 +15,11 @@
+ // - overflow reaches the fallback because the host result is infinite.
+ // The only exception flag possible on the fast path is IXC. It is derived
+ // from an exact error term: TwoSum for addition, a double-precision product
+-// (24x24 bits fit in 53) for multiplication.
++// (24x24 bits fit in 53) for multiplication. IXC is cumulative and callers
++// OR the flags into FPSCR (Oot3dAotCommitVfp): when FPSCR already holds IXC
++// the error term is not computed and the flags may omit it, so
++// fpscr | flags is always the same. Once a title has rounded anything, that
++// is every later operation.
+ //
+ // Requires strict floating-point code generation (/fp:strict), which every
+ // translated-title build uses; value-changing reassociation would break TwoSum.
+@@ -58,7 +62,8 @@ inline constexpr std::uint32_t kIxc = 1U << 4U;
+ // the software implementation.
+ [[nodiscard]] inline bool Multiply(
+     std::uint32_t left, std::uint32_t right,
+-    oot3d::recomp::a32::VfpBinary32Result& result) noexcept {
++    oot3d::recomp::a32::VfpBinary32Result& result,
++    bool needInexact = true) noexcept {
+     if (!OperandEligible(left) || !OperandEligible(right)) {
+         return false;
+     }
+@@ -73,13 +78,14 @@ inline constexpr std::uint32_t kIxc = 1U << 4U;
+     if (!NonzeroResultEligible(bits)) {
+         return false;
+     }
+-    result = {bits, static_cast<double>(rounded) == exact ? 0U : kIxc};
++    result = {bits, needInexact && static_cast<double>(rounded) != exact ? kIxc : 0U};
+     return true;
+ }
+ 
+ [[nodiscard]] inline bool Add(
+     std::uint32_t left, std::uint32_t right,
+-    oot3d::recomp::a32::VfpBinary32Result& result) noexcept {
++    oot3d::recomp::a32::VfpBinary32Result& result,
++    bool needInexact = true) noexcept {
+     if (!OperandEligible(left) || !OperandEligible(right)) {
+         return false;
+     }
+@@ -90,6 +96,10 @@ inline constexpr std::uint32_t kIxc = 1U << 4U;
+     if ((bits & 0x7FFFFFFFU) != 0U && !NonzeroResultEligible(bits)) {
+         return false;
+     }
++    if (!needInexact) {
++        result = {bits, 0U};
++        return true;
++    }
+     // Knuth TwoSum: the exact rounding error of a + b.
+     const float virtualRight = sum - a;
+     const float error = (a - (sum - virtualRight)) + (b - virtualRight);
+@@ -102,11 +112,13 @@ inline constexpr std::uint32_t kIxc = 1U << 4U;
+ [[nodiscard]] inline bool MultiplyThenAdd(
+     std::uint32_t accumulator, std::uint32_t left, std::uint32_t right,
+     std::uint32_t negateAccumulator, std::uint32_t negateProduct,
+-    oot3d::recomp::a32::VfpBinary32Result& result) noexcept {
++    oot3d::recomp::a32::VfpBinary32Result& result,
++    bool needInexact = true) noexcept {
+     oot3d::recomp::a32::VfpBinary32Result product{};
+     oot3d::recomp::a32::VfpBinary32Result sum{};
+-    if (!Multiply(left, right, product) ||
+-        !Add(accumulator ^ negateAccumulator, product.value ^ negateProduct, sum)) {
++    if (!Multiply(left, right, product, needInexact) ||
++        !Add(accumulator ^ negateAccumulator, product.value ^ negateProduct, sum,
++             needInexact)) {
+         return false;
+     }
+     result = {sum.value, product.exception_flags | sum.exception_flags};
+@@ -119,7 +131,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpAdd(
+     std::uint32_t left, std::uint32_t right, std::uint32_t fpscr) noexcept {
+     oot3d::recomp::a32::VfpBinary32Result result{};
+     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
+-        VfpFastDetail::Add(left, right, result)) [[likely]] {
++        VfpFastDetail::Add(left, right, result,
++                           (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
+         return result;
+     }
+     return oot3d::recomp::a32::VfpBinary32Add(left, right, fpscr);
+@@ -129,7 +142,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpSubtract(
+     std::uint32_t left, std::uint32_t right, std::uint32_t fpscr) noexcept {
+     oot3d::recomp::a32::VfpBinary32Result result{};
+     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
+-        VfpFastDetail::Add(left, right ^ 0x80000000U, result)) [[likely]] {
++        VfpFastDetail::Add(left, right ^ 0x80000000U, result,
++                           (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
+         return result;
+     }
+     return oot3d::recomp::a32::VfpBinary32Subtract(left, right, fpscr);
+@@ -139,7 +153,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpMultiply(
+     std::uint32_t left, std::uint32_t right, std::uint32_t fpscr) noexcept {
+     oot3d::recomp::a32::VfpBinary32Result result{};
+     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
+-        VfpFastDetail::Multiply(left, right, result)) [[likely]] {
++        VfpFastDetail::Multiply(left, right, result,
++                                (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
+         return result;
+     }
+     return oot3d::recomp::a32::VfpBinary32Multiply(left, right, fpscr);
+@@ -149,7 +164,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpNegativeMultiply(
+     std::uint32_t left, std::uint32_t right, std::uint32_t fpscr) noexcept {
+     oot3d::recomp::a32::VfpBinary32Result result{};
+     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
+-        VfpFastDetail::Multiply(left, right, result)) [[likely]] {
++        VfpFastDetail::Multiply(left, right, result,
++                                (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
+         return {result.value ^ 0x80000000U, result.exception_flags};
+     }
+     return oot3d::recomp::a32::VfpBinary32NegativeMultiply(left, right, fpscr);
+@@ -161,7 +177,9 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpMultiplyAccumulate(
+     std::uint32_t fpscr) noexcept {
+     oot3d::recomp::a32::VfpBinary32Result result{};
+     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
+-        VfpFastDetail::MultiplyThenAdd(accumulator, left, right, 0U, 0U, result))
++        VfpFastDetail::MultiplyThenAdd(
++            accumulator, left, right, 0U, 0U, result,
++            (fpscr & VfpFastDetail::kIxc) == 0U))
+         [[likely]] {
+         return result;
+     }
+@@ -176,7 +194,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpMultiplySubtract(
+     oot3d::recomp::a32::VfpBinary32Result result{};
+     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
+         VfpFastDetail::MultiplyThenAdd(
+-            accumulator, left, right, 0U, 0x80000000U, result)) [[likely]] {
++            accumulator, left, right, 0U, 0x80000000U, result,
++            (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
+         return result;
+     }
+     return oot3d::recomp::a32::VfpBinary32MultiplySubtract(
+@@ -190,7 +209,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpNegativeMultiplyAccumulate(
+     oot3d::recomp::a32::VfpBinary32Result result{};
+     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
+         VfpFastDetail::MultiplyThenAdd(
+-            accumulator, left, right, 0x80000000U, 0x80000000U, result)) [[likely]] {
++            accumulator, left, right, 0x80000000U, 0x80000000U, result,
++            (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
+         return result;
+     }
+     return oot3d::recomp::a32::VfpBinary32NegativeMultiplyAccumulate(
+@@ -204,7 +224,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpNegativeMultiplySubtract(
+     oot3d::recomp::a32::VfpBinary32Result result{};
+     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
+         VfpFastDetail::MultiplyThenAdd(
+-            accumulator, left, right, 0x80000000U, 0U, result)) [[likely]] {
++            accumulator, left, right, 0x80000000U, 0U, result,
++            (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
+         return result;
+     }
+     return oot3d::recomp::a32::VfpBinary32NegativeMultiplySubtract(
+diff --git a/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_fast_tests.cpp b/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_fast_tests.cpp
+index f5017014..311ab559 100644
+--- a/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_fast_tests.cpp
++++ b/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_fast_tests.cpp
+@@ -5,6 +5,7 @@
+ #include "oot3d_native_a32_vfp_fast.h"
+ 
+ #include <array>
++#include <bit>
+ #include <cstdint>
+ #include <iostream>
+ #include <random>
+@@ -35,8 +36,10 @@ void Expect(const char* name, const a32::VfpBinary32Result& fast,
+             std::uint32_t a, std::uint32_t b, std::uint32_t c,
+             std::uint32_t fpscr) {
+     ++gChecks;
++    // Flags are ORed into FPSCR; with IXC already there the fast path may
++    // leave it out (oot3d_native_a32_vfp_fast.h).
+     if (fast.value == reference.value &&
+-        fast.exception_flags == reference.exception_flags) {
++        (fast.exception_flags | fpscr) == (reference.exception_flags | fpscr)) {
+         return;
+     }
+     if (++gFailures <= 20) {
+@@ -95,14 +98,36 @@ void CheckOperands(std::uint32_t a, std::uint32_t b, std::uint32_t c,
+            a32::VfpBinary32NegativeMultiplySubtract(c, a, b, fpscr), a, b, c, fpscr);
+     Expect("from_signed", Oot3dVfpFromSigned(a, fpscr),
+            a32::VfpBinary32FromSigned(a, fpscr), a, b, c, fpscr);
++    // VCMP/VCMPE against the host comparison of the same values (not under
++    // host DAZ, which would compare denormals as zero; VCMP never does).
++#if defined(_M_X64) || defined(__x86_64__)
++    if ((_mm_getcsr() & 0x0040U) != 0U) return;
++#endif
++    for (const bool signalAll : {false, true}) {
++        const float x = std::bit_cast<float>(a);
++        const float y = std::bit_cast<float>(b);
++        const auto signaling = [](std::uint32_t bits) {
++            return (bits & 0x7F800000U) == 0x7F800000U && (bits & 0x007FFFFFU) != 0U &&
++                   (bits & 0x00400000U) == 0U;
++        };
++        a32::VfpBinary32Result reference{};
++        if (x != x || y != y) {
++            reference = {0x30000000U, signalAll || signaling(a) || signaling(b) ? 1U : 0U};
++        } else {
++            reference = {x == y ? 0x60000000U : x < y ? 0x80000000U : 0x20000000U, 0U};
++        }
++        Expect(signalAll ? "cmpe" : "cmp", a32::VfpBinary32Compare(a, b, signalAll), reference,
++               a, b, c, 0U);
++    }
+ }
+ 
+ void RunCampaign(std::uint64_t seed, int iterations) {
+     // RN, RP, RM, RZ, each with and without FZ and DN.
+-    std::array<std::uint32_t, 16> modes{};
++    // The second half with IXC already set in FPSCR.
++    std::array<std::uint32_t, 32> modes{};
+     for (std::uint32_t i = 0; i < modes.size(); ++i) {
+         modes[i] = ((i & 3U) << 22U) | (((i >> 2U) & 1U) << 24U) |
+-                   (((i >> 3U) & 1U) << 25U);
++                   (((i >> 3U) & 1U) << 25U) | (((i >> 4U) & 1U) << 4U);
+     }
+     std::mt19937_64 random(seed);
+     for (int i = 0; i < iterations; ++i) {
 diff --git a/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_ops.cpp b/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_ops.cpp
 index 4bdfc850..a60db74d 100644
 --- a/tools/oot3d/native_a32_runtime/oot3d_native_a32_vfp_ops.cpp
@@ -862,6 +1078,72 @@ index 4bdfc850..a60db74d 100644
      const Result result = F32ToInteger(
          value, true, ControlFromFpscr(fpscr));
      return {result.value, result.flags & kExceptionFlags};
+diff --git a/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_scalar.cpp b/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_scalar.cpp
+index 2c116573..1204229d 100644
+--- a/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_scalar.cpp
++++ b/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_scalar.cpp
+@@ -855,14 +855,6 @@ VfpBinary32Result VfpBinary32FromSigned(
+     return {result.value, result.flags & kExceptionFlags};
+ }
+ 
+-VfpBinary32Result VfpBinary32Compare(
+-    std::uint32_t left,
+-    std::uint32_t right,
+-    bool signal_all_nans) noexcept {
+-    const Result result = F32Compare(left, right, signal_all_nans);
+-    return {result.value, result.flags & kExceptionFlags};
+-}
+-
+ ExecutionResult ExecuteVfpScalar(
+     std::uint32_t raw,
+     std::uint32_t pc,
+diff --git a/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_scalar.h b/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_scalar.h
+index 5ed8a308..a4998ffc 100644
+--- a/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_scalar.h
++++ b/tools/oot3d/native_a32_runtime/upstream/recomp/a32_vfp_scalar.h
+@@ -23,10 +23,40 @@ VfpBinary32Result VfpBinary32MultiplyAccumulate(
+ VfpBinary32Result VfpBinary32FromSigned(
+     std::uint32_t value,
+     std::uint32_t fpscr) noexcept;
+-VfpBinary32Result VfpBinary32Compare(
++// VCMP/VCMPE. Inline: translated code compares often and the exact result
++// is a few integer tests (the same as F32Compare in a32_vfp_scalar.cpp).
++inline VfpBinary32Result VfpBinary32Compare(
+     std::uint32_t left,
+     std::uint32_t right,
+-    bool signal_all_nans) noexcept;
++    bool signal_all_nans) noexcept {
++    constexpr std::uint32_t kSign = 0x80000000U;
++    constexpr std::uint32_t kExponent = 0x7F800000U;
++    constexpr std::uint32_t kFraction = 0x007FFFFFU;
++    constexpr std::uint32_t kQuiet = 0x00400000U;
++    constexpr std::uint32_t kEqual = 0x60000000U;
++    constexpr std::uint32_t kLess = 0x80000000U;
++    constexpr std::uint32_t kGreater = 0x20000000U;
++    constexpr std::uint32_t kUnordered = 0x30000000U;
++    constexpr std::uint32_t kIoc = 1U << 0U;
++    const bool left_nan = (left & kExponent) == kExponent && (left & kFraction) != 0U;
++    const bool right_nan = (right & kExponent) == kExponent && (right & kFraction) != 0U;
++    if (left_nan || right_nan) {
++        const bool invalid = (left_nan && (left & kQuiet) == 0U) ||
++                             (right_nan && (right & kQuiet) == 0U) ||
++                             signal_all_nans;
++        return {kUnordered, invalid ? kIoc : 0U};
++    }
++    if (((left | right) & ~kSign) == 0U || left == right) {
++        return {kEqual, 0U};
++    }
++    const bool left_sign = (left & kSign) != 0U;
++    const bool right_sign = (right & kSign) != 0U;
++    if (left_sign != right_sign) {
++        return {left_sign ? kLess : kGreater, 0U};
++    }
++    const bool less = left_sign ? (left & ~kSign) > (right & ~kSign) : left < right;
++    return {less ? kLess : kGreater, 0U};
++}
+ 
+ // Execute one instruction from the exact scalar binary32/binary64 VFP subset.
+ // The A32 condition has already been evaluated by ExecuteBlock.  Unsupported
 diff --git a/tools/oot3d/native_a32_runtime/whole_aot_cpp.py b/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
 index 42f991d1..e0e924b7 100644
 --- a/tools/oot3d/native_a32_runtime/whole_aot_cpp.py
@@ -1839,10 +2121,10 @@ index f1a959fb..7d2cc2d0 100644
              result.ManifestPath, source.at("code_bin_path").get<std::string>());
          result.CodeBinSha256 = source.at("code_bin_sha256").get<std::string>();
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
-index 5f59a070..0805bee9 100644
+index 5f59a070..a02baf19 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_projection_policy.cpp
-@@ -1,12 +1,75 @@
+@@ -1,12 +1,136 @@
  // Block-entry policy of the A32 window: widescreen projection and guest observation hooks.
  #include "oot3d_native_a32_window_shared.h"
  
@@ -1908,6 +2190,58 @@ index 5f59a070..0805bee9 100644
 +}
 +#endif
 +
++std::span<const uint32_t> NativeWidescreenProjectionPolicyPcs() noexcept {
++  // Every PC compared by name below (and by ApplyTopScreenGuestHook);
++  // the three render-target PCs are local constants of the policy.
++  static constexpr uint32_t kPcs[] = {
++    kBlockingQueuePop,
++    kBlockingQueuePush,
++    kBlockingQueueTryPush,
++    kEnMagDraw,
++    kEnMagInit,
++    kEnMagUpdate,
++    kFileChooseInit,
++    kFileSelectActivate,
++    kFileSelectInit,
++    kFileSelectUpdate,
++    kGameStateUpdate,
++    kMtx4x4BuildFrustum,
++    kMtx4x4BuildOrthographicProjectionRotated,
++    kNngxCmdlistCompletionDispatch,
++    kNngxCommonInterruptHandler,
++    kNngxP3dCallback,
++    kPauseIconBuild,
++    kPauseProjectionPrepare,
++    kPauseUiDraw,
++    kPauseUiDrawReturn,
++    kPauseUiUpdate,
++    kPlayTransitionUpdate,
++    kRendererCommandQueueProcessPending,
++    kRendererGlobalCallbackAfterLookup,
++    kTaskQueueEnqueuePriorityNode,
++    kTaskQueueTakeFirstFromPriority,
++    kTaskQueueWorkerDrainPriorityNodes,
++    kTopScreenCameraNormal1Scalar,
++    kTopScreenCameraUpdateEntry,
++    Oot3dNativeGame::kNativeQbfA4Blit,
++    Oot3dNativeGame::kOot3dFramePacingBeginEntry,
++    Oot3dNativeGame::kOot3dFramePacingCommitEntry,
++    Oot3dNativeGame::kOot3dFramePacingDecisionEntry,
++    Oot3dNativeGame::kOot3dPlayerUpdateEntry,
++    Oot3dNativeGame::kReframedFileLogoCall,
++    Oot3dNativeGame::kTopScreenInputUpdateBoundary,
++    Oot3dNativeGame::kTopScreenQuestDrawHook,
++    Oot3dNativeGame::kTopScreenRainWeatherReturn,
++    Oot3dNativeGame::kTopScreenSystemPageBoundary,
++    Oot3dNativeGame::kTopScreenQuestMaterializedHook,
++    Oot3dNativeGame::kTopScreenQuestSubmitModelsHook,
++    0x00300588U, // kPauseRendererSetTarget
++    0x002FEABCU, // kGlViewport
++    0x00311364U, // kGlBindFramebuffer
++  };
++  return kPcs;
++}
++
  void ApplyNativeWidescreenProjectionPolicy(
      uint32_t pc, oot3d::recomp::a32::GuestState &state,
      oot3d::recomp::a32::MemoryBus &memory, void *user) {
@@ -1915,10 +2249,19 @@ index 5f59a070..0805bee9 100644
 +#if defined(__ORBIS__)
 +  CountBlockEntryHook(pc);
 +#endif
++  // Most calls are PCs only the PICA composition tracker observes
++  // (CompositionOnlyHookPcs): every other observer below filters by its own
++  // PC list, which they are not in, and no test here names them.
++  if (!runtime.TraceA32Blocks && runtime.PicaCompositionTracker != nullptr &&
++      std::binary_search(runtime.CompositionOnlyHookPcs.begin(),
++                         runtime.CompositionOnlyHookPcs.end(), pc)) {
++    runtime.PicaCompositionTracker->ObserveBlockEntry(pc, state, memory);
++    return;
++  }
    (void)Oot3dNativeGame::ApplyNativeActorVisibilityHook(
        pc, state, memory, runtime.ActorVisibility);
    if (pc == Oot3dNativeGame::kNativeQbfA4Blit && runtime.HdFonts && runtime.TraceMemory)
-@@ -208,6 +271,9 @@ void ApplyNativeWidescreenProjectionPolicy(
+@@ -208,6 +332,9 @@ void ApplyNativeWidescreenProjectionPolicy(
        questDrawExit()) {
      if (runtime.ObservedExitPc != nullptr)
        *runtime.ObservedExitPc = pc;
@@ -1929,10 +2272,10 @@ index 5f59a070..0805bee9 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..edd91fcc 100644
+index 01026912..f272856c 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-@@ -4,10 +4,149 @@
+@@ -4,10 +4,175 @@
  #include "oot3d/renderer/ui_presentation_layout.h"
  #include "oot3d_native_room_shadow_shell.h"
  
@@ -1999,7 +2342,7 @@ index 01026912..edd91fcc 100644
 +    {
 +      Fast::OrbisWaitScope wait("the PICA plan helpers");
 +      std::unique_lock lock(mMutex);
-+      mDone.wait(lock, [&] { return mBusy == 0; });
++      WaitRechecking(mDone, lock, [&] { return mBusy == 0; });
 +    }
 +    if (mFailedIndex == SIZE_MAX) {
 +      return true;
@@ -2011,7 +2354,33 @@ index 01026912..edd91fcc 100644
 +    return false;
 +  }
 +
++  // Waits that ended on their timeout with the condition already true: a
++  // notification that never arrived (see WaitRechecking).
++  static uint64_t TakeLostWakeups() noexcept {
++    return gLostWakeups.exchange(0, std::memory_order_relaxed);
++  }
++
 +private:
++  // The 1.57 console hang: the game thread waited for helpers that were
++  // themselves waiting for work, every thread in a condition-variable wait.
++  // A notification can be lost here (the sampler's signals interrupt these
++  // waits hundreds of times a second), so the condition is checked again
++  // every millisecond instead of trusting the notification alone; the
++  // result is the same, and a lost one costs a millisecond, not the game.
++  static inline std::atomic<uint64_t> gLostWakeups{0};
++  template <typename Predicate>
++  static void WaitRechecking(std::condition_variable &condition,
++                             std::unique_lock<std::mutex> &lock,
++                             Predicate &&ready) {
++    while (!ready()) {
++      if (condition.wait_for(lock, std::chrono::milliseconds(1)) ==
++              std::cv_status::timeout &&
++          ready()) {
++        gLostWakeups.fetch_add(1, std::memory_order_relaxed);
++      }
++    }
++  }
++
 +  void Run(Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &cache) {
 +    auto &draws = *mDraws;
 +    auto &plans = *mPlans;
@@ -2048,7 +2417,7 @@ index 01026912..edd91fcc 100644
 +    for (;;) {
 +      {
 +        std::unique_lock lock(mMutex);
-+        mWake.wait(lock, [&] { return mGeneration != seen; });
++        WaitRechecking(mWake, lock, [&] { return mGeneration != seen; });
 +        seen = mGeneration;
 +      }
 +      Run(mCaches[helper]);
@@ -2082,7 +2451,7 @@ index 01026912..edd91fcc 100644
  uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
    uint64_t hash = 14695981039346656037ULL;
    for (const uint8_t byte : bytes) {
-@@ -162,7 +301,13 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -162,7 +327,13 @@ bool NativeA32WindowSession::RunFrame() {
    // frame rate (docs/TRIAEVUM_PARALLEL_PRESENTATION.md).
    // TRIAEVUM_INPUT_ADMISSION=1 keeps only the wait for the previous frame and
    // =0 restores the early sampling, for comparisons.
@@ -2096,7 +2465,7 @@ index 01026912..edd91fcc 100644
    static const bool inputAdmission =
        inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
    static const bool lateInputSample =
-@@ -637,6 +782,107 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +808,109 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -2190,6 +2559,8 @@ index 01026912..edd91fcc 100644
 +                   static_cast<double>(vblankCount - windowVblanks) / seconds, scene);
 +      std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
 +                   TakeBlockEntryHookCounts(seconds).c_str());
++      std::fprintf(stderr, "[triaevum] plan helpers: %llu waits recovered by their timeout\n",
++                   static_cast<unsigned long long>(PicaPlanWorkers::TakeLostWakeups()));
 +      windowStart = now;
 +      windowGuestFrames = frameCount;
 +      windowHostFrames = runFrameCount;
@@ -2204,7 +2575,7 @@ index 01026912..edd91fcc 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1444,6 +1690,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1718,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -2225,7 +2596,7 @@ index 01026912..edd91fcc 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1464,14 +1724,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1752,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
            suppressTopScreenFrontendBackdrop &&
            targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
@@ -2276,7 +2647,7 @@ index bddcb6b9..7205000f 100644
      // picture the menu is drawn in, the left button, and the wheel while a
      // host surface is up (gameplay never sees it then). The window's wheel
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
-index 81150d82..86f14e1c 100644
+index 81150d82..d30046cf 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 @@ -1,4 +1,7 @@
@@ -2287,7 +2658,49 @@ index 81150d82..86f14e1c 100644
  #include "oot3d_native_a32_window_session.h"
  #include "oot3d_native_direct_aot.h"
  #include "oot3d_title_grass_rules.h"
-@@ -968,7 +971,17 @@ void NativeA32WindowSession::Setup() {
+@@ -355,9 +358,16 @@ void NativeA32WindowSession::Setup() {
+     blockEntryHooks.insert(blockEntryHooks.end(), diagnosticHooks.begin(),
+                            diagnosticHooks.end());
+   }
+-  std::sort(blockEntryHooks.begin(), blockEntryHooks.end());
+   if (hdFontsLoaded) blockEntryHooks.push_back(Oot3dNativeGame::kNativeQbfA4Blit);
+   std::sort(blockEntryHooks.begin(), blockEntryHooks.end());
++  // Composition PCs no other hook list added (each appears once before the
++  // duplicates go); the exit and policy PCs are removed below.
++  std::vector<uint32_t> compositionOnlyHooks;
++  for (const uint32_t pc : picaCompositionHooks) {
++    const auto [first, last] =
++        std::equal_range(blockEntryHooks.begin(), blockEntryHooks.end(), pc);
++    if (last - first == 1) compositionOnlyHooks.push_back(pc);
++  }
+   blockEntryHooks.erase(
+       std::unique(blockEntryHooks.begin(), blockEntryHooks.end()),
+       blockEntryHooks.end());
+@@ -710,6 +720,23 @@ void NativeA32WindowSession::Setup() {
+       &nativeCandidateDispatch.TopScreenTouchCoordinateRoute;
+   widescreenProjection.WholeAotObservableExitPcs =
+       wholeAotObservableExitBlocks;
++  {
++    std::vector<uint32_t> exits(wholeAotObservableExitBlocks.begin(),
++                                wholeAotObservableExitBlocks.end());
++    const auto policyPcs = NativeWidescreenProjectionPolicyPcs();
++    std::vector<uint32_t> named(policyPcs.begin(), policyPcs.end());
++    std::sort(exits.begin(), exits.end());
++    std::sort(named.begin(), named.end());
++    std::sort(compositionOnlyHooks.begin(), compositionOnlyHooks.end());
++    auto &only = widescreenProjection.CompositionOnlyHookPcs;
++    only.clear();
++    for (const uint32_t pc : compositionOnlyHooks) {
++      if (!std::binary_search(exits.begin(), exits.end(), pc) &&
++          !std::binary_search(named.begin(), named.end(), pc))
++        only.push_back(pc);
++    }
++    only.erase(std::unique(only.begin(), only.end()), only.end());
++  }
+   process.SetTimingEnabled(launch.ProfileA32Runtime);
+ #if !defined(OOT3D_WHOLE_AOT_PRODUCT_MODE)
+   // Native candidates are experimental reconstruction aids.  The product
+@@ -968,7 +995,17 @@ void NativeA32WindowSession::Setup() {
    inGameMenuStorage.emplace(Oot3dNativeGame::InGameMenuOwners{
        controlConfigRuntime,
        launch.UiProfile == Oot3dNativeGame::Oot3dUiProfile::TopScreen ? topScreenConfigRuntime : nullptr,
@@ -2307,10 +2720,22 @@ index 81150d82..86f14e1c 100644
    WriteSwitchBootStage("opengl_renderer_initialized");
  #endif
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
-index 8071a191..0f97c190 100644
+index 8071a191..78239d2d 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
-@@ -690,7 +690,7 @@ struct NativeControlPollingState {
+@@ -503,6 +503,11 @@ struct NativeWidescreenProjectionState {
+   // is active (TopScreenRainAdapter::ShouldObserve).
+   const Oot3dNativeGame::TopScreenRainAdapter *Rain = nullptr;
+   std::span<const uint32_t> WholeAotObservableExitPcs;
++  // Sorted hook PCs that only the composition tracker observes: in no other
++  // hook list, not an observable exit, not a PC the policy names
++  // (NativeWidescreenProjectionPolicyPcs). The policy calls only the
++  // tracker for them.
++  std::vector<uint32_t> CompositionOnlyHookPcs;
+   // Set to the pc of each observable exit this policy raises (see
+   // NativeCandidateDispatchState::ObservedExitPc).
+   std::optional<uint32_t> *ObservedExitPc = nullptr;
+@@ -690,7 +695,7 @@ struct NativeControlPollingState {
    std::array<float, 2> DevPadRightStick{};
    bool DevPadLeftShoulder = false;
    bool DevPadRightShoulder = false;
@@ -2319,10 +2744,11 @@ index 8071a191..0f97c190 100644
    // raw devices every poll.
    Oot3dNativeGame::InGameMenuHostInput Menu;
  };
-@@ -709,6 +709,11 @@ bool ExecuteNativeCandidate(uint32_t pc, oot3d::recomp::a32::GuestState &state,
+@@ -709,6 +714,12 @@ bool ExecuteNativeCandidate(uint32_t pc, oot3d::recomp::a32::GuestState &state,
  void ApplyNativeWidescreenProjectionPolicy(
      uint32_t pc, oot3d::recomp::a32::GuestState &state,
      oot3d::recomp::a32::MemoryBus &memory, void *user);
++std::span<const uint32_t> NativeWidescreenProjectionPolicyPcs() noexcept;
 +#if defined(__ORBIS__)
 +// PS4 diagnostics log: the policy's calls per second and its busiest guest
 +// PCs since the previous call, then starts counting again.

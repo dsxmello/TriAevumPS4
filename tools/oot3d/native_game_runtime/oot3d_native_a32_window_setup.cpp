@@ -358,9 +358,16 @@ void NativeA32WindowSession::Setup() {
     blockEntryHooks.insert(blockEntryHooks.end(), diagnosticHooks.begin(),
                            diagnosticHooks.end());
   }
-  std::sort(blockEntryHooks.begin(), blockEntryHooks.end());
   if (hdFontsLoaded) blockEntryHooks.push_back(Oot3dNativeGame::kNativeQbfA4Blit);
   std::sort(blockEntryHooks.begin(), blockEntryHooks.end());
+  // Composition PCs no other hook list added (each appears once before the
+  // duplicates go); the exit and policy PCs are removed below.
+  std::vector<uint32_t> compositionOnlyHooks;
+  for (const uint32_t pc : picaCompositionHooks) {
+    const auto [first, last] =
+        std::equal_range(blockEntryHooks.begin(), blockEntryHooks.end(), pc);
+    if (last - first == 1) compositionOnlyHooks.push_back(pc);
+  }
   blockEntryHooks.erase(
       std::unique(blockEntryHooks.begin(), blockEntryHooks.end()),
       blockEntryHooks.end());
@@ -713,6 +720,23 @@ void NativeA32WindowSession::Setup() {
       &nativeCandidateDispatch.TopScreenTouchCoordinateRoute;
   widescreenProjection.WholeAotObservableExitPcs =
       wholeAotObservableExitBlocks;
+  {
+    std::vector<uint32_t> exits(wholeAotObservableExitBlocks.begin(),
+                                wholeAotObservableExitBlocks.end());
+    const auto policyPcs = NativeWidescreenProjectionPolicyPcs();
+    std::vector<uint32_t> named(policyPcs.begin(), policyPcs.end());
+    std::sort(exits.begin(), exits.end());
+    std::sort(named.begin(), named.end());
+    std::sort(compositionOnlyHooks.begin(), compositionOnlyHooks.end());
+    auto &only = widescreenProjection.CompositionOnlyHookPcs;
+    only.clear();
+    for (const uint32_t pc : compositionOnlyHooks) {
+      if (!std::binary_search(exits.begin(), exits.end(), pc) &&
+          !std::binary_search(named.begin(), named.end(), pc))
+        only.push_back(pc);
+    }
+    only.erase(std::unique(only.begin(), only.end()), only.end());
+  }
   process.SetTimingEnabled(launch.ProfileA32Runtime);
 #if !defined(OOT3D_WHOLE_AOT_PRODUCT_MODE)
   // Native candidates are experimental reconstruction aids.  The product

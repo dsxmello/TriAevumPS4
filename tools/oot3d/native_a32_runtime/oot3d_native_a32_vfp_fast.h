@@ -15,7 +15,11 @@
 // - overflow reaches the fallback because the host result is infinite.
 // The only exception flag possible on the fast path is IXC. It is derived
 // from an exact error term: TwoSum for addition, a double-precision product
-// (24x24 bits fit in 53) for multiplication.
+// (24x24 bits fit in 53) for multiplication. IXC is cumulative and callers
+// OR the flags into FPSCR (Oot3dAotCommitVfp): when FPSCR already holds IXC
+// the error term is not computed and the flags may omit it, so
+// fpscr | flags is always the same. Once a title has rounded anything, that
+// is every later operation.
 //
 // Requires strict floating-point code generation (/fp:strict), which every
 // translated-title build uses; value-changing reassociation would break TwoSum.
@@ -58,7 +62,8 @@ inline constexpr std::uint32_t kIxc = 1U << 4U;
 // the software implementation.
 [[nodiscard]] inline bool Multiply(
     std::uint32_t left, std::uint32_t right,
-    oot3d::recomp::a32::VfpBinary32Result& result) noexcept {
+    oot3d::recomp::a32::VfpBinary32Result& result,
+    bool needInexact = true) noexcept {
     if (!OperandEligible(left) || !OperandEligible(right)) {
         return false;
     }
@@ -73,13 +78,14 @@ inline constexpr std::uint32_t kIxc = 1U << 4U;
     if (!NonzeroResultEligible(bits)) {
         return false;
     }
-    result = {bits, static_cast<double>(rounded) == exact ? 0U : kIxc};
+    result = {bits, needInexact && static_cast<double>(rounded) != exact ? kIxc : 0U};
     return true;
 }
 
 [[nodiscard]] inline bool Add(
     std::uint32_t left, std::uint32_t right,
-    oot3d::recomp::a32::VfpBinary32Result& result) noexcept {
+    oot3d::recomp::a32::VfpBinary32Result& result,
+    bool needInexact = true) noexcept {
     if (!OperandEligible(left) || !OperandEligible(right)) {
         return false;
     }
@@ -89,6 +95,10 @@ inline constexpr std::uint32_t kIxc = 1U << 4U;
     const std::uint32_t bits = AsBits(sum);
     if ((bits & 0x7FFFFFFFU) != 0U && !NonzeroResultEligible(bits)) {
         return false;
+    }
+    if (!needInexact) {
+        result = {bits, 0U};
+        return true;
     }
     // Knuth TwoSum: the exact rounding error of a + b.
     const float virtualRight = sum - a;
@@ -102,11 +112,13 @@ inline constexpr std::uint32_t kIxc = 1U << 4U;
 [[nodiscard]] inline bool MultiplyThenAdd(
     std::uint32_t accumulator, std::uint32_t left, std::uint32_t right,
     std::uint32_t negateAccumulator, std::uint32_t negateProduct,
-    oot3d::recomp::a32::VfpBinary32Result& result) noexcept {
+    oot3d::recomp::a32::VfpBinary32Result& result,
+    bool needInexact = true) noexcept {
     oot3d::recomp::a32::VfpBinary32Result product{};
     oot3d::recomp::a32::VfpBinary32Result sum{};
-    if (!Multiply(left, right, product) ||
-        !Add(accumulator ^ negateAccumulator, product.value ^ negateProduct, sum)) {
+    if (!Multiply(left, right, product, needInexact) ||
+        !Add(accumulator ^ negateAccumulator, product.value ^ negateProduct, sum,
+             needInexact)) {
         return false;
     }
     result = {sum.value, product.exception_flags | sum.exception_flags};
@@ -119,7 +131,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpAdd(
     std::uint32_t left, std::uint32_t right, std::uint32_t fpscr) noexcept {
     oot3d::recomp::a32::VfpBinary32Result result{};
     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
-        VfpFastDetail::Add(left, right, result)) [[likely]] {
+        VfpFastDetail::Add(left, right, result,
+                           (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
         return result;
     }
     return oot3d::recomp::a32::VfpBinary32Add(left, right, fpscr);
@@ -129,7 +142,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpSubtract(
     std::uint32_t left, std::uint32_t right, std::uint32_t fpscr) noexcept {
     oot3d::recomp::a32::VfpBinary32Result result{};
     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
-        VfpFastDetail::Add(left, right ^ 0x80000000U, result)) [[likely]] {
+        VfpFastDetail::Add(left, right ^ 0x80000000U, result,
+                           (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
         return result;
     }
     return oot3d::recomp::a32::VfpBinary32Subtract(left, right, fpscr);
@@ -139,7 +153,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpMultiply(
     std::uint32_t left, std::uint32_t right, std::uint32_t fpscr) noexcept {
     oot3d::recomp::a32::VfpBinary32Result result{};
     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
-        VfpFastDetail::Multiply(left, right, result)) [[likely]] {
+        VfpFastDetail::Multiply(left, right, result,
+                                (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
         return result;
     }
     return oot3d::recomp::a32::VfpBinary32Multiply(left, right, fpscr);
@@ -149,7 +164,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpNegativeMultiply(
     std::uint32_t left, std::uint32_t right, std::uint32_t fpscr) noexcept {
     oot3d::recomp::a32::VfpBinary32Result result{};
     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
-        VfpFastDetail::Multiply(left, right, result)) [[likely]] {
+        VfpFastDetail::Multiply(left, right, result,
+                                (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
         return {result.value ^ 0x80000000U, result.exception_flags};
     }
     return oot3d::recomp::a32::VfpBinary32NegativeMultiply(left, right, fpscr);
@@ -161,7 +177,9 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpMultiplyAccumulate(
     std::uint32_t fpscr) noexcept {
     oot3d::recomp::a32::VfpBinary32Result result{};
     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
-        VfpFastDetail::MultiplyThenAdd(accumulator, left, right, 0U, 0U, result))
+        VfpFastDetail::MultiplyThenAdd(
+            accumulator, left, right, 0U, 0U, result,
+            (fpscr & VfpFastDetail::kIxc) == 0U))
         [[likely]] {
         return result;
     }
@@ -176,7 +194,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpMultiplySubtract(
     oot3d::recomp::a32::VfpBinary32Result result{};
     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
         VfpFastDetail::MultiplyThenAdd(
-            accumulator, left, right, 0U, 0x80000000U, result)) [[likely]] {
+            accumulator, left, right, 0U, 0x80000000U, result,
+            (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
         return result;
     }
     return oot3d::recomp::a32::VfpBinary32MultiplySubtract(
@@ -190,7 +209,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpNegativeMultiplyAccumulate(
     oot3d::recomp::a32::VfpBinary32Result result{};
     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
         VfpFastDetail::MultiplyThenAdd(
-            accumulator, left, right, 0x80000000U, 0x80000000U, result)) [[likely]] {
+            accumulator, left, right, 0x80000000U, 0x80000000U, result,
+            (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
         return result;
     }
     return oot3d::recomp::a32::VfpBinary32NegativeMultiplyAccumulate(
@@ -204,7 +224,8 @@ inline oot3d::recomp::a32::VfpBinary32Result Oot3dVfpNegativeMultiplySubtract(
     oot3d::recomp::a32::VfpBinary32Result result{};
     if ((fpscr & VfpFastDetail::kRoundingModeMask) == 0U &&
         VfpFastDetail::MultiplyThenAdd(
-            accumulator, left, right, 0x80000000U, 0U, result)) [[likely]] {
+            accumulator, left, right, 0x80000000U, 0U, result,
+            (fpscr & VfpFastDetail::kIxc) == 0U)) [[likely]] {
         return result;
     }
     return oot3d::recomp::a32::VfpBinary32NegativeMultiplySubtract(

@@ -67,7 +67,7 @@ public:
     {
       Fast::OrbisWaitScope wait("the PICA plan helpers");
       std::unique_lock lock(mMutex);
-      mDone.wait(lock, [&] { return mBusy == 0; });
+      WaitRechecking(mDone, lock, [&] { return mBusy == 0; });
     }
     if (mFailedIndex == SIZE_MAX) {
       return true;
@@ -79,7 +79,33 @@ public:
     return false;
   }
 
+  // Waits that ended on their timeout with the condition already true: a
+  // notification that never arrived (see WaitRechecking).
+  static uint64_t TakeLostWakeups() noexcept {
+    return gLostWakeups.exchange(0, std::memory_order_relaxed);
+  }
+
 private:
+  // The 1.57 console hang: the game thread waited for helpers that were
+  // themselves waiting for work, every thread in a condition-variable wait.
+  // A notification can be lost here (the sampler's signals interrupt these
+  // waits hundreds of times a second), so the condition is checked again
+  // every millisecond instead of trusting the notification alone; the
+  // result is the same, and a lost one costs a millisecond, not the game.
+  static inline std::atomic<uint64_t> gLostWakeups{0};
+  template <typename Predicate>
+  static void WaitRechecking(std::condition_variable &condition,
+                             std::unique_lock<std::mutex> &lock,
+                             Predicate &&ready) {
+    while (!ready()) {
+      if (condition.wait_for(lock, std::chrono::milliseconds(1)) ==
+              std::cv_status::timeout &&
+          ready()) {
+        gLostWakeups.fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+  }
+
   void Run(Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &cache) {
     auto &draws = *mDraws;
     auto &plans = *mPlans;
@@ -116,7 +142,7 @@ private:
     for (;;) {
       {
         std::unique_lock lock(mMutex);
-        mWake.wait(lock, [&] { return mGeneration != seen; });
+        WaitRechecking(mWake, lock, [&] { return mGeneration != seen; });
         seen = mGeneration;
       }
       Run(mCaches[helper]);
@@ -872,6 +898,8 @@ bool NativeA32WindowSession::RunFrame() {
                    static_cast<double>(vblankCount - windowVblanks) / seconds, scene);
       std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
                    TakeBlockEntryHookCounts(seconds).c_str());
+      std::fprintf(stderr, "[triaevum] plan helpers: %llu waits recovered by their timeout\n",
+                   static_cast<unsigned long long>(PicaPlanWorkers::TakeLostWakeups()));
       windowStart = now;
       windowGuestFrames = frameCount;
       windowHostFrames = runFrameCount;

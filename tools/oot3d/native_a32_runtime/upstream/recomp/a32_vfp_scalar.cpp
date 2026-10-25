@@ -855,14 +855,6 @@ VfpBinary32Result VfpBinary32FromSigned(
     return {result.value, result.flags & kExceptionFlags};
 }
 
-VfpBinary32Result VfpBinary32Compare(
-    std::uint32_t left,
-    std::uint32_t right,
-    bool signal_all_nans) noexcept {
-    const Result result = F32Compare(left, right, signal_all_nans);
-    return {result.value, result.flags & kExceptionFlags};
-}
-
 ExecutionResult ExecuteVfpScalar(
     std::uint32_t raw,
     std::uint32_t pc,

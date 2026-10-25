@@ -63,6 +63,58 @@ std::string TakeBlockEntryHookCounts(double seconds) {
 }
 #endif
 
+std::span<const uint32_t> NativeWidescreenProjectionPolicyPcs() noexcept {
+  // Every PC compared by name below (and by ApplyTopScreenGuestHook);
+  // the three render-target PCs are local constants of the policy.
+  static constexpr uint32_t kPcs[] = {
+    kBlockingQueuePop,
+    kBlockingQueuePush,
+    kBlockingQueueTryPush,
+    kEnMagDraw,
+    kEnMagInit,
+    kEnMagUpdate,
+    kFileChooseInit,
+    kFileSelectActivate,
+    kFileSelectInit,
+    kFileSelectUpdate,
+    kGameStateUpdate,
+    kMtx4x4BuildFrustum,
+    kMtx4x4BuildOrthographicProjectionRotated,
+    kNngxCmdlistCompletionDispatch,
+    kNngxCommonInterruptHandler,
+    kNngxP3dCallback,
+    kPauseIconBuild,
+    kPauseProjectionPrepare,
+    kPauseUiDraw,
+    kPauseUiDrawReturn,
+    kPauseUiUpdate,
+    kPlayTransitionUpdate,
+    kRendererCommandQueueProcessPending,
+    kRendererGlobalCallbackAfterLookup,
+    kTaskQueueEnqueuePriorityNode,
+    kTaskQueueTakeFirstFromPriority,
+    kTaskQueueWorkerDrainPriorityNodes,
+    kTopScreenCameraNormal1Scalar,
+    kTopScreenCameraUpdateEntry,
+    Oot3dNativeGame::kNativeQbfA4Blit,
+    Oot3dNativeGame::kOot3dFramePacingBeginEntry,
+    Oot3dNativeGame::kOot3dFramePacingCommitEntry,
+    Oot3dNativeGame::kOot3dFramePacingDecisionEntry,
+    Oot3dNativeGame::kOot3dPlayerUpdateEntry,
+    Oot3dNativeGame::kReframedFileLogoCall,
+    Oot3dNativeGame::kTopScreenInputUpdateBoundary,
+    Oot3dNativeGame::kTopScreenQuestDrawHook,
+    Oot3dNativeGame::kTopScreenRainWeatherReturn,
+    Oot3dNativeGame::kTopScreenSystemPageBoundary,
+    Oot3dNativeGame::kTopScreenQuestMaterializedHook,
+    Oot3dNativeGame::kTopScreenQuestSubmitModelsHook,
+    0x00300588U, // kPauseRendererSetTarget
+    0x002FEABCU, // kGlViewport
+    0x00311364U, // kGlBindFramebuffer
+  };
+  return kPcs;
+}
+
 void ApplyNativeWidescreenProjectionPolicy(
     uint32_t pc, oot3d::recomp::a32::GuestState &state,
     oot3d::recomp::a32::MemoryBus &memory, void *user) {
@@ -70,6 +122,15 @@ void ApplyNativeWidescreenProjectionPolicy(
 #if defined(__ORBIS__)
   CountBlockEntryHook(pc);
 #endif
+  // Most calls are PCs only the PICA composition tracker observes
+  // (CompositionOnlyHookPcs): every other observer below filters by its own
+  // PC list, which they are not in, and no test here names them.
+  if (!runtime.TraceA32Blocks && runtime.PicaCompositionTracker != nullptr &&
+      std::binary_search(runtime.CompositionOnlyHookPcs.begin(),
+                         runtime.CompositionOnlyHookPcs.end(), pc)) {
+    runtime.PicaCompositionTracker->ObserveBlockEntry(pc, state, memory);
+    return;
+  }
   (void)Oot3dNativeGame::ApplyNativeActorVisibilityHook(
       pc, state, memory, runtime.ActorVisibility);
   if (pc == Oot3dNativeGame::kNativeQbfA4Blit && runtime.HdFonts && runtime.TraceMemory)

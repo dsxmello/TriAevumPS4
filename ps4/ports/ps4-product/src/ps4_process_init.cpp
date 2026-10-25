@@ -30,6 +30,9 @@ extern "C" void TriaevumPs4StartProfileWriter(void);  // ps4_pgo_runtime.c
 // DolphinPS4 runtime (ps4_sampler.cpp).
 extern "C" void ps4_sampler_register_thread(const char* name);
 extern "C" void ps4_sampler_start();
+// Every registered thread's instruction pointer, the eboot return addresses
+// on its stack and, when it waits in _umtx_op, the object and its owner.
+extern "C" void ps4_dump_thread_stacks(const char* path, const char* reason);
 
 // libkernel; orbis/libkernel.h declares it without parameters.
 extern "C" int TriaevumPthreadSetaffinity(OrbisPthread thread, uint64_t mask) __asm__(
@@ -63,6 +66,15 @@ void* WatchStalls(void*) {
             std::printf("[triaevum] stall: no frame for %u s, game thread %s%s\n", stalledSeconds,
                         site != nullptr ? "waiting at " : "not in a named wait",
                         site != nullptr ? site : "");
+            // Where every thread is (a hang shows them all blocked in the
+            // kernel); twice, to tell a deadlock from a slow wait.
+            if (stalledSeconds == 10 || stalledSeconds == 30) {
+                char reason[96];
+                std::snprintf(reason, sizeof(reason), "TriAevum %s: no frame for %u s",
+                              TRIAEVUM_PS4_BUILD_VERSION, stalledSeconds);
+                ps4_dump_thread_stacks("/data/triaevum_hang.log", reason);
+                std::printf("[triaevum] stall: thread stacks appended to /data/triaevum_hang.log\n");
+            }
         }
     }
     return nullptr;
