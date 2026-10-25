@@ -150,7 +150,7 @@ Oot3dNativeGame::Oot3dPicaRawDraw RawDraw(uint64_t id) {
     packet.VertexShader.FloatUniforms[5] = {1.0F, -2.5F, 0.0F, -0.0F};
     packet.VertexShader.BooleanUniforms[3] = true;
     packet.FogLut[9] = 0xdeadbeef;
-    packet.ProcTexLuts.ColorDifference[255] = 7;
+    packet.ProcTexLuts.Mutable().ColorDifference[255] = 7;
     auto luts = std::make_shared<Oot3dNativeGame::Oot3dPicaLightingLutState>();
     luts->Entry(23, 255) = 0x12345;
     luts->ContentHash = 99;

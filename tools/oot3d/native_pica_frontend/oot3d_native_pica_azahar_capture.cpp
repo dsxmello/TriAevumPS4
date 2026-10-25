@@ -401,11 +401,11 @@ bool DecodeOot3dAzaharShaderSeedLuts(const nlohmann::json& event,
   lighting->ContentHash = ComputeOot3dPicaLightingLutContentHash(*lighting);
   lighting->ContentHashAvailable = true;
   packet.LightingLuts = std::move(lighting);
-  copy(packet.ProcTexLuts.Noise);
-  copy(packet.ProcTexLuts.ColorMap);
-  copy(packet.ProcTexLuts.AlphaMap);
-  copy(packet.ProcTexLuts.Color);
-  copy(packet.ProcTexLuts.ColorDifference);
+  copy(packet.ProcTexLuts.Mutable().Noise);
+  copy(packet.ProcTexLuts.Mutable().ColorMap);
+  copy(packet.ProcTexLuts.Mutable().AlphaMap);
+  copy(packet.ProcTexLuts.Mutable().Color);
+  copy(packet.ProcTexLuts.Mutable().ColorDifference);
   copy(packet.FogLut);
   return true;
 }

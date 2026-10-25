@@ -464,11 +464,11 @@ Fast::Renderer3ds::PicaProcTexProgram BuildOot3dPicaProcTexProgram(const Oot3dPi
     const auto append = [&](const auto& table) {
         for (uint32_t word : table) { result.Lut[i/4][i%4]=word; ++i; }
     };
-    append(packet.ProcTexLuts.Noise);
-    append(packet.ProcTexLuts.ColorMap);
-    append(packet.ProcTexLuts.AlphaMap);
-    append(packet.ProcTexLuts.Color);
-    append(packet.ProcTexLuts.ColorDifference);
+    append(packet.ProcTexLuts->Noise);
+    append(packet.ProcTexLuts->ColorMap);
+    append(packet.ProcTexLuts->AlphaMap);
+    append(packet.ProcTexLuts->Color);
+    append(packet.ProcTexLuts->ColorDifference);
     return result;
 }
 
@@ -504,8 +504,8 @@ bool GenerateOot3dPicaProceduralTextureSampler(
     }
 
     std::ostringstream source;
-    AppendValueLuts(source, packet.ProcTexLuts);
-    AppendColorLuts(source, packet.ProcTexLuts);
+    AppendValueLuts(source, *packet.ProcTexLuts);
+    AppendColorLuts(source, *packet.ProcTexLuts);
     source << R"(
 float pica_proctex_lookup_value(int offset, float coord) {
     coord *= 128.0;

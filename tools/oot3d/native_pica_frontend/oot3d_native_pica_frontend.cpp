@@ -356,6 +356,7 @@ void Oot3dNativePicaFrontend::ApplyShaderRegisterSideEffects(
         const uint32_t config = mPicaRegisters[kPicaProcTexLutConfig];
         const uint32_t index = config & 0xFFU;
         const uint32_t table = (config >> 8U) & 0xFU;
+        mProcTexLutSnapshot.reset();
         const auto writeLut = [index, writeValue](auto& lut) {
             lut[index % lut.size()] = writeValue;
         };
@@ -643,11 +644,16 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
             case Oot3dPicaCompositionLayer::Unknown:
                 break;
         }
+        if (mProcTexLutSnapshot == nullptr) {
+            mProcTexLutSnapshot =
+                std::make_shared<const Oot3dPicaProcTexLutState>(mProcTexLuts);
+        }
         Oot3dPicaDrawPacket draw(
             commandListAddress, offsetWords,
             domain, composition,
             id == kPicaTriggerDrawIndexed, mPicaRegisters,
-            mVertexShader, mGeometryShader, mFogLut, mProcTexLuts,
+            mVertexShader, mGeometryShader, mFogLut,
+            Oot3dPicaProcTexLutSnapshot(mProcTexLutSnapshot),
             mLightingLuts, mDefaultAttributes);
         if (metadata != nullptr && domain == Oot3dPicaCompositionDomain::Scene)
             draw.LightBinding = metadata->LightBinding;
@@ -926,6 +932,7 @@ bool Oot3dNativePicaFrontend::RestoreState(const nlohmann::json& state,
         mGeometryShader = std::move(geometryShader);
         mFogLut = state.at("fog_lut").get<decltype(mFogLut)>();
         mProcTexLuts = {};
+        mProcTexLutSnapshot.reset();
         if (const auto iterator = state.find("proctex_luts");
             iterator != state.end()) {
             mProcTexLuts.Noise =

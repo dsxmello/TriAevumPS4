@@ -642,3 +642,35 @@ antes, recuperar as entradas do gerador), D (PGO).
   pool no PS4. Kokiri parado: 17,10 ms, 353 draws, 23,8 fps (1.56: 17,25 ms,
   355 draws, 23,7 fps): -0,9% com hooks + VFP. Hyrule Field noutro ponto
   (348 draws), sem comparação.
+
+## 1.59 — caminho por draw: plano, pacote, cache de geometria
+
+- Plano: o build começava com `plan = {}` (um plano padrão temporário,
+  ~6 KB de zeros, e um move-assign, outra cópia) e o pool fazia `clear()` +
+  `resize()` a cada passe (destruía e construía todos os planos). Agora o
+  plano é reiniciado no lugar (`destroy_at` + `construct_at`, com
+  `static_assert` de construtor padrão `noexcept`) e o vetor do pool só
+  cresce.
+- Pacote: as LUTs de proctex (3,5 KB de 11 KB) eram copiadas duas vezes por
+  draw (frontend e fila) e destruídas. `Oot3dPicaProcTexLutSnapshot`: um
+  instantâneo imutável compartilhado por todos os pacotes até as LUTs do
+  frontend mudarem (a escrita de LUT e a restauração zeram
+  `mProcTexLutSnapshot`; o próximo draw cria outro). Leitura `->`, escrita
+  `Mutable()` (cópia na escrita); vazio lê como zeros.
+- Cache de geometria: um cache direto de 1024 entradas (chave + ponteiro do
+  elemento, que o rehash preserva) na frente do `unordered_map`; o erase da
+  evicção e a restauração limpam a frente. A busca do mapa (módulo de 64 bits
+  e percurso do bucket) era ~0,8% da thread do jogo.
+- Medição da 1.59 (parado, 53 janelas, sem travar): Hyrule Field no mesmo
+  ponto da 1.56 (384 draws): 19,42 -> **19,03 ms** (-2,0% somando 1.57–1.59).
+  Kokiri caiu em 381 draws (1.58: 353); corrigido pela inclinação
+  (~0,015 ms/draw), ~-1%. Por quadro do host nas janelas pesadas: pica
+  submit 5,26 -> 4,49 ms, plano 3,20 -> 2,57 ms. Perfil contra a 1.56:
+  memcpy -0,73, memset -0,33, busca do cache de geometria -0,42 (+0,27 em
+  `CaptureGeometryResource`, onde a frente ficou inline), política dos hooks
+  -0,57, VCMP -0,19 pontos. O kernel da thread do jogo subiu de 3% para 6%
+  pelas janelas leves da sessão (jogo no teto de 60 fps esperando o flip,
+  9,5 ms), não por espera nova.
+- Fase A até aqui (1.55 -> 1.59, mesmos draws): Kokiri ~-3,5%, Hyrule
+  ~-1,5%. Falta: compartilhar a LUT de neblina e a iluminação do plano,
+  alocações por draw (vetores do plano), aliases da captura.

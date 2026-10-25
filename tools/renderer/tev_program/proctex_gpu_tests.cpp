@@ -56,11 +56,11 @@ results[n]=vec4(pt_unorm(n&255u,8u),pt_unorm(n,12u),endpoint.r,endpoint.a);}
             packet->Registers[0xAC]=(n%6)|(6<<7)|(128<<11)|((biases[n%4]>>8)<<19);
             packet->Registers[0xAD]=0xE0C08000;
             for(unsigned i=0;i<128;++i) {
-                packet->ProcTexLuts.Noise[i]=((i*31+n)%4096)|(((i&1)?4090:11)<<12);
-                packet->ProcTexLuts.ColorMap[i]=((i*29+n*13)%4096)|(((i&1)?4081:17)<<12);
-                packet->ProcTexLuts.AlphaMap[i]=((i*19+n*7)%4096)|(((i&1)?4071:23)<<12);
+                packet->ProcTexLuts.Mutable().Noise[i]=((i*31+n)%4096)|(((i&1)?4090:11)<<12);
+                packet->ProcTexLuts.Mutable().ColorMap[i]=((i*29+n*13)%4096)|(((i&1)?4081:17)<<12);
+                packet->ProcTexLuts.Mutable().AlphaMap[i]=((i*19+n*7)%4096)|(((i&1)?4071:23)<<12);
             }
-            for(unsigned i=0;i<256;++i){packet->ProcTexLuts.Color[i]=i*9876543u+n*1234567u;packet->ProcTexLuts.ColorDifference[i]=i*11111111u;}
+            for(unsigned i=0;i<256;++i){packet->ProcTexLuts.Mutable().Color[i]=i*9876543u+n*1234567u;packet->ProcTexLuts.Mutable().ColorDifference[i]=i*11111111u;}
             inputs[local]=BuildOot3dPicaProcTexProgram(*packet);
             std::string source,error;
             Require(GenerateOot3dPicaProceduralTextureSampler(*packet,source,&error),error.c_str());

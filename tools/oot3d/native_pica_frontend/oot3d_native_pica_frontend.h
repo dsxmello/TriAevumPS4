@@ -243,6 +243,39 @@ struct Oot3dPicaProcTexLutState {
     std::array<uint32_t, 256> ColorDifference{};
 };
 
+inline constexpr Oot3dPicaProcTexLutState kOot3dPicaZeroProcTexLuts{};
+
+// A packet's procedural-texture LUTs: one immutable snapshot that every
+// packet shares until the frontend's LUTs change (they are uploaded rarely,
+// and every draw copied all 3.5 KiB of them twice). Read through ->, write
+// through Mutable() (copy on write); an empty snapshot reads as all zero.
+class Oot3dPicaProcTexLutSnapshot {
+  public:
+    Oot3dPicaProcTexLutSnapshot() = default;
+    explicit Oot3dPicaProcTexLutSnapshot(
+        std::shared_ptr<const Oot3dPicaProcTexLutState> state) noexcept
+        : mState(std::move(state)) {}
+
+    [[nodiscard]] const Oot3dPicaProcTexLutState& operator*() const noexcept {
+        return mState != nullptr ? *mState : kOot3dPicaZeroProcTexLuts;
+    }
+    [[nodiscard]] const Oot3dPicaProcTexLutState* operator->() const noexcept {
+        return &**this;
+    }
+    [[nodiscard]] Oot3dPicaProcTexLutState& Mutable() {
+        if (!mWritable || mState.use_count() != 1) {
+            mState = std::make_shared<Oot3dPicaProcTexLutState>(**this);
+            mWritable = true;
+        }
+        // Created non-const above and owned by this snapshot alone.
+        return const_cast<Oot3dPicaProcTexLutState&>(*mState);
+    }
+
+  private:
+    std::shared_ptr<const Oot3dPicaProcTexLutState> mState;
+    bool mWritable = false;
+};
+
 struct Oot3dPicaLightingLutState {
     static constexpr size_t TableCount = 24U;
     static constexpr size_t EntryCount = 256U;
@@ -275,7 +308,7 @@ struct Oot3dPicaDrawPacket {
         const Oot3dPicaShaderState& vertexShader,
         const Oot3dPicaShaderState& geometryShader,
         const std::array<uint32_t, 128>& fogLut,
-        const Oot3dPicaProcTexLutState& procTexLuts,
+        Oot3dPicaProcTexLutSnapshot procTexLuts,
         std::shared_ptr<const Oot3dPicaLightingLutState> lightingLuts,
         const std::array<std::array<float, 4>, 16>& defaultAttributes)
         : CommandListAddress(commandListAddress),
@@ -283,7 +316,7 @@ struct Oot3dPicaDrawPacket {
           CompositionDomain(compositionDomain), Composition(composition),
           Indexed(indexed), Registers(registers), VertexShader(vertexShader),
           GeometryShader(geometryShader), FogLut(fogLut),
-          ProcTexLuts(procTexLuts), LightingLuts(std::move(lightingLuts)),
+          ProcTexLuts(std::move(procTexLuts)), LightingLuts(std::move(lightingLuts)),
           DefaultAttributes(defaultAttributes) {}
 
     uint32_t CommandListAddress = 0;
@@ -297,7 +330,7 @@ struct Oot3dPicaDrawPacket {
     Oot3dPicaShaderState VertexShader;
     Oot3dPicaShaderState GeometryShader;
     std::array<uint32_t, 128> FogLut{};
-    Oot3dPicaProcTexLutState ProcTexLuts;
+    Oot3dPicaProcTexLutSnapshot ProcTexLuts;
     std::shared_ptr<const Oot3dPicaLightingLutState> LightingLuts;
     std::array<std::array<float, 4>, 16> DefaultAttributes{};
 };
@@ -403,6 +436,8 @@ class Oot3dNativePicaFrontend {
     Oot3dPicaShaderState mGeometryShader;
     std::array<uint32_t, 128> mFogLut{};
     Oot3dPicaProcTexLutState mProcTexLuts;
+    // The packets' snapshot of mProcTexLuts; reset whenever they change.
+    std::shared_ptr<const Oot3dPicaProcTexLutState> mProcTexLutSnapshot;
     std::shared_ptr<Oot3dPicaLightingLutState> mLightingLuts =
         std::make_shared<Oot3dPicaLightingLutState>();
     std::array<std::array<float, 4>, 16> mDefaultAttributes{};

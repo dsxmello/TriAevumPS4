@@ -50,8 +50,11 @@ public:
              std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> &plans,
              Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &ownCache,
              std::string &error) {
-    plans.clear();
-    plans.resize(draws.size());
+    // Every plan is reset by its build: grow only, instead of destroying
+    // and default-constructing every plan of every pass.
+    if (plans.size() < draws.size()) {
+      plans.resize(draws.size());
+    }
     mDraws = &draws;
     mPlans = &plans;
     mNext.store(0, std::memory_order_relaxed);

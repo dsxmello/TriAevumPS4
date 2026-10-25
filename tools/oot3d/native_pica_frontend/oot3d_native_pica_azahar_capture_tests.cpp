@@ -151,9 +151,9 @@ void TestSeedResourcesAndBounds() {
   Require(DecodeOot3dAzaharShaderSeedLuts(event, packet, &error), error);
   Require(packet.LightingLuts && packet.LightingLuts->Entry(23, 255) == 6143,
           "lighting seed layout mismatch");
-  Require(packet.ProcTexLuts.Noise[0] == 6144 && packet.ProcTexLuts.ColorMap[0] == 6272 &&
-          packet.ProcTexLuts.AlphaMap[0] == 6400 && packet.ProcTexLuts.Color[0] == 6528 &&
-          packet.ProcTexLuts.ColorDifference[0] == 6784 && packet.FogLut[0] == 7040 &&
+  Require(packet.ProcTexLuts->Noise[0] == 6144 && packet.ProcTexLuts->ColorMap[0] == 6272 &&
+          packet.ProcTexLuts->AlphaMap[0] == 6400 && packet.ProcTexLuts->Color[0] == 6528 &&
+          packet.ProcTexLuts->ColorDifference[0] == 6784 && packet.FogLut[0] == 7040 &&
           packet.FogLut[127] == 7167, "procedural/fog seed layout mismatch");
   Require(packet.LightingLuts->ContentHashAvailable, "seed LUT identity unavailable");
   event["words"].erase(event["words"].end() - 1);

@@ -195,7 +195,7 @@ int main() {
                 ((n&1)<<14) | (((n/2)&1)<<15) | ((n%3)<<16) | (((n/3)%3)<<18);
             packet->Registers[0xAC]=(n%6) | (6<<7) | (128<<11);
             packet->Registers[0xC0]=0x60006;
-            packet->ProcTexLuts.Color[n%256]=n*987654;
+            packet->ProcTexLuts.Mutable().Color[n%256]=n*987654;
             Oot3dPicaGeneratedFragmentShader dynamic; std::string error;
             Check(GenerateOot3dPicaFragmentShader(*packet,state,dynamic,&error,
                 Oot3dPicaShaderBuildPurpose::OfflineSource,Oot3dPicaTevMode::Parametric),error);

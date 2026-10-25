@@ -2,6 +2,8 @@
 #include "oot3d_cpu_phase_probe.h"
 
 #include <array>
+#include <memory>
+#include <type_traits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -157,7 +159,11 @@ bool BuildOot3dPicaVulkanDrawPlanImpl(
     Submission& submission,
     Oot3dPicaVulkanDrawPlan& plan, std::string* error,
     Oot3dPicaVulkanShaderSourceCache* shaderCache) {
-    plan = {};
+    // A fresh plan, reset in place: `plan = {}` built a default plan (~6 KB
+    // of zeroes) and move-assigned it, copying it a second time.
+    static_assert(std::is_nothrow_default_constructible_v<Oot3dPicaVulkanDrawPlan>);
+    std::destroy_at(&plan);
+    std::construct_at(&plan);
     plan.VertexBindings.reserve(16U);
     plan.VertexAttributes.reserve(16U);
     plan.Textures.reserve(submission.State.Textures.size());

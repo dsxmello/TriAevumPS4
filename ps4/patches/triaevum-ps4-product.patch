@@ -2272,10 +2272,10 @@ index 5f59a070..a02baf19 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..f272856c 100644
+index 01026912..93f05f69 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-@@ -4,10 +4,175 @@
+@@ -4,10 +4,178 @@
  #include "oot3d/renderer/ui_presentation_layout.h"
  #include "oot3d_native_room_shadow_shell.h"
  
@@ -2325,8 +2325,11 @@ index 01026912..f272856c 100644
 +             std::vector<Oot3dNativeGame::Oot3dPicaVulkanDrawPlan> &plans,
 +             Oot3dNativeGame::Oot3dPicaVulkanShaderSourceCache &ownCache,
 +             std::string &error) {
-+    plans.clear();
-+    plans.resize(draws.size());
++    // Every plan is reset by its build: grow only, instead of destroying
++    // and default-constructing every plan of every pass.
++    if (plans.size() < draws.size()) {
++      plans.resize(draws.size());
++    }
 +    mDraws = &draws;
 +    mPlans = &plans;
 +    mNext.store(0, std::memory_order_relaxed);
@@ -2451,7 +2454,7 @@ index 01026912..f272856c 100644
  uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
    uint64_t hash = 14695981039346656037ULL;
    for (const uint8_t byte : bytes) {
-@@ -162,7 +327,13 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -162,7 +330,13 @@ bool NativeA32WindowSession::RunFrame() {
    // frame rate (docs/TRIAEVUM_PARALLEL_PRESENTATION.md).
    // TRIAEVUM_INPUT_ADMISSION=1 keeps only the wait for the previous frame and
    // =0 restores the early sampling, for comparisons.
@@ -2465,7 +2468,7 @@ index 01026912..f272856c 100644
    static const bool inputAdmission =
        inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
    static const bool lateInputSample =
-@@ -637,6 +808,109 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +811,109 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -2575,7 +2578,7 @@ index 01026912..f272856c 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1444,6 +1718,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1721,20 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -2596,7 +2599,7 @@ index 01026912..f272856c 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1464,14 +1752,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1755,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
            suppressTopScreenFrontendBackdrop &&
            targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
@@ -3093,7 +3096,7 @@ index d5edd030..88a42bae 100644
    void Capture(Oot3dPicaDisplayTransferSubmission transfer);
  
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp
-index 151b1c06..453bc4e7 100644
+index 151b1c06..e9466a23 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.cpp
 @@ -1,9 +1,14 @@
@@ -3136,7 +3139,39 @@ index 151b1c06..453bc4e7 100644
  constexpr size_t kMaximumSnapshotResourceBytes = 64U << 20U;
  // Bound the persisted raw-copy ownership ledger. Producers accumulate only
  // until a newer copy takes their bytes back, so the live count tracks distinct
-@@ -281,6 +302,25 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
+@@ -277,10 +298,57 @@ bool Oot3dNativePicaSubmissionQueue::SubmitHardwareRegisterWrite(
+     return true;
+ }
+ 
++Oot3dNativePicaSubmissionQueue::GeometrySnapshotFront&
++Oot3dNativePicaSubmissionQueue::GeometrySnapshotFrontSlot(
++    const GeometrySnapshotKey& key) noexcept {
++  uint64_t hash = (uint64_t{key.PhysicalAddress} << 20U) ^ (uint64_t{key.Size} << 4U) ^
++                  (uint64_t{key.Slot} << 1U) ^ static_cast<uint64_t>(key.Kind);
++  hash *= 0x9E3779B97F4A7C15ULL;
++  static_assert(kGeometrySnapshotFrontSlots == size_t{1} << 10U);
++  return mGeometrySnapshotFront[hash >> (64U - 10U)];
++}
++
++Oot3dNativePicaSubmissionQueue::GeometrySnapshotElement*
++Oot3dNativePicaSubmissionQueue::FindGeometrySnapshot(const GeometrySnapshotKey& key) {
++  auto& front = GeometrySnapshotFrontSlot(key);
++  if (front.Element != nullptr && front.Key == key) {
++    return front.Element;
++  }
++  const auto found = mGeometrySnapshotCache.find(key);
++  if (found == mGeometrySnapshotCache.end()) {
++    return nullptr;
++  }
++  front = {key, &*found};
++  return &*found;
++}
++
++void Oot3dNativePicaSubmissionQueue::ClearGeometrySnapshotFront() noexcept {
++  mGeometrySnapshotFront.fill({});
++}
++
+ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
      Oot3dPicaResourceKind kind, uint8_t slot, uint32_t physicalAddress,
      uint32_t firstElement, size_t byteCount,
      Oot3dPicaResourceSnapshot &resource, std::string *error) {
@@ -3162,14 +3197,22 @@ index 151b1c06..453bc4e7 100644
    const auto source = mMemory.View(physicalAddress, byteCount);
    if (!source.has_value()) {
      SetError(error, kind == Oot3dPicaResourceKind::IndexBuffer
-@@ -327,17 +367,15 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
+@@ -292,8 +360,8 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
+   const GeometrySnapshotKey key{kind, slot, physicalAddress, byteCount};
+   const auto sourceWriteGeneration =
+       SnapshotWriteGeneration(physicalAddress, byteCount);
+-  auto cached = mGeometrySnapshotCache.find(key);
+-  const bool cacheEntryAvailable = cached != mGeometrySnapshotCache.end();
++  auto* cached = FindGeometrySnapshot(key);
++  const bool cacheEntryAvailable = cached != nullptr;
+   const bool versionHit =
+       cacheEntryAvailable && cached->second.Bytes != nullptr &&
+       cached->second.Bytes->size() == source->size() &&
+@@ -327,17 +395,15 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
      }
    }
    if (!cacheHit) {
-+    if (cached != mGeometrySnapshotCache.end() && cached->second.Bytes != nullptr) {
-+      mGeometrySnapshotCacheBytes -= cached->second.Bytes->size();
-+    }
-     if (cached == mGeometrySnapshotCache.end() &&
+-    if (cached == mGeometrySnapshotCache.end() &&
 -        mGeometrySnapshotCache.size() >= kGeometrySnapshotCacheLimit) {
 -      const auto oldest = std::min_element(
 -          mGeometrySnapshotCache.begin(), mGeometrySnapshotCache.end(),
@@ -3179,6 +3222,10 @@ index 151b1c06..453bc4e7 100644
 -      if (oldest != mGeometrySnapshotCache.end()) {
 -        mGeometrySnapshotCache.erase(oldest);
 -      }
++    if (cached != nullptr && cached->second.Bytes != nullptr) {
++      mGeometrySnapshotCacheBytes -= cached->second.Bytes->size();
++    }
++    if (cached == nullptr &&
 +        (mGeometrySnapshotCache.size() >= kGeometrySnapshotCacheLimit ||
 +         mGeometrySnapshotCacheBytes + source->size() > kGeometrySnapshotCacheByteLimit)) {
 +      EvictGeometrySnapshots();
@@ -3187,7 +3234,15 @@ index 151b1c06..453bc4e7 100644
      GeometrySnapshotCacheEntry entry;
      entry.Bytes = std::make_shared<const std::vector<uint8_t>>(source->begin(),
                                                                 source->end());
-@@ -354,10 +392,39 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
+@@ -348,16 +414,46 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
+       mNextGeometryContentVersion = 1U;
+     }
+     cached =
+-        mGeometrySnapshotCache.insert_or_assign(key, std::move(entry)).first;
++        &*mGeometrySnapshotCache.insert_or_assign(key, std::move(entry)).first;
++    GeometrySnapshotFrontSlot(key) = {key, cached};
+   } else {
+     if (cached->second.Bytes == nullptr) {
        cached->second.Bytes =
            std::make_shared<const std::vector<uint8_t>>(source->begin(),
                                                         source->end());
@@ -3227,7 +3282,7 @@ index 151b1c06..453bc4e7 100644
  
    resource.Kind = kind;
    resource.Slot = slot;
-@@ -528,6 +595,40 @@ void Oot3dNativePicaSubmissionQueue::ResetSnapshotObservation() {
+@@ -528,6 +624,41 @@ void Oot3dNativePicaSubmissionQueue::ResetSnapshotObservation() {
      for (auto& [key, entry] : mTextureSnapshotCache) entry.SourceWriteGeneration = 0;
  }
  
@@ -3253,6 +3308,7 @@ index 151b1c06..453bc4e7 100644
 +        ++it;
 +      }
 +    }
++    ClearGeometrySnapshotFront();
 +    if (mGeometrySnapshotCacheBytes <= kGeometrySnapshotCacheByteLimit * 7U / 8U ||
 +        mGeometrySnapshotCache.empty()) {
 +      return;
@@ -3268,10 +3324,11 @@ index 151b1c06..453bc4e7 100644
  std::optional<uint64_t> Oot3dNativePicaSubmissionQueue::SnapshotWriteGeneration(
      uint32_t address, size_t byteCount) {
      std::optional<uint32_t> first;
-@@ -1623,6 +1724,10 @@ bool Oot3dNativePicaSubmissionQueue::RestoreState(
+@@ -1623,6 +1754,11 @@ bool Oot3dNativePicaSubmissionQueue::RestoreState(
              std::move(restoredTransfers);
          mTextureSnapshotCache = std::move(textureSnapshotCache);
          mGeometrySnapshotCache = std::move(geometrySnapshotCache);
++        ClearGeometrySnapshotFront();
 +        mGeometrySnapshotCacheBytes = 0;
 +        for (const auto& [key, entry] : mGeometrySnapshotCache) {
 +            if (entry.Bytes != nullptr) mGeometrySnapshotCacheBytes += entry.Bytes->size();
@@ -3280,10 +3337,18 @@ index 151b1c06..453bc4e7 100644
          mNextGeometryContentVersion = nextGeometryContentVersion;
          mGeometrySnapshotSequence = geometrySnapshotSequence;
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.h
-index a81e0eef..58f1283b 100644
+index a81e0eef..55a5b748 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_submission.h
-@@ -398,6 +398,10 @@ class Oot3dNativePicaSubmissionQueue final : public Oot3dPicaPacketSink {
+@@ -4,6 +4,7 @@
+ 
+ #include "fast/renderer3ds/pica_native_state.h"
+ 
++#include <array>
+ #include <cstdint>
+ #include <functional>
+ #include <memory>
+@@ -398,6 +399,26 @@ class Oot3dNativePicaSubmissionQueue final : public Oot3dPicaPacketSink {
      std::unordered_map<GeometrySnapshotKey, GeometrySnapshotCacheEntry,
                         GeometrySnapshotKeyHash>
          mGeometrySnapshotCache;
@@ -3291,6 +3356,22 @@ index a81e0eef..58f1283b 100644
 +    // the entry bound; see EvictGeometrySnapshots).
 +    size_t mGeometrySnapshotCacheBytes = 0;
 +    void EvictGeometrySnapshots();
++    // A direct-mapped front for mGeometrySnapshotCache lookups (one per
++    // vertex loader and index buffer of every draw: the map's lookup, a
++    // 64-bit modulo and a bucket walk, was ~0.8% of the game thread). Each
++    // slot holds a key and its element, which a rehash keeps; an erase clears
++    // the front (ClearGeometrySnapshotFront).
++    using GeometrySnapshotElement =
++        std::pair<const GeometrySnapshotKey, GeometrySnapshotCacheEntry>;
++    struct GeometrySnapshotFront {
++      GeometrySnapshotKey Key;
++      GeometrySnapshotElement* Element = nullptr;
++    };
++    static constexpr size_t kGeometrySnapshotFrontSlots = 1024U;
++    std::array<GeometrySnapshotFront, kGeometrySnapshotFrontSlots> mGeometrySnapshotFront{};
++    GeometrySnapshotFront& GeometrySnapshotFrontSlot(const GeometrySnapshotKey& key) noexcept;
++    GeometrySnapshotElement* FindGeometrySnapshot(const GeometrySnapshotKey& key);
++    void ClearGeometrySnapshotFront() noexcept;
      Oot3dPicaSubmissionRuntimeProfile mRuntimeProfile;
      uint64_t mNextGeometryContentVersion = 1;
      uint64_t mGeometrySnapshotSequence = 0;
@@ -3398,10 +3479,32 @@ index 387bd3f4..ead2a883 100644
          plan.FragmentShader.SourceIdentity;
      if (plan.VertexShader.TemporalProgram != nullptr) {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp
-index 5a3228f1..d14c4fa3 100644
+index 5a3228f1..15fb9836 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_vulkan_plan.cpp
-@@ -223,6 +223,51 @@ bool BuildOot3dPicaVulkanDrawPlanImpl(
+@@ -2,6 +2,8 @@
+ #include "oot3d_cpu_phase_probe.h"
+ 
+ #include <array>
++#include <memory>
++#include <type_traits>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+@@ -157,7 +159,11 @@ bool BuildOot3dPicaVulkanDrawPlanImpl(
+     Submission& submission,
+     Oot3dPicaVulkanDrawPlan& plan, std::string* error,
+     Oot3dPicaVulkanShaderSourceCache* shaderCache) {
+-    plan = {};
++    // A fresh plan, reset in place: `plan = {}` built a default plan (~6 KB
++    // of zeroes) and move-assigned it, copying it a second time.
++    static_assert(std::is_nothrow_default_constructible_v<Oot3dPicaVulkanDrawPlan>);
++    std::destroy_at(&plan);
++    std::construct_at(&plan);
+     plan.VertexBindings.reserve(16U);
+     plan.VertexAttributes.reserve(16U);
+     plan.Textures.reserve(submission.State.Textures.size());
+@@ -223,6 +229,51 @@ bool BuildOot3dPicaVulkanDrawPlanImpl(
          SetError(error, "native PICA Vulkan draw uses a geometry shader");
          return false;
      }
@@ -3932,6 +4035,44 @@ index 4bc99889..281f2cdf 100644
    };
    auto own = stamp(ProfilePathLocked(night));
    if (own != "-") return "scene:" + own;
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_azahar_capture.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_azahar_capture.cpp
+index ccb2a555..20229fbe 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_azahar_capture.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_azahar_capture.cpp
+@@ -401,11 +401,11 @@ bool DecodeOot3dAzaharShaderSeedLuts(const nlohmann::json& event,
+   lighting->ContentHash = ComputeOot3dPicaLightingLutContentHash(*lighting);
+   lighting->ContentHashAvailable = true;
+   packet.LightingLuts = std::move(lighting);
+-  copy(packet.ProcTexLuts.Noise);
+-  copy(packet.ProcTexLuts.ColorMap);
+-  copy(packet.ProcTexLuts.AlphaMap);
+-  copy(packet.ProcTexLuts.Color);
+-  copy(packet.ProcTexLuts.ColorDifference);
++  copy(packet.ProcTexLuts.Mutable().Noise);
++  copy(packet.ProcTexLuts.Mutable().ColorMap);
++  copy(packet.ProcTexLuts.Mutable().AlphaMap);
++  copy(packet.ProcTexLuts.Mutable().Color);
++  copy(packet.ProcTexLuts.Mutable().ColorDifference);
+   copy(packet.FogLut);
+   return true;
+ }
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_azahar_capture_tests.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_azahar_capture_tests.cpp
+index 872a4ee7..005439f1 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_azahar_capture_tests.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_azahar_capture_tests.cpp
+@@ -151,9 +151,9 @@ void TestSeedResourcesAndBounds() {
+   Require(DecodeOot3dAzaharShaderSeedLuts(event, packet, &error), error);
+   Require(packet.LightingLuts && packet.LightingLuts->Entry(23, 255) == 6143,
+           "lighting seed layout mismatch");
+-  Require(packet.ProcTexLuts.Noise[0] == 6144 && packet.ProcTexLuts.ColorMap[0] == 6272 &&
+-          packet.ProcTexLuts.AlphaMap[0] == 6400 && packet.ProcTexLuts.Color[0] == 6528 &&
+-          packet.ProcTexLuts.ColorDifference[0] == 6784 && packet.FogLut[0] == 7040 &&
++  Require(packet.ProcTexLuts->Noise[0] == 6144 && packet.ProcTexLuts->ColorMap[0] == 6272 &&
++          packet.ProcTexLuts->AlphaMap[0] == 6400 && packet.ProcTexLuts->Color[0] == 6528 &&
++          packet.ProcTexLuts->ColorDifference[0] == 6784 && packet.FogLut[0] == 7040 &&
+           packet.FogLut[127] == 7167, "procedural/fog seed layout mismatch");
+   Require(packet.LightingLuts->ContentHashAvailable, "seed LUT identity unavailable");
+   event["words"].erase(event["words"].end() - 1);
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_lighting_gen.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_lighting_gen.cpp
 index b029e2eb..02447581 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_lighting_gen.cpp
@@ -3965,6 +4106,27 @@ index b029e2eb..02447581 100644
 +#endif
    if (literal.find_first_of(".e") == std::string::npos) literal += ".0";
    return literal;
+ }
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.cpp
+index f05632cd..f9d74ed2 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.cpp
+@@ -410,11 +410,11 @@ uint64_t ComputeOot3dPicaFragmentShaderStateKey(
+                 key = HashWord(key, word);
+             }
+         };
+-        hashTable(packet.ProcTexLuts.Noise);
+-        hashTable(packet.ProcTexLuts.ColorMap);
+-        hashTable(packet.ProcTexLuts.AlphaMap);
+-        hashTable(packet.ProcTexLuts.Color);
+-        hashTable(packet.ProcTexLuts.ColorDifference);
++        hashTable(packet.ProcTexLuts->Noise);
++        hashTable(packet.ProcTexLuts->ColorMap);
++        hashTable(packet.ProcTexLuts->AlphaMap);
++        hashTable(packet.ProcTexLuts->Color);
++        hashTable(packet.ProcTexLuts->ColorDifference);
+     }
+     return key;
  }
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.h b/tools/oot3d/native_pica_frontend/oot3d_native_pica_fragment_shader_gen.h
 index 6a88ae77..dbbc61ae 100644
@@ -4021,7 +4183,7 @@ index 6a88ae77..dbbc61ae 100644
  
  struct Oot3dPicaGeneratedFragmentShader {
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
-index 7cc1eeec..4aaf5ac7 100644
+index 7cc1eeec..4d01bfca 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
 +++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.cpp
 @@ -38,6 +38,23 @@ constexpr uint16_t kPicaProcTexLutDataEnd = 0x0B7U;
@@ -4058,7 +4220,15 @@ index 7cc1eeec..4aaf5ac7 100644
      if (registerId >= kPicaLightingLutDataBegin &&
          registerId <= kPicaLightingLutDataEnd) {
          const uint32_t config = mPicaRegisters[kPicaLightingLutConfig];
-@@ -582,6 +602,65 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
+@@ -336,6 +356,7 @@ void Oot3dNativePicaFrontend::ApplyShaderRegisterSideEffects(
+         const uint32_t config = mPicaRegisters[kPicaProcTexLutConfig];
+         const uint32_t index = config & 0xFFU;
+         const uint32_t table = (config >> 8U) & 0xFU;
++        mProcTexLutSnapshot.reset();
+         const auto writeLut = [index, writeValue](auto& lut) {
+             lut[index % lut.size()] = writeValue;
+         };
+@@ -582,6 +603,70 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
      size_t cursor = 0;
      bool stopRequested = false;
      bool drawSubmitted = false;
@@ -4103,11 +4273,16 @@ index 7cc1eeec..4aaf5ac7 100644
 +            case Oot3dPicaCompositionLayer::Unknown:
 +                break;
 +        }
++        if (mProcTexLutSnapshot == nullptr) {
++            mProcTexLutSnapshot =
++                std::make_shared<const Oot3dPicaProcTexLutState>(mProcTexLuts);
++        }
 +        Oot3dPicaDrawPacket draw(
 +            commandListAddress, offsetWords,
 +            domain, composition,
 +            id == kPicaTriggerDrawIndexed, mPicaRegisters,
-+            mVertexShader, mGeometryShader, mFogLut, mProcTexLuts,
++            mVertexShader, mGeometryShader, mFogLut,
++            Oot3dPicaProcTexLutSnapshot(mProcTexLutSnapshot),
 +            mLightingLuts, mDefaultAttributes);
 +        if (metadata != nullptr && domain == Oot3dPicaCompositionDomain::Scene)
 +            draw.LightBinding = metadata->LightBinding;
@@ -4124,7 +4299,7 @@ index 7cc1eeec..4aaf5ac7 100644
      while (cursor < commandListWords.size()) {
          if (stopRequested) {
              break;
-@@ -605,8 +684,11 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
+@@ -605,8 +690,11 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
          const uint32_t extraDataLength = (header >> 20U) & 0xFFU;
          const bool grouped = (header >> 31U) != 0;
  
@@ -4137,7 +4312,7 @@ index 7cc1eeec..4aaf5ac7 100644
              const bool supported = id < kPicaRegisterCount;
              uint32_t finalValue = writeValue;
              if (supported) {
-@@ -615,7 +697,11 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
+@@ -615,7 +703,11 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
                  finalValue = (mPicaRegisters[id] & ~mask) |
                               (writeValue & mask);
                  mPicaRegisters[id] = finalValue;
@@ -4150,7 +4325,7 @@ index 7cc1eeec..4aaf5ac7 100644
              }
              if (mDiagnosticHistoryEnabled) {
                  mPendingRegisterWrites.push_back(
-@@ -624,57 +710,9 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
+@@ -624,57 +716,9 @@ bool Oot3dNativePicaFrontend::SubmitGspCommand(
              }
              if (id == kPicaTriggerDraw ||
                  id == kPicaTriggerDrawIndexed) {
@@ -4209,8 +4384,143 @@ index 7cc1eeec..4aaf5ac7 100644
              }
              if (id == kPicaIrqRequest && supported) {
                  const uint32_t request = mPicaRegisters[kPicaIrqRequest];
+@@ -888,6 +932,7 @@ bool Oot3dNativePicaFrontend::RestoreState(const nlohmann::json& state,
+         mGeometryShader = std::move(geometryShader);
+         mFogLut = state.at("fog_lut").get<decltype(mFogLut)>();
+         mProcTexLuts = {};
++        mProcTexLutSnapshot.reset();
+         if (const auto iterator = state.find("proctex_luts");
+             iterator != state.end()) {
+             mProcTexLuts.Noise =
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.h b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.h
+index 27d645bf..830dbe10 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.h
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend.h
+@@ -243,6 +243,39 @@ struct Oot3dPicaProcTexLutState {
+     std::array<uint32_t, 256> ColorDifference{};
+ };
+ 
++inline constexpr Oot3dPicaProcTexLutState kOot3dPicaZeroProcTexLuts{};
++
++// A packet's procedural-texture LUTs: one immutable snapshot that every
++// packet shares until the frontend's LUTs change (they are uploaded rarely,
++// and every draw copied all 3.5 KiB of them twice). Read through ->, write
++// through Mutable() (copy on write); an empty snapshot reads as all zero.
++class Oot3dPicaProcTexLutSnapshot {
++  public:
++    Oot3dPicaProcTexLutSnapshot() = default;
++    explicit Oot3dPicaProcTexLutSnapshot(
++        std::shared_ptr<const Oot3dPicaProcTexLutState> state) noexcept
++        : mState(std::move(state)) {}
++
++    [[nodiscard]] const Oot3dPicaProcTexLutState& operator*() const noexcept {
++        return mState != nullptr ? *mState : kOot3dPicaZeroProcTexLuts;
++    }
++    [[nodiscard]] const Oot3dPicaProcTexLutState* operator->() const noexcept {
++        return &**this;
++    }
++    [[nodiscard]] Oot3dPicaProcTexLutState& Mutable() {
++        if (!mWritable || mState.use_count() != 1) {
++            mState = std::make_shared<Oot3dPicaProcTexLutState>(**this);
++            mWritable = true;
++        }
++        // Created non-const above and owned by this snapshot alone.
++        return const_cast<Oot3dPicaProcTexLutState&>(*mState);
++    }
++
++  private:
++    std::shared_ptr<const Oot3dPicaProcTexLutState> mState;
++    bool mWritable = false;
++};
++
+ struct Oot3dPicaLightingLutState {
+     static constexpr size_t TableCount = 24U;
+     static constexpr size_t EntryCount = 256U;
+@@ -275,7 +308,7 @@ struct Oot3dPicaDrawPacket {
+         const Oot3dPicaShaderState& vertexShader,
+         const Oot3dPicaShaderState& geometryShader,
+         const std::array<uint32_t, 128>& fogLut,
+-        const Oot3dPicaProcTexLutState& procTexLuts,
++        Oot3dPicaProcTexLutSnapshot procTexLuts,
+         std::shared_ptr<const Oot3dPicaLightingLutState> lightingLuts,
+         const std::array<std::array<float, 4>, 16>& defaultAttributes)
+         : CommandListAddress(commandListAddress),
+@@ -283,7 +316,7 @@ struct Oot3dPicaDrawPacket {
+           CompositionDomain(compositionDomain), Composition(composition),
+           Indexed(indexed), Registers(registers), VertexShader(vertexShader),
+           GeometryShader(geometryShader), FogLut(fogLut),
+-          ProcTexLuts(procTexLuts), LightingLuts(std::move(lightingLuts)),
++          ProcTexLuts(std::move(procTexLuts)), LightingLuts(std::move(lightingLuts)),
+           DefaultAttributes(defaultAttributes) {}
+ 
+     uint32_t CommandListAddress = 0;
+@@ -297,7 +330,7 @@ struct Oot3dPicaDrawPacket {
+     Oot3dPicaShaderState VertexShader;
+     Oot3dPicaShaderState GeometryShader;
+     std::array<uint32_t, 128> FogLut{};
+-    Oot3dPicaProcTexLutState ProcTexLuts;
++    Oot3dPicaProcTexLutSnapshot ProcTexLuts;
+     std::shared_ptr<const Oot3dPicaLightingLutState> LightingLuts;
+     std::array<std::array<float, 4>, 16> DefaultAttributes{};
+ };
+@@ -403,6 +436,8 @@ class Oot3dNativePicaFrontend {
+     Oot3dPicaShaderState mGeometryShader;
+     std::array<uint32_t, 128> mFogLut{};
+     Oot3dPicaProcTexLutState mProcTexLuts;
++    // The packets' snapshot of mProcTexLuts; reset whenever they change.
++    std::shared_ptr<const Oot3dPicaProcTexLutState> mProcTexLutSnapshot;
+     std::shared_ptr<Oot3dPicaLightingLutState> mLightingLuts =
+         std::make_shared<Oot3dPicaLightingLutState>();
+     std::array<std::array<float, 4>, 16> mDefaultAttributes{};
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend_tests.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend_tests.cpp
+index 4db35b6b..a8682e6d 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend_tests.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_frontend_tests.cpp
+@@ -982,9 +982,9 @@ int main(int argc, char** argv) {
+         procTexFrontend->PendingDrawPackets().back();
+     Require((procTexFrontend->ReadPicaRegister(0x0AFU).value_or(0U) & 0xFFU) ==
+                 129U &&
+-                procTexUploadedPacket.ProcTexLuts.ColorMap[127] ==
++                procTexUploadedPacket.ProcTexLuts->ColorMap[127] ==
+                     procTexValue127 &&
+-                procTexUploadedPacket.ProcTexLuts.ColorMap[0] == procTexValue0,
++                procTexUploadedPacket.ProcTexLuts->ColorMap[0] == procTexValue0,
+             "PICA procedural texture LUT upload did not preserve native "
+             "index and table modulo semantics");
+ 
+@@ -994,16 +994,16 @@ int main(int argc, char** argv) {
+     procTexPacket.Registers[0x0ACU] = 128U << 11U;
+     procTexPacket.Registers[0x0ADU] = 0U;
+     procTexPacket.Registers[0x0C0U] = 0x00060006U;
+-    for (size_t index = 0; index < procTexPacket.ProcTexLuts.ColorMap.size();
++    for (size_t index = 0; index < procTexPacket.ProcTexLuts->ColorMap.size();
+          ++index) {
+         const uint32_t value = static_cast<uint32_t>(index * 4095U / 127U);
+-        procTexPacket.ProcTexLuts.ColorMap[index] = value;
+-        procTexPacket.ProcTexLuts.AlphaMap[index] = value;
++        procTexPacket.ProcTexLuts.Mutable().ColorMap[index] = value;
++        procTexPacket.ProcTexLuts.Mutable().AlphaMap[index] = value;
+     }
+-    for (size_t index = 0; index < procTexPacket.ProcTexLuts.Color.size();
++    for (size_t index = 0; index < procTexPacket.ProcTexLuts->Color.size();
+          ++index) {
+         const uint32_t value = static_cast<uint32_t>(index);
+-        procTexPacket.ProcTexLuts.Color[index] =
++        procTexPacket.ProcTexLuts.Mutable().Color[index] =
+             value | (value << 8U) | (value << 16U) | 0xFF000000U;
+     }
+     Require(Oot3dNativeGame::DecodeOot3dPicaDrawState(
+@@ -1026,7 +1026,7 @@ int main(int argc, char** argv) {
+                 generatedFragment.Source.find(
+                     "pica_proctex_color_lut[256]") != std::string::npos,
+             "native PICA procedural texture shader was not generated");
+-    procTexPacket.ProcTexLuts.ColorMap[0] ^= 1U;
++    procTexPacket.ProcTexLuts.Mutable().ColorMap[0] ^= 1U;
+     Require(Oot3dNativeGame::GenerateOot3dPicaFragmentShader(
+                 procTexPacket, fragmentState, generatedFragment, &error),
+             error);
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp
-index 7394e26c..5d047aae 100644
+index 7394e26c..7f70ab36 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp
 +++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_proctex.cpp
 @@ -1,9 +1,12 @@
@@ -4275,8 +4585,36 @@ index 7394e26c..5d047aae 100644
  Fast::Renderer3ds::PicaProcTexProgram BuildOot3dPicaProcTexProgram(const Oot3dPicaDrawPacket& packet) {
      Fast::Renderer3ds::PicaProcTexProgram result;
      result.Registers[0] = {packet.Registers[0x80],packet.Registers[0xA8],packet.Registers[0xA9],packet.Registers[0xAA]};
+@@ -419,11 +464,11 @@ Fast::Renderer3ds::PicaProcTexProgram BuildOot3dPicaProcTexProgram(const Oot3dPi
+     const auto append = [&](const auto& table) {
+         for (uint32_t word : table) { result.Lut[i/4][i%4]=word; ++i; }
+     };
+-    append(packet.ProcTexLuts.Noise);
+-    append(packet.ProcTexLuts.ColorMap);
+-    append(packet.ProcTexLuts.AlphaMap);
+-    append(packet.ProcTexLuts.Color);
+-    append(packet.ProcTexLuts.ColorDifference);
++    append(packet.ProcTexLuts->Noise);
++    append(packet.ProcTexLuts->ColorMap);
++    append(packet.ProcTexLuts->AlphaMap);
++    append(packet.ProcTexLuts->Color);
++    append(packet.ProcTexLuts->ColorDifference);
+     return result;
+ }
+ 
+@@ -459,8 +504,8 @@ bool GenerateOot3dPicaProceduralTextureSampler(
+     }
+ 
+     std::ostringstream source;
+-    AppendValueLuts(source, packet.ProcTexLuts);
+-    AppendColorLuts(source, packet.ProcTexLuts);
++    AppendValueLuts(source, *packet.ProcTexLuts);
++    AppendColorLuts(source, *packet.ProcTexLuts);
+     source << R"(
+ float pica_proctex_lookup_value(int offset, float coord) {
+     coord *= 128.0;
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
-index 62b0f054..46e87420 100644
+index 62b0f054..d3c971e4 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
 +++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_program_descriptor.cpp
 @@ -9,6 +9,8 @@
@@ -4420,11 +4758,11 @@ index 62b0f054..46e87420 100644
 -        hash.AppendWords(packet.ProcTexLuts.AlphaMap);
 -        hash.AppendWords(packet.ProcTexLuts.Color);
 -        hash.AppendWords(packet.ProcTexLuts.ColorDifference);
-+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.Noise);
-+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.ColorMap);
-+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.AlphaMap);
-+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.Color);
-+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.ColorDifference);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->Noise);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->ColorMap);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->AlphaMap);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->Color);
++        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->ColorDifference);
      }
      hash.AppendU32(packet.Registers[0x0E0U]);
      hash.AppendU32(packet.Registers[0x104U] & 0x00000071U);
@@ -4572,6 +4910,44 @@ index 62b0f054..46e87420 100644
          }
          cache.States[block + 1U] = state;
      }
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_raw_draw_record.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_raw_draw_record.cpp
+index ea1d5031..0fcb4099 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_raw_draw_record.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_raw_draw_record.cpp
+@@ -137,11 +137,11 @@ std::string EncodeLuts(const Oot3dPicaDrawPacket& packet) {
+     std::vector<uint32_t> words;
+     const auto append = [&](std::span<const uint32_t> values) { words.insert(words.end(), values.begin(), values.end()); };
+     append(packet.FogLut);
+-    append(packet.ProcTexLuts.Noise);
+-    append(packet.ProcTexLuts.ColorMap);
+-    append(packet.ProcTexLuts.AlphaMap);
+-    append(packet.ProcTexLuts.Color);
+-    append(packet.ProcTexLuts.ColorDifference);
++    append(packet.ProcTexLuts->Noise);
++    append(packet.ProcTexLuts->ColorMap);
++    append(packet.ProcTexLuts->AlphaMap);
++    append(packet.ProcTexLuts->Color);
++    append(packet.ProcTexLuts->ColorDifference);
+     if (packet.LightingLuts != nullptr) append(packet.LightingLuts->PackedEntries);
+     // The lighting flag keeps "absent" distinct from "all zero".
+     return (packet.LightingLuts != nullptr ? "L" : "-") + EncodeWords(words);
+@@ -158,11 +158,11 @@ void DecodeLuts(std::string_view text, Oot3dPicaDrawPacket& packet) {
+         for (auto& word : target) word = words[offset++];
+     };
+     copy(packet.FogLut);
+-    copy(packet.ProcTexLuts.Noise);
+-    copy(packet.ProcTexLuts.ColorMap);
+-    copy(packet.ProcTexLuts.AlphaMap);
+-    copy(packet.ProcTexLuts.Color);
+-    copy(packet.ProcTexLuts.ColorDifference);
++    copy(packet.ProcTexLuts.Mutable().Noise);
++    copy(packet.ProcTexLuts.Mutable().ColorMap);
++    copy(packet.ProcTexLuts.Mutable().AlphaMap);
++    copy(packet.ProcTexLuts.Mutable().Color);
++    copy(packet.ProcTexLuts.Mutable().ColorDifference);
+     packet.LightingLuts.reset();
+     if (lighting) {
+         auto state = std::make_shared<Oot3dPicaLightingLutState>();
 diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp
 index 19d0ada5..7edf6c5b 100644
 --- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_transfer.cpp
@@ -4681,6 +5057,52 @@ index 19d0ada5..7edf6c5b 100644
  }
  
  bool ExecuteOot3dPicaDisplayTransfer(
+diff --git a/tools/oot3d/native_pica_frontend/oot3d_native_pica_variant_record_tests.cpp b/tools/oot3d/native_pica_frontend/oot3d_native_pica_variant_record_tests.cpp
+index fa6fb3a4..1a857b7f 100644
+--- a/tools/oot3d/native_pica_frontend/oot3d_native_pica_variant_record_tests.cpp
++++ b/tools/oot3d/native_pica_frontend/oot3d_native_pica_variant_record_tests.cpp
+@@ -150,7 +150,7 @@ Oot3dNativeGame::Oot3dPicaRawDraw RawDraw(uint64_t id) {
+     packet.VertexShader.FloatUniforms[5] = {1.0F, -2.5F, 0.0F, -0.0F};
+     packet.VertexShader.BooleanUniforms[3] = true;
+     packet.FogLut[9] = 0xdeadbeef;
+-    packet.ProcTexLuts.ColorDifference[255] = 7;
++    packet.ProcTexLuts.Mutable().ColorDifference[255] = 7;
+     auto luts = std::make_shared<Oot3dNativeGame::Oot3dPicaLightingLutState>();
+     luts->Entry(23, 255) = 0x12345;
+     luts->ContentHash = 99;
+diff --git a/tools/renderer/tev_program/generator_consumer_tests.cpp b/tools/renderer/tev_program/generator_consumer_tests.cpp
+index 9feda15f..005d88bd 100644
+--- a/tools/renderer/tev_program/generator_consumer_tests.cpp
++++ b/tools/renderer/tev_program/generator_consumer_tests.cpp
+@@ -195,7 +195,7 @@ int main() {
+                 ((n&1)<<14) | (((n/2)&1)<<15) | ((n%3)<<16) | (((n/3)%3)<<18);
+             packet->Registers[0xAC]=(n%6) | (6<<7) | (128<<11);
+             packet->Registers[0xC0]=0x60006;
+-            packet->ProcTexLuts.Color[n%256]=n*987654;
++            packet->ProcTexLuts.Mutable().Color[n%256]=n*987654;
+             Oot3dPicaGeneratedFragmentShader dynamic; std::string error;
+             Check(GenerateOot3dPicaFragmentShader(*packet,state,dynamic,&error,
+                 Oot3dPicaShaderBuildPurpose::OfflineSource,Oot3dPicaTevMode::Parametric),error);
+diff --git a/tools/renderer/tev_program/proctex_gpu_tests.cpp b/tools/renderer/tev_program/proctex_gpu_tests.cpp
+index 31e35f50..bf65c822 100644
+--- a/tools/renderer/tev_program/proctex_gpu_tests.cpp
++++ b/tools/renderer/tev_program/proctex_gpu_tests.cpp
+@@ -56,11 +56,11 @@ results[n]=vec4(pt_unorm(n&255u,8u),pt_unorm(n,12u),endpoint.r,endpoint.a);}
+             packet->Registers[0xAC]=(n%6)|(6<<7)|(128<<11)|((biases[n%4]>>8)<<19);
+             packet->Registers[0xAD]=0xE0C08000;
+             for(unsigned i=0;i<128;++i) {
+-                packet->ProcTexLuts.Noise[i]=((i*31+n)%4096)|(((i&1)?4090:11)<<12);
+-                packet->ProcTexLuts.ColorMap[i]=((i*29+n*13)%4096)|(((i&1)?4081:17)<<12);
+-                packet->ProcTexLuts.AlphaMap[i]=((i*19+n*7)%4096)|(((i&1)?4071:23)<<12);
++                packet->ProcTexLuts.Mutable().Noise[i]=((i*31+n)%4096)|(((i&1)?4090:11)<<12);
++                packet->ProcTexLuts.Mutable().ColorMap[i]=((i*29+n*13)%4096)|(((i&1)?4081:17)<<12);
++                packet->ProcTexLuts.Mutable().AlphaMap[i]=((i*19+n*7)%4096)|(((i&1)?4071:23)<<12);
+             }
+-            for(unsigned i=0;i<256;++i){packet->ProcTexLuts.Color[i]=i*9876543u+n*1234567u;packet->ProcTexLuts.ColorDifference[i]=i*11111111u;}
++            for(unsigned i=0;i<256;++i){packet->ProcTexLuts.Mutable().Color[i]=i*9876543u+n*1234567u;packet->ProcTexLuts.Mutable().ColorDifference[i]=i*11111111u;}
+             inputs[local]=BuildOot3dPicaProcTexProgram(*packet);
+             std::string source,error;
+             Require(GenerateOot3dPicaProceduralTextureSampler(*packet,source,&error),error.c_str());
 diff --git a/tools/renderer/tev_program/uniform_codec_tests.cpp b/tools/renderer/tev_program/uniform_codec_tests.cpp
 index 83388c4e..126fade8 100644
 --- a/tools/renderer/tev_program/uniform_codec_tests.cpp

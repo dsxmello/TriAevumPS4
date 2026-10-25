@@ -137,11 +137,11 @@ std::string EncodeLuts(const Oot3dPicaDrawPacket& packet) {
     std::vector<uint32_t> words;
     const auto append = [&](std::span<const uint32_t> values) { words.insert(words.end(), values.begin(), values.end()); };
     append(packet.FogLut);
-    append(packet.ProcTexLuts.Noise);
-    append(packet.ProcTexLuts.ColorMap);
-    append(packet.ProcTexLuts.AlphaMap);
-    append(packet.ProcTexLuts.Color);
-    append(packet.ProcTexLuts.ColorDifference);
+    append(packet.ProcTexLuts->Noise);
+    append(packet.ProcTexLuts->ColorMap);
+    append(packet.ProcTexLuts->AlphaMap);
+    append(packet.ProcTexLuts->Color);
+    append(packet.ProcTexLuts->ColorDifference);
     if (packet.LightingLuts != nullptr) append(packet.LightingLuts->PackedEntries);
     // The lighting flag keeps "absent" distinct from "all zero".
     return (packet.LightingLuts != nullptr ? "L" : "-") + EncodeWords(words);
@@ -158,11 +158,11 @@ void DecodeLuts(std::string_view text, Oot3dPicaDrawPacket& packet) {
         for (auto& word : target) word = words[offset++];
     };
     copy(packet.FogLut);
-    copy(packet.ProcTexLuts.Noise);
-    copy(packet.ProcTexLuts.ColorMap);
-    copy(packet.ProcTexLuts.AlphaMap);
-    copy(packet.ProcTexLuts.Color);
-    copy(packet.ProcTexLuts.ColorDifference);
+    copy(packet.ProcTexLuts.Mutable().Noise);
+    copy(packet.ProcTexLuts.Mutable().ColorMap);
+    copy(packet.ProcTexLuts.Mutable().AlphaMap);
+    copy(packet.ProcTexLuts.Mutable().Color);
+    copy(packet.ProcTexLuts.Mutable().ColorDifference);
     packet.LightingLuts.reset();
     if (lighting) {
         auto state = std::make_shared<Oot3dPicaLightingLutState>();

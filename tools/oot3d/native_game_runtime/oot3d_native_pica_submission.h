@@ -4,6 +4,7 @@
 
 #include "fast/renderer3ds/pica_native_state.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -402,6 +403,22 @@ class Oot3dNativePicaSubmissionQueue final : public Oot3dPicaPacketSink {
     // the entry bound; see EvictGeometrySnapshots).
     size_t mGeometrySnapshotCacheBytes = 0;
     void EvictGeometrySnapshots();
+    // A direct-mapped front for mGeometrySnapshotCache lookups (one per
+    // vertex loader and index buffer of every draw: the map's lookup, a
+    // 64-bit modulo and a bucket walk, was ~0.8% of the game thread). Each
+    // slot holds a key and its element, which a rehash keeps; an erase clears
+    // the front (ClearGeometrySnapshotFront).
+    using GeometrySnapshotElement =
+        std::pair<const GeometrySnapshotKey, GeometrySnapshotCacheEntry>;
+    struct GeometrySnapshotFront {
+      GeometrySnapshotKey Key;
+      GeometrySnapshotElement* Element = nullptr;
+    };
+    static constexpr size_t kGeometrySnapshotFrontSlots = 1024U;
+    std::array<GeometrySnapshotFront, kGeometrySnapshotFrontSlots> mGeometrySnapshotFront{};
+    GeometrySnapshotFront& GeometrySnapshotFrontSlot(const GeometrySnapshotKey& key) noexcept;
+    GeometrySnapshotElement* FindGeometrySnapshot(const GeometrySnapshotKey& key);
+    void ClearGeometrySnapshotFront() noexcept;
     Oot3dPicaSubmissionRuntimeProfile mRuntimeProfile;
     uint64_t mNextGeometryContentVersion = 1;
     uint64_t mGeometrySnapshotSequence = 0;

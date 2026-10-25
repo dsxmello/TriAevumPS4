@@ -410,11 +410,11 @@ uint64_t ComputeOot3dPicaFragmentShaderStateKey(
                 key = HashWord(key, word);
             }
         };
-        hashTable(packet.ProcTexLuts.Noise);
-        hashTable(packet.ProcTexLuts.ColorMap);
-        hashTable(packet.ProcTexLuts.AlphaMap);
-        hashTable(packet.ProcTexLuts.Color);
-        hashTable(packet.ProcTexLuts.ColorDifference);
+        hashTable(packet.ProcTexLuts->Noise);
+        hashTable(packet.ProcTexLuts->ColorMap);
+        hashTable(packet.ProcTexLuts->AlphaMap);
+        hashTable(packet.ProcTexLuts->Color);
+        hashTable(packet.ProcTexLuts->ColorDifference);
     }
     return key;
 }

@@ -982,9 +982,9 @@ int main(int argc, char** argv) {
         procTexFrontend->PendingDrawPackets().back();
     Require((procTexFrontend->ReadPicaRegister(0x0AFU).value_or(0U) & 0xFFU) ==
                 129U &&
-                procTexUploadedPacket.ProcTexLuts.ColorMap[127] ==
+                procTexUploadedPacket.ProcTexLuts->ColorMap[127] ==
                     procTexValue127 &&
-                procTexUploadedPacket.ProcTexLuts.ColorMap[0] == procTexValue0,
+                procTexUploadedPacket.ProcTexLuts->ColorMap[0] == procTexValue0,
             "PICA procedural texture LUT upload did not preserve native "
             "index and table modulo semantics");
 
@@ -994,16 +994,16 @@ int main(int argc, char** argv) {
     procTexPacket.Registers[0x0ACU] = 128U << 11U;
     procTexPacket.Registers[0x0ADU] = 0U;
     procTexPacket.Registers[0x0C0U] = 0x00060006U;
-    for (size_t index = 0; index < procTexPacket.ProcTexLuts.ColorMap.size();
+    for (size_t index = 0; index < procTexPacket.ProcTexLuts->ColorMap.size();
          ++index) {
         const uint32_t value = static_cast<uint32_t>(index * 4095U / 127U);
-        procTexPacket.ProcTexLuts.ColorMap[index] = value;
-        procTexPacket.ProcTexLuts.AlphaMap[index] = value;
+        procTexPacket.ProcTexLuts.Mutable().ColorMap[index] = value;
+        procTexPacket.ProcTexLuts.Mutable().AlphaMap[index] = value;
     }
-    for (size_t index = 0; index < procTexPacket.ProcTexLuts.Color.size();
+    for (size_t index = 0; index < procTexPacket.ProcTexLuts->Color.size();
          ++index) {
         const uint32_t value = static_cast<uint32_t>(index);
-        procTexPacket.ProcTexLuts.Color[index] =
+        procTexPacket.ProcTexLuts.Mutable().Color[index] =
             value | (value << 8U) | (value << 16U) | 0xFF000000U;
     }
     Require(Oot3dNativeGame::DecodeOot3dPicaDrawState(
@@ -1026,7 +1026,7 @@ int main(int argc, char** argv) {
                 generatedFragment.Source.find(
                     "pica_proctex_color_lut[256]") != std::string::npos,
             "native PICA procedural texture shader was not generated");
-    procTexPacket.ProcTexLuts.ColorMap[0] ^= 1U;
+    procTexPacket.ProcTexLuts.Mutable().ColorMap[0] ^= 1U;
     Require(Oot3dNativeGame::GenerateOot3dPicaFragmentShader(
                 procTexPacket, fragmentState, generatedFragment, &error),
             error);

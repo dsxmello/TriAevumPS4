@@ -282,11 +282,11 @@ uint64_t BuildFragmentProgramId(const Oot3dPicaDrawPacket& packet,
     if ((packet.Registers[0x080U] & (1U << 10U)) != 0U &&
         (Oot3dPicaReferencesProceduralTexture(packet) ||
          shadowProcTexReferenced)) {
-        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.Noise);
-        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.ColorMap);
-        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.AlphaMap);
-        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.Color);
-        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts.ColorDifference);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->Noise);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->ColorMap);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->AlphaMap);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->Color);
+        hash.AppendWords(OOT3D_PICA_WORD_FOLD_MEMO(), packet.ProcTexLuts->ColorDifference);
     }
     hash.AppendU32(packet.Registers[0x0E0U]);
     hash.AppendU32(packet.Registers[0x104U] & 0x00000071U);

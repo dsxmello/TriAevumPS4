@@ -298,6 +298,34 @@ bool Oot3dNativePicaSubmissionQueue::SubmitHardwareRegisterWrite(
     return true;
 }
 
+Oot3dNativePicaSubmissionQueue::GeometrySnapshotFront&
+Oot3dNativePicaSubmissionQueue::GeometrySnapshotFrontSlot(
+    const GeometrySnapshotKey& key) noexcept {
+  uint64_t hash = (uint64_t{key.PhysicalAddress} << 20U) ^ (uint64_t{key.Size} << 4U) ^
+                  (uint64_t{key.Slot} << 1U) ^ static_cast<uint64_t>(key.Kind);
+  hash *= 0x9E3779B97F4A7C15ULL;
+  static_assert(kGeometrySnapshotFrontSlots == size_t{1} << 10U);
+  return mGeometrySnapshotFront[hash >> (64U - 10U)];
+}
+
+Oot3dNativePicaSubmissionQueue::GeometrySnapshotElement*
+Oot3dNativePicaSubmissionQueue::FindGeometrySnapshot(const GeometrySnapshotKey& key) {
+  auto& front = GeometrySnapshotFrontSlot(key);
+  if (front.Element != nullptr && front.Key == key) {
+    return front.Element;
+  }
+  const auto found = mGeometrySnapshotCache.find(key);
+  if (found == mGeometrySnapshotCache.end()) {
+    return nullptr;
+  }
+  front = {key, &*found};
+  return &*found;
+}
+
+void Oot3dNativePicaSubmissionQueue::ClearGeometrySnapshotFront() noexcept {
+  mGeometrySnapshotFront.fill({});
+}
+
 bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
     Oot3dPicaResourceKind kind, uint8_t slot, uint32_t physicalAddress,
     uint32_t firstElement, size_t byteCount,
@@ -332,8 +360,8 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
   const GeometrySnapshotKey key{kind, slot, physicalAddress, byteCount};
   const auto sourceWriteGeneration =
       SnapshotWriteGeneration(physicalAddress, byteCount);
-  auto cached = mGeometrySnapshotCache.find(key);
-  const bool cacheEntryAvailable = cached != mGeometrySnapshotCache.end();
+  auto* cached = FindGeometrySnapshot(key);
+  const bool cacheEntryAvailable = cached != nullptr;
   const bool versionHit =
       cacheEntryAvailable && cached->second.Bytes != nullptr &&
       cached->second.Bytes->size() == source->size() &&
@@ -367,10 +395,10 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
     }
   }
   if (!cacheHit) {
-    if (cached != mGeometrySnapshotCache.end() && cached->second.Bytes != nullptr) {
+    if (cached != nullptr && cached->second.Bytes != nullptr) {
       mGeometrySnapshotCacheBytes -= cached->second.Bytes->size();
     }
-    if (cached == mGeometrySnapshotCache.end() &&
+    if (cached == nullptr &&
         (mGeometrySnapshotCache.size() >= kGeometrySnapshotCacheLimit ||
          mGeometrySnapshotCacheBytes + source->size() > kGeometrySnapshotCacheByteLimit)) {
       EvictGeometrySnapshots();
@@ -386,7 +414,8 @@ bool Oot3dNativePicaSubmissionQueue::CaptureGeometryResource(
       mNextGeometryContentVersion = 1U;
     }
     cached =
-        mGeometrySnapshotCache.insert_or_assign(key, std::move(entry)).first;
+        &*mGeometrySnapshotCache.insert_or_assign(key, std::move(entry)).first;
+    GeometrySnapshotFrontSlot(key) = {key, cached};
   } else {
     if (cached->second.Bytes == nullptr) {
       cached->second.Bytes =
@@ -617,6 +646,7 @@ void Oot3dNativePicaSubmissionQueue::EvictGeometrySnapshots() {
         ++it;
       }
     }
+    ClearGeometrySnapshotFront();
     if (mGeometrySnapshotCacheBytes <= kGeometrySnapshotCacheByteLimit * 7U / 8U ||
         mGeometrySnapshotCache.empty()) {
       return;
@@ -1724,6 +1754,7 @@ bool Oot3dNativePicaSubmissionQueue::RestoreState(
             std::move(restoredTransfers);
         mTextureSnapshotCache = std::move(textureSnapshotCache);
         mGeometrySnapshotCache = std::move(geometrySnapshotCache);
+        ClearGeometrySnapshotFront();
         mGeometrySnapshotCacheBytes = 0;
         for (const auto& [key, entry] : mGeometrySnapshotCache) {
             if (entry.Bytes != nullptr) mGeometrySnapshotCacheBytes += entry.Bytes->size();
