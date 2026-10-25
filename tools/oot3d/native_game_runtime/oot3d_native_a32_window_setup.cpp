@@ -1176,6 +1176,11 @@ void NativeA32WindowSession::Setup() {
       Oot3dNativeGame::Oot3dUiProfileName(launch.UiProfile));
   auto &dspHle = dspHleStorage.emplace(
       Oot3dNativeGame::BuildNativeA32DspPhysicalRegions(*manifest));
+#if defined(__ORBIS__)
+  // PS4: the DSP mix (~1 ms per host frame) runs on the game thread, the
+  // console's bottleneck; a spare core ticks part of the sources.
+  dspHle.StartSourceWorker([] { Fast::OrbisRegisterThread("dsp"); });
+#endif
   context = Ship::Context::GetRawInstance();
   audio = context != nullptr ? context->GetAudio() : nullptr;
   audioPlayer = audio != nullptr ? audio->GetAudioPlayer() : nullptr;

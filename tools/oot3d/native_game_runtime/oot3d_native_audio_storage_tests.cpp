@@ -6,11 +6,14 @@
 #include "oot3d_native_a32_memory.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cstddef>
 #include <deque>
 #include <fstream>
 #include <iostream>
 #include <random>
 #include <stdexcept>
+#include <thread>
+#include <chrono>
 #include <zstd.h>
 
 namespace {
@@ -248,6 +251,134 @@ void DeferredDspBufferTest() {
     }
 }
 
+// The source worker shares out the sources of each frame between two threads:
+// output, shared memory and state must match ticking them all on one thread.
+size_t DspSourceWorkerTest() {
+    using namespace Oot3dNativeGame;
+    using AudioCore::HLE::SharedMemory;
+    using Configuration = AudioCore::HLE::SourceConfiguration::Configuration;
+    constexpr uint32_t kRegion0 = 0x1FF50000U, kRegion1 = 0x1FF70000U;
+    constexpr uint32_t kSamplesPhysical = 0x20000000U;
+    constexpr size_t kSampleBytes = 1U << 18;
+    std::mt19937 random(0xD5B0);
+    std::vector<uint8_t> sampleBytes(kSampleBytes);
+    for (auto& byte : sampleBytes) byte = static_cast<uint8_t>(random());
+
+    struct Guest {
+        std::array<std::vector<uint8_t>, 2> Regions{std::vector<uint8_t>(sizeof(SharedMemory)),
+                                                    std::vector<uint8_t>(sizeof(SharedMemory))};
+        NativeDspMemoryAccess Access;
+    };
+    const auto makeGuest = [&](Guest& guest) {
+        guest.Access.Read = [&guest](uint32_t address, std::span<uint8_t> output) {
+            const size_t region = address == kRegion0 ? 0 : address == kRegion1 ? 1 : 2;
+            if (region == 2 || output.size() != sizeof(SharedMemory)) return false;
+            std::copy(guest.Regions[region].begin(), guest.Regions[region].end(), output.begin());
+            return true;
+        };
+        guest.Access.Write = [&guest](uint32_t address, std::span<const uint8_t> input) {
+            const size_t region = address == kRegion0 ? 0 : address == kRegion1 ? 1 : 2;
+            if (region == 2 || input.size() != sizeof(SharedMemory)) return false;
+            std::copy(input.begin(), input.end(), guest.Regions[region].begin());
+            return true;
+        };
+        guest.Access.ResolvePhysical = [&](uint32_t address, size_t size) -> const uint8_t* {
+            if (address < kSamplesPhysical || address - kSamplesPhysical + size > kSampleBytes) return nullptr;
+            return sampleBytes.data() + (address - kSamplesPhysical);
+        };
+    };
+    Guest serialGuest, parallelGuest;
+    makeGuest(serialGuest);
+    makeGuest(parallelGuest);
+    NativeA32DspHle serial({{kSamplesPhysical, 0x14000000U, kSampleBytes}});
+    NativeA32DspHle parallel({{kSamplesPhysical, 0x14000000U, kSampleBytes}});
+    parallel.StartSourceWorker();
+
+    SharedMemory config{};
+    const auto configure = [&](Configuration& source) {
+        source = {};
+        source.enable = random() % 8 != 0;
+        source.enable_dirty.Assign(1);
+        const float rates[] = {0.25f, 0.5f, 0.99f, 1.0f, 1.0227f, 1.5f, 2.0f, 3.75f};
+        source.rate_multiplier = rates[random() % std::size(rates)];
+        source.rate_multiplier_dirty.Assign(1);
+        source.interpolation_mode = static_cast<Configuration::InterpolationMode>(random() % 3);
+        source.interpolation_dirty.Assign(1);
+        for (auto& mix : source.gain) for (auto& gain : mix) gain = static_cast<float>(random() % 2001) / 1000.0f - 0.5f;
+        source.gain_0_dirty.Assign(1);
+        source.gain_1_dirty.Assign(1);
+        source.gain_2_dirty.Assign(1);
+        const auto format = static_cast<Configuration::Format>(random() % 3);
+        source.format.Assign(format);
+        source.mono_or_stereo.Assign(format == Configuration::Format::ADPCM || random() % 2
+                                         ? Configuration::MonoOrStereo::Mono
+                                         : Configuration::MonoOrStereo::Stereo);
+        source.length = 1 + random() % 4000;
+        source.physical_address = kSamplesPhysical + (random() % (kSampleBytes / 2));
+        source.is_looping.Assign(random() % 3 != 0);
+        source.embedded_buffer_dirty.Assign(1);
+    };
+    for (auto& source : config.source_configurations.config) configure(source);
+    config.dsp_configuration.master_volume = 1.0f;
+    config.dsp_configuration.master_volume_dirty.Assign(1);
+
+    constexpr size_t kFrames = 20000;
+    uint64_t workerTicks = 0;
+    size_t nonzeroFrames = 0;
+    for (size_t frame = 0; frame < kFrames; ++frame) {
+        if (frame % 7 == 0) configure(config.source_configurations.config[random() % AudioCore::HLE::num_sources]);
+        // Bursts of a few frames with pauses between them, as in the game:
+        // the worker falls asleep and is woken ahead of a burst or by the
+        // caller finding it asleep.
+        if (frame % 4 == 0 && frame % 400 < 200) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(frame % 8 == 0 ? 4 : 0));
+            if (frame % 12 != 0) parallel.WakeSourceWorker();
+        }
+        config.frame_counter = static_cast<u16>(frame % 0xFFFEU + 1U);
+        const auto bytes = std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(&config), sizeof(config));
+        for (Guest* guest : {&serialGuest, &parallelGuest}) {
+            std::copy(bytes.begin(), bytes.end(), guest->Regions[frame % 2].begin());
+            std::fill(guest->Regions[(frame + 1) % 2].begin(), guest->Regions[(frame + 1) % 2].end(), 0);
+        }
+        std::vector<int16_t> serialOutput, parallelOutput;
+        std::string error;
+        Require(serial.ProcessFrame(serialGuest.Access, serialOutput, &error), "serial DSP frame failed");
+        Require(parallel.ProcessFrame(parallelGuest.Access, parallelOutput, &error), "DSP frame with the source worker failed");
+        Require(serialOutput == parallelOutput, "source worker changed the DSP output");
+        // Mixers::GetCurrentStatus leaves DspStatus's padding uninitialized
+        // (stack bytes, with or without the worker; the guest ignores them).
+        for (Guest* guest : {&serialGuest, &parallelGuest}) {
+            for (auto& region : guest->Regions) {
+                std::fill_n(region.begin() + offsetof(SharedMemory, dsp_status) + 4,
+                            sizeof(AudioCore::HLE::DspStatus) - 4, 0);
+            }
+        }
+        Require(serialGuest.Regions == parallelGuest.Regions, "source worker changed the DSP shared memory");
+        nonzeroFrames += std::any_of(serialOutput.begin(), serialOutput.end(), [](int16_t sample) { return sample != 0; });
+        for (auto& source : config.source_configurations.config) source.dirty_raw = 0;
+        config.dsp_configuration.dirty_raw = 0;
+        if (frame % 2000 == 1999) {
+            Require(serial.CaptureState() == parallel.CaptureState(), "source worker changed the DSP state");
+            const auto counts = parallel.TakeSourceTickCounts();
+            Require(counts.Worker + counts.Caller == 2000 * AudioCore::HLE::num_sources, "source ticks lost");
+            workerTicks += counts.Worker;
+        }
+    }
+    Require(serial.CaptureState() == parallel.CaptureState(), "source worker changed the final DSP state");
+    Require(workerTicks != 0 && nonzeroFrames > kFrames / 2, "the source worker test mixed nothing in parallel");
+    std::cout << "DSP source worker: " << workerTicks << " of " << kFrames * AudioCore::HLE::num_sources
+              << " source ticks, " << nonzeroFrames << " audible frames\n";
+    std::string error;
+    const auto restored = serial.CaptureState();
+    Require(parallel.RestoreState(restored, &error), "restore under the source worker failed");
+    std::vector<int16_t> serialOutput, parallelOutput;
+    Require(serial.ProcessFrame(serialGuest.Access, serialOutput, &error) &&
+                parallel.ProcessFrame(parallelGuest.Access, parallelOutput, &error) &&
+                serialOutput == parallelOutput,
+            "restored DSP differs under the source worker");
+    return kFrames;
+}
+
 nlohmann::json ReadDspSnapshot(const char* path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     Require(file.good(), "cannot open gameplay checkpoint");
@@ -292,7 +423,9 @@ int main(int argc, char** argv) {
         const auto calls = ResamplerTests();
         SourceStateTest();
         DeferredDspBufferTest();
-        std::cout << "audio storage: " << calls << " differential resampler calls, codecs, source playback/save/restore/sleep: PASS\n";
+        const auto workerFrames = DspSourceWorkerTest();
+        std::cout << "audio storage: " << calls << " differential resampler calls, codecs, source playback/save/restore/sleep, "
+                  << workerFrames << " DSP frames with the source worker: PASS\n";
         if (argc == 3) {
             const auto before = ReadDspSnapshot(argv[1]);
             const auto after = ReadDspSnapshot(argv[2]);

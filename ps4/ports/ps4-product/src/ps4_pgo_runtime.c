@@ -55,6 +55,19 @@ int __snprintf_chk(char* buffer, size_t size, int flag, size_t bufferSize, const
     return written;
 }
 
+// The clang 23 runtime also formats through the va_list forms.
+int __vfprintf_chk(FILE* stream, int flag, const char* format, va_list arguments) {
+    (void)flag;
+    return vfprintf(stream, format, arguments);
+}
+
+int __vsnprintf_chk(char* buffer, size_t size, int flag, size_t bufferSize, const char* format,
+                    va_list arguments) {
+    (void)flag;
+    (void)bufferSize;
+    return vsnprintf(buffer, size, format, arguments);
+}
+
 void* __memcpy_chk(void* destination, const void* source, size_t size, size_t destinationSize) {
     (void)destinationSize;
     return memcpy(destination, source, size);

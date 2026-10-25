@@ -825,3 +825,108 @@ Quadro do host (ms) parado, janelas com >= 40 quadros do jogo/s:
   diante a comparação é pelo quadro do host no mesmo ponto e draws.
 - O `present` de 1,4–2,0 ms mostra que o render começa a segurar a thread
   do jogo nos pontos leves.
+
+## 1.64 — áudio (DSP HLE) dividido com uma thread "dsp"
+
+- Medição da 1.63 (Hyrule Field): `dsp` 1,0–1,4 ms por quadro do host na
+  thread do jogo; a saída de áudio (`audio`) só 0,1 ms. O que pesa é a
+  mixagem do DSP, não o envio ao SDL.
+- O DSP não pode rodar solto noutra thread: depois de cada quadro de DSP o
+  jogo lê o status de cada fonte (posição no buffer, buffer consumido) e
+  escreve a configuração do quadro seguinte, então quadro a quadro é serial.
+  Atrasar um quadro mudaria o que o jogo vê.
+- Dentro de um quadro as 24 fontes são independentes (cada uma lê a própria
+  configuração e escreve o próprio status), e a contribuição de cada uma
+  para as mixagens intermediárias é o mesmo inteiro em qualquer thread.
+  `NativeA32DspHle::StartSourceWorker` (só no PS4): a thread do jogo e uma
+  thread "dsp" pegam fontes com compare-exchange numa palavra
+  (geração << 8 | próxima fonte), cada uma soma nas suas mixagens, e o
+  jogo espera as da worker (yield) e soma. Sem lock nem condition variable
+  por quadro (lição da 1.62); a worker gira com yield até 3 ms depois do
+  último trabalho (os quadros de DSP vêm em rajadas de ~3–4 por vblank) e
+  depois dorme 100 µs por vez. A resolução de endereço na memória do guest
+  passa por um spinlock (pode materializar escritas adiadas). Exceção numa
+  fonte: a thread do jogo espera a worker e relança.
+- Log de 5 s: `dsp worker: N sources/s, M by the game thread`.
+- Teste no PC (`oot3d_native_audio_storage_tests`, -O2 e ThreadSanitizer):
+  20.000 quadros com as 24 fontes em formatos, taxas, interpolação e ganhos
+  aleatórios, reconfiguradas a cada 7 quadros, e um restore no fim: saída,
+  memória compartilhada e estado idênticos ao DSP sem a worker; a worker
+  ticou 35–47% das fontes; nenhum aviso. Achado lateral:
+  `Mixers::GetCurrentStatus` (Azahar) não inicializa o padding do
+  `DspStatus`, então 28 bytes da pilha vão para a memória compartilhada a
+  cada quadro, com ou sem a worker (o jogo não lê); o teste ignora esses
+  bytes.
+- Esperado: `dsp` de ~1,1 para ~0,5–0,7 ms por quadro do host (a parte que
+  sobra na thread do jogo é a metade das fontes, o mixer final e a cópia da
+  memória compartilhada). Medir parado no mesmo ponto contra a 1.63.
+
+## Medição da 1.64 e 1.65 (2026-10-25)
+
+- 1.64 no console, sem travar. Worker: ~1.300–1.500 fontes/s (~30%).
+  Custo do DSP por quadro de DSP: Hyrule Field (200–300 draws)
+  227 -> 166 µs (-27%); Floresta Kokiri igual (107–133 -> 109–122 µs).
+  Quadro do host não comparável (trajetos diferentes).
+- Causas prováveis do ganho pequeno: quase todo o trabalho está em poucas
+  fontes ativas e a divisão era por número de fontes (a thread do jogo
+  esperava a fonte cara da worker); e a worker dormia entre as rajadas e
+  chegava atrasada no começo de cada uma.
+- 1.65: (1) as posições listam primeiro as fontes que tocaram no quadro
+  anterior (status `is_enabled`) ou foram ligadas agora (`enable_dirty`),
+  então as duas threads se revezam nas caras; (2) entre rajadas a worker
+  espera numa condition variable com timeout de 1 ms (não mais
+  `sleep_for(100 µs)`); a thread do jogo notifica uma vez por vblank, logo
+  depois da fase de relógio do guest (`WakeSourceWorker`), e de novo se
+  encontrar a worker dormindo. ~60–200 notificações/s, não por draw; uma
+  perdida só atrasa até 1 ms. (3) O log mostra quanto a thread do jogo
+  esperou a worker: `game thread waited X ms per host frame`.
+- Teste no PC com rajadas e pausas (worker dormindo e acordada pelos dois
+  caminhos): 20.000 quadros idênticos, -O2 e TSan sem avisos.
+
+## Fase C/D — gerador do AOT recuperado; PGO antes do frontend (2026-10-25)
+
+- Entradas do gerador recuperadas: `code.bin`/`exheader.bin` em
+  `refs/data/sources/8607…/`, inventários e `whole_aot_functions.json` no
+  repo, capstone 5.0.7. `generate_whole_aot` + `whole_aot_cpp.generate`
+  (256 shards, affinity) seguidos dos scripts `ps4/tools/aot_*.py` reproduzem
+  `title-content/aot-cpp` byte a byte (259 arquivos).
+- O upstream já mediu no PC as alavancas do gerador ao alcance
+  (`docs/TRIAEVUM_AOT_LEVERS_RESULTS.md`, `TRIAEVUM_AOT_MEMORY_REGIONS.md`):
+  registradores locais em tudo (sem ganho, módulo de 318 MB; a 1.49 piorou
+  aqui), regiões sem callback e regiões de memória nos kernels de áudio
+  (sem ganho). PGO: guest -18%. Perfil da 1.65: código gerado 56% da thread
+  do jogo, 17,9% em funções folha (elegíveis às regiões), 38,2% com chamadas.
+  Sem hipótese nova, o gerador fica como está.
+- Frontend PICA na 1.65: `pica submit` 2,0–2,2 ms por quadro do host
+  (6–7%), dos quais a captura (lê a memória do guest) 1,0–1,4 ms. Tirar só o
+  andar da lista: <= ~3%; com a captura, até ~6%, mas a memória do guest
+  teria de ficar thread-safe (escritas adiadas, tabela de páginas). Decidir
+  com o perfil depois do PGO.
+- Ordem: PGO agora (o perfil só deixa de valer nas funções que mudarem; os
+  shards do jogo, onde está o ganho, não mudam com o frontend).
+- Build de coleta: o link `tools/host-bin/clang-21` aponta para o clang 23
+  do sistema (recriado depois do backup); o runtime de perfil do clang 23
+  também chama `__vfprintf_chk`/`__vsnprintf_chk`, agora em
+  `ps4_pgo_runtime.c`. Pacote `out/...-1.65-PGO-COLETA.pkg` (269 MB).
+- Coleta da 1.65 (~6 min, 19 gravações sem erro; cenas 85, 81, 95, 32, 27,
+  77, 91, 52, 107): `.profraw` de 774 MB -> `pgo/product-165.profdata`
+  (49 MB, 7,4e11 contagens, `llvm-profdata` 23.1.3). A primeira sessão
+  "de coleta" foi na 1.65 normal (o pacote de coleta não tinha ido para
+  `/data/pkg`): sem a linha `pgo: profile written` no log não há perfil.
+- `PGO=use` (build/product-pgo-use, ~13 min): os 896 objetos com o perfil,
+  `.text.hot`/`.text.unlikely` nos shards. Os avisos de perfil desatualizado
+  ficam silenciados no CMakeLists. Pacote `out/...-1.65-PGO.pkg` (178 MB) e
+  `out/triaevum_product-1.65-PGO.nm` (`llvm-nm -C`), enviado para `/data/pkg`.
+- Medido no console (1.65 sem PGO, `triaevum_boot.previous.log`, contra
+  1.65-PGO; janelas com >= 40 quadros de jogo/s, mesmos draws por quadro
+  do jogo, 40–80). Os draws por quadro do host caem quando o host acelera,
+  então a comparação é por quadro do jogo:
+
+  | Cena | CPU do jogo por quadro do jogo | Quadro do host (mediana) | Jogo/s |
+  |---|---|---|---|
+  | 85 Kokiri | 14,4 -> 10,3 ms (-28%) | 31,1 -> 17,6 ms (32 -> 57 fps) | 60 -> 60 |
+  | 81 Hyrule | 16,0 -> 10,7 ms (-33%) | 35,8 -> 18,3 ms (28 -> 55 fps) | 55,7 -> 59,9 |
+
+  Starvations de áudio 132 em 119 janelas -> 19 em 68. Sem travamento
+  (o hang log ainda é o da 1.57h). O quadro do host fica perto da meta de
+  ~16 ms; o pacote com PGO passa a ser o normal da 1.65.

@@ -44,6 +44,25 @@ class NativeA32DspHle {
                       std::vector<int16_t>& interleavedStereo,
                       std::string* error = nullptr);
 
+    // Starts a thread that ticks part of the sources of every frame while
+    // ProcessFrame's caller ticks the rest (the sources are independent; the
+    // output and the state are identical to ticking them all in order).
+    // onStart runs first on the new thread. Call once, before ProcessFrame.
+    void StartSourceWorker(void (*onStart)() = nullptr);
+
+    // Wakes the worker ahead of a burst of ProcessFrame calls (it sleeps
+    // between bursts). Without a worker it does nothing.
+    void WakeSourceWorker();
+
+    // Since the last call: sources ticked by the worker and by the caller,
+    // and the caller's time waiting for the worker's sources.
+    struct SourceTickCounts {
+        uint64_t Worker = 0;
+        uint64_t Caller = 0;
+        uint64_t CallerWaitNanoseconds = 0;
+    };
+    SourceTickCounts TakeSourceTickCounts();
+
     nlohmann::json CaptureState() const;
     bool RestoreState(const nlohmann::json& state,
                       std::string* error = nullptr);

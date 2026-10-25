@@ -984,6 +984,15 @@ bool NativeA32WindowSession::RunFrame() {
                      static_cast<double>(counts.Helpers) / seconds,
                      static_cast<double>(counts.GameThread) / seconds);
       }
+      if (dspHleStorage.has_value()) {
+        const auto counts = dspHleStorage->TakeSourceTickCounts();
+        std::fprintf(stderr,
+                     "[triaevum] dsp worker: %.0f sources/s, %.0f by the game thread,"
+                     " game thread waited %.2f ms per host frame\n",
+                     static_cast<double>(counts.Worker) / seconds,
+                     static_cast<double>(counts.Caller) / seconds,
+                     hostFrames > 0.0 ? static_cast<double>(counts.CallerWaitNanoseconds) * 1.0e-6 / hostFrames : 0.0);
+      }
       windowStart = now;
       windowGuestFrames = frameCount;
       windowHostFrames = runFrameCount;
@@ -1494,6 +1503,9 @@ bool NativeA32WindowSession::UpdateGuestServicesForRefresh(
       process, hostServices, processResult, nextVblankTick,
       launch.WholeAotBlockBudget);
   const double clockSeconds = SecondsSince(clockStart);
+  // The DSP frames of this vblank come next: the source worker (PS4) gets
+  // up while HID runs instead of on the first frame.
+  dspHle.WakeSourceWorker();
   phaseTiming.GuestClockSeconds += clockSeconds;
   phaseTiming.GuestSeconds += clockSeconds;
   if (clockResolution.OvershootTicks != 0U) {

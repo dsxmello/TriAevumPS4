@@ -1538,6 +1538,368 @@ index 571e4752..eb393c6f 100644
                      if (submitted) {
                          submitted = QueueGspInterrupt(
                              memory, static_cast<uint8_t>(
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.cpp
+index 5e136d15..698bd097 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.cpp
+@@ -4,10 +4,16 @@
+ #include "audio_core/hle/source.h"
+ 
+ #include <array>
++#include <atomic>
++#include <chrono>
++#include <condition_variable>
+ #include <cstring>
++#include <exception>
+ #include <limits>
++#include <mutex>
+ #include <nlohmann/json.hpp>
+ #include <span>
++#include <thread>
+ #include <utility>
+ 
+ namespace Oot3dNativeGame {
+@@ -37,17 +43,205 @@ size_t CurrentRegionIndex(const AudioCore::HLE::SharedMemory& region0,
+ 
+ } // namespace
+ 
++// With the source worker, the sources of a frame are shared out between the
++// caller and the worker. Each source reads only its own configuration and
++// writes only its own status and frame, and each one's contribution to the
++// intermediate mixes is the same integer whichever thread adds it, so the
++// result does not depend on who ticked what. Like the PICA plan helpers
++// (1.63), this takes no lock and makes no system call per frame: a frame is
++// published with one store of (generation << 8 | next position), positions
++// are claimed with a compare-exchange, and the worker spins with yields
++// during the bursts of frames. The positions list the sources that played in
++// the previous frame (or were just enabled) first: those carry nearly all the
++// work, and the two threads take them in turns. Between bursts the worker
++// waits on a condition variable that the caller notifies once before each
++// burst (WakeSourceWorker, ~60/s) or when it finds the worker asleep; the
++// wait has a 1 ms timeout, so a lost notification (they get lost on the PS4)
++// only delays it. Guest memory is resolved under a spinlock (a resolution can
++// materialize deferred writes, which is not thread-safe).
+ struct NativeA32DspHle::Impl {
++    using Mixes = std::array<AudioCore::QuadFrame32, 3>;
++    static constexpr uint64_t kSourceBits = 8;
++    static_assert(AudioCore::HLE::num_sources < (1U << kSourceBits));
++
+     explicit Impl(std::vector<NativeA32DspPhysicalRegion> regions)
+         : PhysicalRegions(std::move(regions)) {
+         Sources.reserve(AudioCore::HLE::num_sources);
+         for (size_t index = 0; index < AudioCore::HLE::num_sources; ++index) {
+             Sources.emplace_back(index);
+-            Sources.back().SetMemoryResolver([this](uint32_t address, size_t size) {
+-                return CurrentMemory != nullptr && CurrentMemory->ResolvePhysical
+-                           ? CurrentMemory->ResolvePhysical(address, size)
+-                           : nullptr;
+-            });
++            Sources.back().SetMemoryResolver(
++                [this](uint32_t address, size_t size) { return Resolve(address, size); });
++        }
++    }
++
++    ~Impl() {
++        if (Worker.joinable()) {
++            Stop.store(true, std::memory_order_relaxed);
++            Wake();
++            Worker.join();
++        }
++    }
++
++    void Wake() {
++        {
++            std::lock_guard lock(WakeMutex);
++            ++WakeRequests;
++        }
++        WakeCondition.notify_one();
++    }
++
++    const uint8_t* Resolve(uint32_t address, size_t size) {
++        if (CurrentMemory == nullptr || !CurrentMemory->ResolvePhysical) {
++            return nullptr;
++        }
++        while (ResolveLock.test_and_set(std::memory_order_acquire)) {
++            std::this_thread::yield();
++        }
++        const uint8_t* const memory = CurrentMemory->ResolvePhysical(address, size);
++        ResolveLock.clear(std::memory_order_release);
++        return memory;
++    }
++
++    void TickSource(size_t index, Mixes& mixes) {
++        auto& source = Sources[index];
++        JobWrite->source_statuses.status[index] =
++            source.Tick(JobRead->source_configurations.config[index],
++                        JobRead->adpcm_coefficients.coeff[index]);
++        for (size_t mix = 0; mix < mixes.size(); ++mix) {
++            source.MixInto(mixes[mix], mix);
++        }
++    }
++
++    bool Claim(uint64_t generation, size_t& index) {
++        uint64_t word = Next.load(std::memory_order_relaxed);
++        for (;;) {
++            const uint64_t source = word & ((1U << kSourceBits) - 1U);
++            if ((word >> kSourceBits) != generation ||
++                source >= AudioCore::HLE::num_sources) {
++                return false;
++            }
++            if (Next.compare_exchange_weak(word, word + 1, std::memory_order_acquire,
++                                           std::memory_order_relaxed)) {
++                index = Order[static_cast<size_t>(source)];
++                return true;
++            }
++        }
++    }
++
++    // Caller: ticks the sources the worker has not claimed, waits for the
++    // ones it has, and adds the worker's mixes to its own.
++    void TickSources(AudioCore::HLE::SharedMemory& read,
++                     AudioCore::HLE::SharedMemory& write, Mixes& mixes) {
++        const uint64_t generation = ++Generation;
++        JobRead = &read;
++        JobWrite = &write;
++        size_t active = 0;
++        size_t idle = AudioCore::HLE::num_sources;
++        for (size_t source = 0; source < AudioCore::HLE::num_sources; ++source) {
++            const auto& config = read.source_configurations.config[source];
++            const bool playing = Playing[source] || (config.enable_dirty && config.enable != 0);
++            Order[playing ? active++ : --idle] = static_cast<uint8_t>(source);
++        }
++        Finished.store(0, std::memory_order_relaxed);
++        Next.store(generation << kSourceBits, std::memory_order_release);
++        if (WorkerSleeping.load(std::memory_order_relaxed)) {
++            Wake();
++        }
++        size_t index = 0;
++        uint32_t ticked = 0;
++        // The worker may still be reading read/write: wait for it even when a
++        // source fails here.
++        std::exception_ptr failure;
++        while (Claim(generation, index)) {
++            try {
++                TickSource(index, mixes);
++            } catch (...) {
++                if (failure == nullptr) {
++                    failure = std::current_exception();
++                }
++            }
++            ++ticked;
++        }
++        CallerTicks += ticked;
++        const uint32_t workerTicks =
++            static_cast<uint32_t>(AudioCore::HLE::num_sources) - ticked;
++        if (Finished.load(std::memory_order_acquire) != workerTicks) {
++            const auto waitStart = std::chrono::steady_clock::now();
++            while (Finished.load(std::memory_order_acquire) != workerTicks) {
++                std::this_thread::yield();
++            }
++            CallerWaitNanoseconds += static_cast<uint64_t>(
++                std::chrono::duration_cast<std::chrono::nanoseconds>(
++                    std::chrono::steady_clock::now() - waitStart).count());
++        }
++        for (size_t source = 0; source < AudioCore::HLE::num_sources; ++source) {
++            Playing[source] = write.source_statuses.status[source].is_enabled != 0;
++        }
++        if (failure != nullptr) {
++            WorkerException = nullptr;
++            std::rethrow_exception(failure);
++        }
++        if (WorkerException != nullptr) {
++            std::rethrow_exception(std::exchange(WorkerException, nullptr));
++        }
++        if (workerTicks != 0U) {
++            for (size_t mix = 0; mix < mixes.size(); ++mix) {
++                for (size_t sample = 0; sample < mixes[mix].size(); ++sample) {
++                    for (size_t channel = 0; channel < mixes[mix][sample].size(); ++channel) {
++                        mixes[mix][sample][channel] += WorkerMixes[mix][sample][channel];
++                    }
++                }
++            }
++        }
++    }
++
++    void WorkerLoop(void (*onStart)()) {
++        if (onStart != nullptr) {
++            onStart();
++        }
++        constexpr auto kSpinAfterWork = std::chrono::milliseconds(3);
++        uint64_t mixesGeneration = 0;
++        uint64_t wakeRequests = 0;
++        auto lastWork = std::chrono::steady_clock::now();
++        while (!Stop.load(std::memory_order_relaxed)) {
++            const uint64_t generation =
++                Next.load(std::memory_order_acquire) >> kSourceBits;
++            size_t index = 0;
++            if (generation != 0U && Claim(generation, index)) {
++                if (mixesGeneration != generation) {
++                    WorkerMixes = {};
++                    mixesGeneration = generation;
++                }
++                // The worker must always count the source as finished: the
++                // caller waits for it.
++                try {
++                    TickSource(index, WorkerMixes);
++                } catch (...) {
++                    if (WorkerException == nullptr) {
++                        WorkerException = std::current_exception();
++                    }
++                }
++                WorkerTicks.fetch_add(1, std::memory_order_relaxed);
++                Finished.fetch_add(1, std::memory_order_release);
++                lastWork = std::chrono::steady_clock::now();
++            } else if (std::chrono::steady_clock::now() - lastWork < kSpinAfterWork) {
++                std::this_thread::yield();
++            } else {
++                std::unique_lock lock(WakeMutex);
++                WorkerSleeping.store(true, std::memory_order_relaxed);
++                WakeCondition.wait_for(lock, std::chrono::milliseconds(1), [&] {
++                    const uint64_t word = Next.load(std::memory_order_relaxed);
++                    return WakeRequests != wakeRequests ||
++                           Stop.load(std::memory_order_relaxed) ||
++                           ((word >> kSourceBits) != 0U &&
++                            (word & ((1U << kSourceBits) - 1U)) < AudioCore::HLE::num_sources);
++                });
++                WorkerSleeping.store(false, std::memory_order_relaxed);
++                if (WakeRequests != wakeRequests) {
++                    wakeRequests = WakeRequests;
++                    lastWork = std::chrono::steady_clock::now();
++                }
++            }
+         }
+     }
+ 
+@@ -55,6 +249,29 @@ struct NativeA32DspHle::Impl {
+     std::vector<AudioCore::HLE::Source> Sources;
+     AudioCore::HLE::Mixers Mixers;
+     const NativeDspMemoryAccess* CurrentMemory = nullptr;
++    std::atomic_flag ResolveLock = ATOMIC_FLAG_INIT;
++
++    std::thread Worker;
++    std::atomic<bool> Stop{false};
++    std::mutex WakeMutex;
++    std::condition_variable WakeCondition;
++    uint64_t WakeRequests = 0;  // under WakeMutex
++    std::atomic<bool> WorkerSleeping{false};
++    // The caller alone writes Generation, JobRead and JobWrite (before the
++    // release store to Next); the worker writes WorkerMixes and
++    // WorkerException before its release increment of Finished.
++    uint64_t Generation = 0;
++    std::array<uint8_t, AudioCore::HLE::num_sources> Order{};
++    std::array<bool, AudioCore::HLE::num_sources> Playing{};  // caller only
++    AudioCore::HLE::SharedMemory* JobRead = nullptr;
++    AudioCore::HLE::SharedMemory* JobWrite = nullptr;
++    std::atomic<uint64_t> Next{0};
++    std::atomic<uint32_t> Finished{0};
++    Mixes WorkerMixes{};
++    std::exception_ptr WorkerException;
++    std::atomic<uint64_t> WorkerTicks{0};
++    uint64_t CallerTicks = 0;
++    uint64_t CallerWaitNanoseconds = 0;
+ };
+ 
+ NativeA32DspHle::NativeA32DspHle(
+@@ -68,6 +285,26 @@ NativeA32DspHle::PhysicalRegions() const {
+     return mImpl->PhysicalRegions;
+ }
+ 
++void NativeA32DspHle::StartSourceWorker(void (*onStart)()) {
++    if (!mImpl->Worker.joinable()) {
++        mImpl->Worker = std::thread([impl = mImpl.get(), onStart] { impl->WorkerLoop(onStart); });
++    }
++}
++
++NativeA32DspHle::SourceTickCounts NativeA32DspHle::TakeSourceTickCounts() {
++    SourceTickCounts counts{mImpl->WorkerTicks.exchange(0, std::memory_order_relaxed),
++                            mImpl->CallerTicks, mImpl->CallerWaitNanoseconds};
++    mImpl->CallerTicks = 0;
++    mImpl->CallerWaitNanoseconds = 0;
++    return counts;
++}
++
++void NativeA32DspHle::WakeSourceWorker() {
++    if (mImpl->Worker.joinable()) {
++        mImpl->Wake();
++    }
++}
++
+ bool NativeA32DspHle::ProcessFrame(
+     const NativeDspMemoryAccess& memory,
+     std::vector<int16_t>& interleavedStereo, std::string* error) {
+@@ -92,15 +329,15 @@ bool NativeA32DspHle::ProcessFrame(
+     const size_t readIndex = CurrentRegionIndex(region0, region1);
+     auto& read = readIndex == 0U ? region0 : region1;
+     auto& write = readIndex == 0U ? region1 : region0;
+-    std::array<AudioCore::QuadFrame32, 3> intermediateMixes{};
+-    for (size_t sourceIndex = 0; sourceIndex < mImpl->Sources.size();
+-         ++sourceIndex) {
+-        write.source_statuses.status[sourceIndex] =
+-            mImpl->Sources[sourceIndex].Tick(
+-                read.source_configurations.config[sourceIndex],
+-                read.adpcm_coefficients.coeff[sourceIndex]);
+-        for (size_t mix = 0; mix < intermediateMixes.size(); ++mix) {
+-            mImpl->Sources[sourceIndex].MixInto(intermediateMixes[mix], mix);
++    Impl::Mixes intermediateMixes{};
++    if (mImpl->Worker.joinable()) {
++        mImpl->TickSources(read, write, intermediateMixes);
++    } else {
++        mImpl->JobRead = &read;
++        mImpl->JobWrite = &write;
++        for (size_t sourceIndex = 0; sourceIndex < mImpl->Sources.size();
++             ++sourceIndex) {
++            mImpl->TickSource(sourceIndex, intermediateMixes);
+         }
+     }
+ 
+@@ -190,13 +427,10 @@ bool NativeA32DspHle::RestoreState(const nlohmann::json& state,
+         restoredSources.reserve(AudioCore::HLE::num_sources);
+         for (size_t index = 0; index < AudioCore::HLE::num_sources; ++index) {
+             restoredSources.emplace_back(index);
+-            restoredSources.back().SetMemoryResolver([impl = mImpl.get()](
+-                                                          uint32_t address, size_t size) {
+-                return impl->CurrentMemory != nullptr &&
+-                               impl->CurrentMemory->ResolvePhysical
+-                           ? impl->CurrentMemory->ResolvePhysical(address, size)
+-                           : nullptr;
+-            });
++            restoredSources.back().SetMemoryResolver(
++                [impl = mImpl.get()](uint32_t address, size_t size) {
++                    return impl->Resolve(address, size);
++                });
+             if (!restoredSources.back().RestoreState(sources[index], error)) {
+                 return false;
+             }
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.h
+index 5b6251ee..3a66ce36 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.h
+@@ -44,6 +44,25 @@ class NativeA32DspHle {
+                       std::vector<int16_t>& interleavedStereo,
+                       std::string* error = nullptr);
+ 
++    // Starts a thread that ticks part of the sources of every frame while
++    // ProcessFrame's caller ticks the rest (the sources are independent; the
++    // output and the state are identical to ticking them all in order).
++    // onStart runs first on the new thread. Call once, before ProcessFrame.
++    void StartSourceWorker(void (*onStart)() = nullptr);
++
++    // Wakes the worker ahead of a burst of ProcessFrame calls (it sleeps
++    // between bursts). Without a worker it does nothing.
++    void WakeSourceWorker();
++
++    // Since the last call: sources ticked by the worker and by the caller,
++    // and the caller's time waiting for the worker's sources.
++    struct SourceTickCounts {
++        uint64_t Worker = 0;
++        uint64_t Caller = 0;
++        uint64_t CallerWaitNanoseconds = 0;
++    };
++    SourceTickCounts TakeSourceTickCounts();
++
+     nlohmann::json CaptureState() const;
+     bool RestoreState(const nlohmann::json& state,
+                       std::string* error = nullptr);
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp
 index d02560bf..996e6b3c 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp
@@ -2288,7 +2650,7 @@ index 5f59a070..a02baf19 100644
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..83a72d5e 100644
+index 01026912..d54b9bb6 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 @@ -4,10 +4,232 @@
@@ -2538,7 +2900,7 @@ index 01026912..83a72d5e 100644
    static const bool inputAdmission =
        inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
    static const bool lateInputSample =
-@@ -637,6 +865,136 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +865,145 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -2661,6 +3023,15 @@ index 01026912..83a72d5e 100644
 +                     static_cast<double>(counts.Helpers) / seconds,
 +                     static_cast<double>(counts.GameThread) / seconds);
 +      }
++      if (dspHleStorage.has_value()) {
++        const auto counts = dspHleStorage->TakeSourceTickCounts();
++        std::fprintf(stderr,
++                     "[triaevum] dsp worker: %.0f sources/s, %.0f by the game thread,"
++                     " game thread waited %.2f ms per host frame\n",
++                     static_cast<double>(counts.Worker) / seconds,
++                     static_cast<double>(counts.Caller) / seconds,
++                     hostFrames > 0.0 ? static_cast<double>(counts.CallerWaitNanoseconds) * 1.0e-6 / hostFrames : 0.0);
++      }
 +      windowStart = now;
 +      windowGuestFrames = frameCount;
 +      windowHostFrames = runFrameCount;
@@ -2675,7 +3046,17 @@ index 01026912..83a72d5e 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1444,6 +1802,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1136,6 +1503,9 @@ bool NativeA32WindowSession::UpdateGuestServicesForRefresh(
+       process, hostServices, processResult, nextVblankTick,
+       launch.WholeAotBlockBudget);
+   const double clockSeconds = SecondsSince(clockStart);
++  // The DSP frames of this vblank come next: the source worker (PS4) gets
++  // up while HID runs instead of on the first frame.
++  dspHle.WakeSourceWorker();
+   phaseTiming.GuestClockSeconds += clockSeconds;
+   phaseTiming.GuestSeconds += clockSeconds;
+   if (clockResolution.OvershootTicks != 0U) {
+@@ -1444,6 +1814,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -2702,7 +3083,7 @@ index 01026912..83a72d5e 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1464,14 +1842,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1854,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
            suppressTopScreenFrontendBackdrop &&
            targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
@@ -2753,7 +3134,7 @@ index bddcb6b9..7205000f 100644
      // picture the menu is drawn in, the left button, and the wheel while a
      // host surface is up (gameplay never sees it then). The window's wheel
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
-index 81150d82..437cb639 100644
+index 81150d82..a01a5262 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 @@ -1,4 +1,7 @@
@@ -2838,6 +3219,18 @@ index 81150d82..437cb639 100644
  #if defined(__SWITCH__)
    WriteSwitchBootStage("opengl_renderer_initialized");
  #endif
+@@ -1134,6 +1176,11 @@ void NativeA32WindowSession::Setup() {
+       Oot3dNativeGame::Oot3dUiProfileName(launch.UiProfile));
+   auto &dspHle = dspHleStorage.emplace(
+       Oot3dNativeGame::BuildNativeA32DspPhysicalRegions(*manifest));
++#if defined(__ORBIS__)
++  // PS4: the DSP mix (~1 ms per host frame) runs on the game thread, the
++  // console's bottleneck; a spare core ticks part of the sources.
++  dspHle.StartSourceWorker([] { Fast::OrbisRegisterThread("dsp"); });
++#endif
+   context = Ship::Context::GetRawInstance();
+   audio = context != nullptr ? context->GetAudio() : nullptr;
+   audioPlayer = audio != nullptr ? audio->GetAudioPlayer() : nullptr;
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
 index 8071a191..78239d2d 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
@@ -2876,6 +3269,171 @@ index 8071a191..78239d2d 100644
  
  Oot3dNativeGame::NativeA32InputFrame
  // `picture` is the presentation picture in the window (the aspect ratio's
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_audio_storage_tests.cpp b/tools/oot3d/native_game_runtime/oot3d_native_audio_storage_tests.cpp
+index d7946eac..0f5935a3 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_audio_storage_tests.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_audio_storage_tests.cpp
+@@ -6,11 +6,14 @@
+ #include "oot3d_native_a32_memory.h"
+ #include <nlohmann/json.hpp>
+ #include <algorithm>
++#include <cstddef>
+ #include <deque>
+ #include <fstream>
+ #include <iostream>
+ #include <random>
+ #include <stdexcept>
++#include <thread>
++#include <chrono>
+ #include <zstd.h>
+ 
+ namespace {
+@@ -248,6 +251,134 @@ void DeferredDspBufferTest() {
+     }
+ }
+ 
++// The source worker shares out the sources of each frame between two threads:
++// output, shared memory and state must match ticking them all on one thread.
++size_t DspSourceWorkerTest() {
++    using namespace Oot3dNativeGame;
++    using AudioCore::HLE::SharedMemory;
++    using Configuration = AudioCore::HLE::SourceConfiguration::Configuration;
++    constexpr uint32_t kRegion0 = 0x1FF50000U, kRegion1 = 0x1FF70000U;
++    constexpr uint32_t kSamplesPhysical = 0x20000000U;
++    constexpr size_t kSampleBytes = 1U << 18;
++    std::mt19937 random(0xD5B0);
++    std::vector<uint8_t> sampleBytes(kSampleBytes);
++    for (auto& byte : sampleBytes) byte = static_cast<uint8_t>(random());
++
++    struct Guest {
++        std::array<std::vector<uint8_t>, 2> Regions{std::vector<uint8_t>(sizeof(SharedMemory)),
++                                                    std::vector<uint8_t>(sizeof(SharedMemory))};
++        NativeDspMemoryAccess Access;
++    };
++    const auto makeGuest = [&](Guest& guest) {
++        guest.Access.Read = [&guest](uint32_t address, std::span<uint8_t> output) {
++            const size_t region = address == kRegion0 ? 0 : address == kRegion1 ? 1 : 2;
++            if (region == 2 || output.size() != sizeof(SharedMemory)) return false;
++            std::copy(guest.Regions[region].begin(), guest.Regions[region].end(), output.begin());
++            return true;
++        };
++        guest.Access.Write = [&guest](uint32_t address, std::span<const uint8_t> input) {
++            const size_t region = address == kRegion0 ? 0 : address == kRegion1 ? 1 : 2;
++            if (region == 2 || input.size() != sizeof(SharedMemory)) return false;
++            std::copy(input.begin(), input.end(), guest.Regions[region].begin());
++            return true;
++        };
++        guest.Access.ResolvePhysical = [&](uint32_t address, size_t size) -> const uint8_t* {
++            if (address < kSamplesPhysical || address - kSamplesPhysical + size > kSampleBytes) return nullptr;
++            return sampleBytes.data() + (address - kSamplesPhysical);
++        };
++    };
++    Guest serialGuest, parallelGuest;
++    makeGuest(serialGuest);
++    makeGuest(parallelGuest);
++    NativeA32DspHle serial({{kSamplesPhysical, 0x14000000U, kSampleBytes}});
++    NativeA32DspHle parallel({{kSamplesPhysical, 0x14000000U, kSampleBytes}});
++    parallel.StartSourceWorker();
++
++    SharedMemory config{};
++    const auto configure = [&](Configuration& source) {
++        source = {};
++        source.enable = random() % 8 != 0;
++        source.enable_dirty.Assign(1);
++        const float rates[] = {0.25f, 0.5f, 0.99f, 1.0f, 1.0227f, 1.5f, 2.0f, 3.75f};
++        source.rate_multiplier = rates[random() % std::size(rates)];
++        source.rate_multiplier_dirty.Assign(1);
++        source.interpolation_mode = static_cast<Configuration::InterpolationMode>(random() % 3);
++        source.interpolation_dirty.Assign(1);
++        for (auto& mix : source.gain) for (auto& gain : mix) gain = static_cast<float>(random() % 2001) / 1000.0f - 0.5f;
++        source.gain_0_dirty.Assign(1);
++        source.gain_1_dirty.Assign(1);
++        source.gain_2_dirty.Assign(1);
++        const auto format = static_cast<Configuration::Format>(random() % 3);
++        source.format.Assign(format);
++        source.mono_or_stereo.Assign(format == Configuration::Format::ADPCM || random() % 2
++                                         ? Configuration::MonoOrStereo::Mono
++                                         : Configuration::MonoOrStereo::Stereo);
++        source.length = 1 + random() % 4000;
++        source.physical_address = kSamplesPhysical + (random() % (kSampleBytes / 2));
++        source.is_looping.Assign(random() % 3 != 0);
++        source.embedded_buffer_dirty.Assign(1);
++    };
++    for (auto& source : config.source_configurations.config) configure(source);
++    config.dsp_configuration.master_volume = 1.0f;
++    config.dsp_configuration.master_volume_dirty.Assign(1);
++
++    constexpr size_t kFrames = 20000;
++    uint64_t workerTicks = 0;
++    size_t nonzeroFrames = 0;
++    for (size_t frame = 0; frame < kFrames; ++frame) {
++        if (frame % 7 == 0) configure(config.source_configurations.config[random() % AudioCore::HLE::num_sources]);
++        // Bursts of a few frames with pauses between them, as in the game:
++        // the worker falls asleep and is woken ahead of a burst or by the
++        // caller finding it asleep.
++        if (frame % 4 == 0 && frame % 400 < 200) {
++            std::this_thread::sleep_for(std::chrono::milliseconds(frame % 8 == 0 ? 4 : 0));
++            if (frame % 12 != 0) parallel.WakeSourceWorker();
++        }
++        config.frame_counter = static_cast<u16>(frame % 0xFFFEU + 1U);
++        const auto bytes = std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(&config), sizeof(config));
++        for (Guest* guest : {&serialGuest, &parallelGuest}) {
++            std::copy(bytes.begin(), bytes.end(), guest->Regions[frame % 2].begin());
++            std::fill(guest->Regions[(frame + 1) % 2].begin(), guest->Regions[(frame + 1) % 2].end(), 0);
++        }
++        std::vector<int16_t> serialOutput, parallelOutput;
++        std::string error;
++        Require(serial.ProcessFrame(serialGuest.Access, serialOutput, &error), "serial DSP frame failed");
++        Require(parallel.ProcessFrame(parallelGuest.Access, parallelOutput, &error), "DSP frame with the source worker failed");
++        Require(serialOutput == parallelOutput, "source worker changed the DSP output");
++        // Mixers::GetCurrentStatus leaves DspStatus's padding uninitialized
++        // (stack bytes, with or without the worker; the guest ignores them).
++        for (Guest* guest : {&serialGuest, &parallelGuest}) {
++            for (auto& region : guest->Regions) {
++                std::fill_n(region.begin() + offsetof(SharedMemory, dsp_status) + 4,
++                            sizeof(AudioCore::HLE::DspStatus) - 4, 0);
++            }
++        }
++        Require(serialGuest.Regions == parallelGuest.Regions, "source worker changed the DSP shared memory");
++        nonzeroFrames += std::any_of(serialOutput.begin(), serialOutput.end(), [](int16_t sample) { return sample != 0; });
++        for (auto& source : config.source_configurations.config) source.dirty_raw = 0;
++        config.dsp_configuration.dirty_raw = 0;
++        if (frame % 2000 == 1999) {
++            Require(serial.CaptureState() == parallel.CaptureState(), "source worker changed the DSP state");
++            const auto counts = parallel.TakeSourceTickCounts();
++            Require(counts.Worker + counts.Caller == 2000 * AudioCore::HLE::num_sources, "source ticks lost");
++            workerTicks += counts.Worker;
++        }
++    }
++    Require(serial.CaptureState() == parallel.CaptureState(), "source worker changed the final DSP state");
++    Require(workerTicks != 0 && nonzeroFrames > kFrames / 2, "the source worker test mixed nothing in parallel");
++    std::cout << "DSP source worker: " << workerTicks << " of " << kFrames * AudioCore::HLE::num_sources
++              << " source ticks, " << nonzeroFrames << " audible frames\n";
++    std::string error;
++    const auto restored = serial.CaptureState();
++    Require(parallel.RestoreState(restored, &error), "restore under the source worker failed");
++    std::vector<int16_t> serialOutput, parallelOutput;
++    Require(serial.ProcessFrame(serialGuest.Access, serialOutput, &error) &&
++                parallel.ProcessFrame(parallelGuest.Access, parallelOutput, &error) &&
++                serialOutput == parallelOutput,
++            "restored DSP differs under the source worker");
++    return kFrames;
++}
++
+ nlohmann::json ReadDspSnapshot(const char* path) {
+     std::ifstream file(path, std::ios::binary | std::ios::ate);
+     Require(file.good(), "cannot open gameplay checkpoint");
+@@ -292,7 +423,9 @@ int main(int argc, char** argv) {
+         const auto calls = ResamplerTests();
+         SourceStateTest();
+         DeferredDspBufferTest();
+-        std::cout << "audio storage: " << calls << " differential resampler calls, codecs, source playback/save/restore/sleep: PASS\n";
++        const auto workerFrames = DspSourceWorkerTest();
++        std::cout << "audio storage: " << calls << " differential resampler calls, codecs, source playback/save/restore/sleep, "
++                  << workerFrames << " DSP frames with the source worker: PASS\n";
+         if (argc == 3) {
+             const auto before = ReadDspSnapshot(argv[1]);
+             const auto after = ReadDspSnapshot(argv[2]);
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp b/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp
 index 8d432189..d501044d 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_compiled_functions.cpp
