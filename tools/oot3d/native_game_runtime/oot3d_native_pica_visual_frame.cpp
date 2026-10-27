@@ -1102,6 +1102,70 @@ void InterpolateVisualLightBinding(
     }
 }
 
+// CmbPaletteSlots results for draws whose two endpoints share their vertex
+// snapshot (render thread only).
+struct CmbPaletteSlotKey {
+    const void* VertexBytes;
+    const void* IndexBytes;
+    uint32_t VertexCount;
+    int32_t BaseVertex;
+    uint16_t ByteStride;
+    uint16_t ByteOffset;
+    uint8_t InputRate, Format, Influences;
+    bool Indexed, IndicesAre16Bit;
+    bool operator==(const CmbPaletteSlotKey&) const = default;
+};
+struct CmbPaletteSlotKeyHash {
+    size_t operator()(const CmbPaletteSlotKey& key) const noexcept {
+        uint64_t hash = reinterpret_cast<uintptr_t>(key.VertexBytes) * 0x9E3779B97F4A7C15ULL;
+        hash ^= reinterpret_cast<uintptr_t>(key.IndexBytes) + 0x632BE59BD9B4E019ULL + (hash << 6) + (hash >> 2);
+        hash ^= (uint64_t{key.VertexCount} << 32 | static_cast<uint32_t>(key.BaseVertex)) + (hash << 6) + (hash >> 2);
+        hash ^= (uint64_t{key.ByteStride} << 32 | uint64_t{key.ByteOffset} << 16 | uint64_t{key.InputRate} << 8 |
+                 key.Format) + key.Influences * 3U + key.Indexed * 7U + key.IndicesAre16Bit * 11U +
+                (hash << 6) + (hash >> 2);
+        return static_cast<size_t>(hash);
+    }
+};
+struct CmbPaletteSlotEntry {
+    std::optional<uint32_t> Selected;
+    std::shared_ptr<const std::vector<uint8_t>> VertexBytes;
+    std::shared_ptr<const std::vector<uint8_t>> IndexBytes;
+};
+thread_local std::unordered_map<CmbPaletteSlotKey, CmbPaletteSlotEntry, CmbPaletteSlotKeyHash> gCmbPaletteSlots;
+
+template <typename Read>
+std::optional<uint32_t> ScanCmbPaletteSlots(const Oot3dPicaVulkanDrawPlan& previous,
+                                            const Oot3dPicaVulkanDrawPlan& current,
+                                            const Oot3dPicaVulkanVertexAttribute& leftAttribute,
+                                            const Oot3dPicaVulkanVertexAttribute& rightAttribute,
+                                            size_t influences, const Read& read) {
+    const auto* left = &leftAttribute;
+    const auto* right = &rightAttribute;
+    uint32_t selected = 0;
+    const auto indices = current.ResolvedIndexBytes();
+    const size_t indexSize = current.IndicesAre16Bit ? 2 : 1;
+    if (current.Indexed && current.VertexCount > indices.size()/indexSize) return {};
+    for (size_t i = 0; i < current.VertexCount; ++i) {
+        int64_t vertex = static_cast<int64_t>(i);
+        if (current.Indexed) {
+            vertex = indices[i*indexSize];
+            if (indexSize == 2) vertex |= int64_t(indices[i*indexSize+1]) << 8;
+            vertex += current.BaseVertex;
+        }
+        if (vertex < 0) return {};
+        for (size_t component = 0; component < influences; ++component) {
+            const auto from = read(previous,*left,size_t(vertex),component);
+            const auto to = read(current,*right,size_t(vertex),component);
+            // Reject fractional, wrapped and out-of-palette addresses instead
+            // of approximating PICA's MOVA/wrap semantics with a guessed span.
+            if (!from || !to || !std::isfinite(*to) || *from != *to ||
+                *to < 0 || *to >= 10 || std::floor(*to) != *to) return {};
+            selected |= 1U << static_cast<uint32_t>(*to);
+        }
+    }
+    return selected;
+}
+
 // Return a conservative exact mask of the slots referenced by this draw.
 // A missing snapshot or an unfamiliar addressing mode disables factoring;
 // selecting rigid-looking rows from an unknown active palette could separate
@@ -1155,27 +1219,37 @@ std::optional<uint32_t> CmbPaletteSlots(
         }
         return {};
     };
-    uint32_t selected = 0;
-    const auto indices = current.ResolvedIndexBytes();
-    const size_t indexSize = current.IndicesAre16Bit ? 2 : 1;
-    if (current.Indexed && current.VertexCount > indices.size()/indexSize) return {};
-    for (size_t i = 0; i < current.VertexCount; ++i) {
-        int64_t vertex = static_cast<int64_t>(i);
-        if (current.Indexed) {
-            vertex = indices[i*indexSize];
-            if (indexSize == 2) vertex |= int64_t(indices[i*indexSize+1]) << 8;
-            vertex += current.BaseVertex;
-        }
-        if (vertex < 0) return {};
-        for (size_t component = 0; component < influences; ++component) {
-            const auto from = read(previous,*left,size_t(vertex),component);
-            const auto to = read(current,*right,size_t(vertex),component);
-            // Reject fractional, wrapped and out-of-palette addresses instead
-            // of approximating PICA's MOVA/wrap semantics with a guessed span.
-            if (!from || !to || !std::isfinite(*to) || *from != *to ||
-                *to < 0 || *to >= 10 || std::floor(*to) != *to) return {};
-            selected |= 1U << static_cast<uint32_t>(*to);
-        }
+    // Both endpoints reading the same immutable vertex snapshot (the mesh
+    // did not change: the geometry cache hands out the same buffer) compare
+    // equal by construction, and the mask then depends on the current draw's
+    // buffers alone: remembered by their identity, across the samples and
+    // frames that reuse them (the per-vertex walk was most of the render
+    // thread's interpolation time in busy scenes, 1.72).
+    const auto* leftBinding = FindVertexBinding(previous, left->Binding);
+    const auto* rightBinding = FindVertexBinding(current, right->Binding);
+    const bool sameSource =
+        leftBinding && rightBinding && rightBinding->SharedBytes &&
+        leftBinding->SharedBytes == rightBinding->SharedBytes &&
+        leftBinding->ByteStride == rightBinding->ByteStride &&
+        leftBinding->InputRate == rightBinding->InputRate && left->Format == right->Format &&
+        left->ByteOffset == right->ByteOffset &&
+        (!current.Indexed || current.SharedIndexBytes);
+    CmbPaletteSlotKey key{};
+    if (sameSource) {
+        key = {rightBinding->SharedBytes.get(), current.Indexed ? current.SharedIndexBytes.get() : nullptr,
+               current.VertexCount, current.BaseVertex, rightBinding->ByteStride, right->ByteOffset,
+               static_cast<uint8_t>(rightBinding->InputRate), static_cast<uint8_t>(right->Format),
+               static_cast<uint8_t>(influences), current.Indexed, current.IndicesAre16Bit};
+        if (const auto found = gCmbPaletteSlots.find(key); found != gCmbPaletteSlots.end())
+            return found->second.Selected;
+    }
+    const auto selected = ScanCmbPaletteSlots(previous, current, *left, *right, influences, read);
+    if (sameSource) {
+        if (gCmbPaletteSlots.size() >= 1024U) gCmbPaletteSlots.clear();
+        // The entry holds the buffers, so their addresses are not reused
+        // while it is there.
+        gCmbPaletteSlots.emplace(key, CmbPaletteSlotEntry{selected, rightBinding->SharedBytes,
+                                                         current.Indexed ? current.SharedIndexBytes : nullptr});
     }
     return selected;
 }
@@ -2196,15 +2270,19 @@ std::vector<Oot3dPicaVisualFrame> Oot3dPicaVisualFrameAccumulator::FinishFrames(
             std::min(executedTransfers, transfer) - std::min(executedTransfers, firstTransfer);
         frames.push_back(std::move(frame));
     }
-    const size_t largest = std::max_element(frames.begin(), frames.end(), [](const auto& a, const auto& b) {
-        return a.Draws.size() < b.Draws.size();
-    })->Draws.size();
+    size_t total = 0U;
+    for (const auto& frame : frames) total += frame.Draws.size();
     mPendingDraws = std::move(nextDraws);
     mPendingMemoryFills = std::move(nextFills);
     mPendingDisplayTransfers = std::move(nextTransfers);
-    // Draw plans are several kilobytes each. Starting the next frame at this
-    // frame's size avoids regrowing the vector and moving every plan again.
-    mPendingDraws.reserve(largest);
+    // Draw plans are several kilobytes each. Starting the next presentation
+    // at this one's size avoids regrowing the vector and moving every plan
+    // again; the headroom covers one with more draws (in combat the count
+    // changes every frame, and the regrowth moved ~28 MiB/s of plans on the
+    // PS4, 1.68 allocation trace). All of this presentation's game frames
+    // count, not the largest: below 60 host frames/s one presentation
+    // gathers ~1.5 of them, and sizing for one regrew every time (1.71).
+    mPendingDraws.reserve(mPendingDraws.size() + total + total / 4U + 16U);
     return frames;
 }
 

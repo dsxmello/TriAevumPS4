@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -22,7 +23,9 @@ namespace Oot3dNativeGame {
 
 class Oot3dNativePicaFrontend;
 class Oot3dPicaCommandListCompositionProvider;
+class PicaGspWorker;
 struct Oot3dGspCommandPacket;
+struct Oot3dPicaCommandListCompositionSpan;
 enum class Oot3dPicaCompositionDomain : uint8_t;
 enum class Oot3dPicaInterruptId : uint8_t;
 
@@ -318,6 +321,22 @@ class NativeA32CtrHostServices final : public NativeA32HostServices {
     bool RestoreState(const nlohmann::json& state, NativeA32Process& process,
                       std::string* error = nullptr);
 
+    // PS4 1.70: the guest's GSP commands on a worker thread
+    // (oot3d_native_pica_gsp_worker.h). guestWrite passes a guest write to
+    // observed memory on to the submission queue (worker thread).
+    void StartPicaWorker(NativeA32Memory& memory,
+                         std::function<void(uint32_t, size_t)> guestWrite,
+                         void (*onStart)());
+    PicaGspWorker* PicaWorker() const noexcept { return mPicaWorker.get(); }
+    // Joins the worker (its jobs reach the session's frontend and queue).
+    void StopPicaWorker() {
+        mPicaWorker.reset();
+        mPicaDeliver = nullptr;
+    }
+    // The guest stopped: waits for the worker and queues the interrupts it
+    // raised; true if any was (the guest may run on). Throws its error.
+    bool DrainPicaWorker(NativeA32Memory& memory);
+
   private:
     NativeA32HostResult HandleSvcImpl(
         uint32_t immediate, oot3d::recomp::a32::GuestState& state,
@@ -421,6 +440,13 @@ class NativeA32CtrHostServices final : public NativeA32HostServices {
                               std::string* error);
     bool TakePicaPendingInterrupts(std::vector<uint8_t>* interrupts,
                                    std::string* error);
+    bool ExecuteGspCommand(
+        const Oot3dGspCommandPacket& packet,
+        std::span<const uint32_t> commandList,
+        std::optional<Oot3dPicaCompositionDomain> compositionDomain,
+        const std::vector<Oot3dPicaCommandListCompositionSpan>* compositionSpans,
+        NativeA32Memory& memory, std::vector<uint8_t>& interrupts,
+        std::string& picaError);
     NativeA32HostResult HandleResourceLimitValues(
         bool current, oot3d::recomp::a32::GuestState& state,
         NativeA32Memory& memory, NativeA32CtrSvcEvent event);
@@ -535,6 +561,9 @@ class NativeA32CtrHostServices final : public NativeA32HostServices {
     uint32_t mHidGyroscopeEnableCount = 0;
     bool mNdmSchedulerSuspended = false;
     bool mNdmSchedulerRunsInBackground = false;
+    std::function<bool(uint8_t)> mPicaDeliver;
+    // Last: destroyed (its thread joined) before everything it reaches.
+    std::shared_ptr<PicaGspWorker> mPicaWorker;
 };
 
 } // namespace Oot3dNativeGame

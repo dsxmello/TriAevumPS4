@@ -930,3 +930,191 @@ Quadro do host (ms) parado, janelas com >= 40 quadros do jogo/s:
   Starvations de áudio 132 em 119 janelas -> 19 em 68. Sem travamento
   (o hang log ainda é o da 1.57h). O quadro do host fica perto da meta de
   ~16 ms; o pacote com PGO passa a ser o normal da 1.65.
+- Combate (Stalchildren em Hyrule, NPCs): o jogo fica em 60 quadros/s, o
+  host cai para 29–40. CPU por quadro do jogo 9 -> 14–15 ms, draws por
+  quadro do jogo ~50 -> ~90. Acima de ~16,6 ms por quadro do host o flip
+  perde o vblank e o host mostra um quadro a cada dois do jogo: a queda é
+  em degrau, não gradual. Perfil da thread do jogo (samples.log, PGO,
+  combate 221–251 s contra calmo 291–332 s), por tempo ocupado: código do
+  jogo 57% -> 60% (~5,1 -> ~8,7 ms), frontend PICA ~15% (~1,4 -> ~2,3 ms),
+  memória do guest ~10%, mem*/malloc 8–9% (`mspace_malloc` ~2%). Tudo cresce
+  junto com o número de atores e draws; nenhum ponto quente novo. Para
+  segurar 60 em combate faltam ~2–3 ms por quadro do jogo.
+
+### 1.66/1.67 — de onde vêm as alocações da thread do jogo
+
+- `src/ps4_alloc_trace.cpp`: com `/data/triaevum/alloc_trace`, cada
+  `operator new` da thread do jogo é contado (`--wrap=_Znwm,--wrap=_Znam`) e
+  1 em 8 guarda os primeiros quadros da pilha; a cada 10 s o boot log ganha
+  taxa, MiB/s e os 25 sítios/chamadores (endereços = nm). Sem o arquivo,
+  só um teste de thread_local por alocação.
+- 1.66 usava `_Unwind_Backtrace`: ~2,5 ms por chamada no console (busca nas
+  tabelas de unwind do binário de 178 MB), a tela de início a 1 quadro/s.
+  1.67 segue a cadeia de rbp (todo o binário mantém frame pointer, código
+  gerado incluído) e roda normal.
+- Tela de início: ~1300 alocações por quadro do jogo, quase todas do menu
+  (InGameMenu::BuildPresentation, Menu::AppendText: strings refeitas a cada
+  quadro).
+- No jogo (1.67, Hyrule/Kokiri): ~500 alocações por quadro do jogo, **iguais
+  em combate e calmo**; os bytes sobem de ~45 para 80–100 MiB/s (cópia de
+  vértices/índices por draw, CaptureIndexAndVertexResources). Perfil do mesmo
+  trecho: mspace_malloc ~1,7%, memcpy 2,1% -> 3,7% em combate; os sítios que
+  mais alocam (HandleSvc, ReadNativeSunHeader, CollectNativeActorInteractions,
+  descritores de textura da UI) ficam fora das 40 funções mais caras.
+  Alocação + cópia somam no máximo ~0,3–0,5 ms por quadro do jogo: não é o
+  que derruba o combate. O crescimento está no código do jogo (+~3,6 ms) e no
+  frontend PICA (+~0,9 ms).
+
+### 1.68/1.69 — worker do frontend, simulado antes de construir
+
+- `oot3d_native_pica_worker_probe.h`: cada lista de comandos (e na 1.69 cada
+  outro comando GSP) é reencenada num worker simulado, na linha do tempo da
+  thread do jogo sem esse trabalho; nos pontos em que o jogo precisaria do
+  resultado ele espera. Linha `frontend worker` no boot log a cada 5 s.
+- 1.68, só as listas no worker (A): em combate o frontend custa 2–3,5 ms por
+  quadro do host, mas só **0,2–0,36 ms** ficariam escondidos. ~210 comandos
+  GSP/s que não são listas (preenchimento, DMA, transferência de tela) vêm
+  logo depois das listas e escrevem memória do guest em ordem com elas: cada
+  um obriga a esperar o worker. Sincronias/s: 60 esperas do guest, ~210
+  comandos GSP, ~30 listas com interrupção sem draw, 0 escritas de
+  registrador.
+- 1.69 simula também B: o worker executa todos os comandos GSP em ordem
+  (limite superior: um guest que esperasse a interrupção de um DMA no meio do
+  refresh hoje não bloqueia e não entra na conta).
+- Bytes por sítio (1.68, alocação inteira rastreada): ~54 de ~80 MiB/s em
+  combate são o vetor de planos do `Oot3dPicaVisualFrameAccumulator`
+  (crescimento no meio do quadro movendo todos os planos). 1.69 reserva com
+  folga (`largest + largest/4 + 16`). A lista de comandos copiada por
+  submissão usa um buffer reaproveitado (1.68). Ganho estimado das duas:
+  ~0,1–0,3 ms por quadro.
+
+## 1.70 — worker do GSP (design B de verdade)
+
+- Medição da 1.69 (Hyrule Field, combate): B esconderia 3,0–3,5 ms por
+  quadro do host (a thread do jogo esperaria 0,02–0,05 ms); A só 0,3. O
+  bloqueio de B era a memória do guest: o frontend lê listas, vértices e
+  texturas, e fills/DMA/transferências escrevem, enquanto o código gerado
+  roda na thread do jogo e atualiza sem sincronia `mRangeGeneration`, a
+  geração de cada página (inline em `oot3d_native_a32_memory.h`, nos 257
+  shards) e os vetores de páginas observadas/adiadas.
+- `oot3d_native_pica_gsp_worker.h`: no TriggerCmdReqQueue a thread do jogo lê
+  o pacote, a lista e os spans de composição (os ganchos os gravaram para
+  aquela lista) e entrega um job; o worker executa os jobs em ordem
+  (`NativeA32CtrHostServices::ExecuteGspCommand`, o mesmo corpo de antes, que
+  a thread do jogo ainda usa sem o worker) e deixa as interrupções para a
+  thread do jogo, que as enfileira para o guest na SVC seguinte. A thread do
+  jogo espera o worker:
+  - sempre que o guest para (`RunUntilGuestWait`): todo comando enviado já
+    foi executado quando o código do quadro drena a fila, como antes; se a
+    espera entregou uma interrupção, o guest roda de novo (era o que
+    acontecia com ela já enfileirada);
+  - antes das outras requisições do GSP (escrita/leitura de registradores),
+    menos as de todo quadro que não tocam o frontend (trigger, cache, buffer
+    swap);
+  - antes de mudar o mapa ou a tabela de páginas (gancho de layout:
+    `MapRegion`, `RebuildPageTable`, `RestoreState`, atribuições, observador).
+- `oot3d_native_a32_memory_device.h`: os membros fora de linha da memória
+  (`ReadBytes`, `WriteBytes`, `Fill`, `SynchronousReadView`,
+  `RangeWriteGeneration`, `ObserveWrites`...) veem que a thread é o worker e:
+  - span com entrada rápida em todas as páginas (mapeada inteira, não adiada,
+    não vigiada; para escrita, gravável e não observada): lê/escreve no lugar,
+    como a GPU do console;
+  - escrita do worker não mexe no contador: zera a geração das páginas (sem
+    certificado, o snapshot compara bytes) e deve um passo de geração para a
+    faixa, que a thread do jogo dá na próxima SVC (`Service`);
+  - ponteiros de escrita escapados: cópia feita pela thread do jogo a cada
+    escape (época); com a cópia velha, sem certificado;
+  - faixa já observada: respondido no worker (a lista só muda com ele
+    parado);
+  - o resto (bytes adiados, páginas observadas ou vigiadas, observar uma
+    faixa nova, acessos tipados) a thread do jogo executa para o worker, em
+    toda SVC e enquanto o espera. Nunca o contrário.
+  O layout e as funções inline da memória não mudaram: o header só ganhou um
+  `friend`, o código dos shards é o mesmo e o perfil PGO 1.65 continua valendo.
+- Escrita do guest em memória observada (cópias raw que a GPU possui): com o
+  worker ocupado vai como job, em ordem com os comandos; feita por uma chamada
+  para o worker, ele a repassa ao fim daquele job. A thread do jogo nunca pega
+  o lock da fila enquanto o worker pode tê-lo.
+- `NativeHdFontRuntime`: os blits são observados na thread do jogo e o
+  `Resolve` roda na captura (worker): spinlock em volta do mapa de
+  superfícies, nunca segurado durante um acesso à memória do guest.
+- Sem lock nem chamada de sistema por job (slots fixos, publicação com um
+  store de release, yield por 2 ms depois do último job, depois condition
+  variable com timeout de 1 ms). `/data/triaevum/gsp_worker_off` volta tudo
+  para a thread do jogo (A/B). Thread `gsp` no profiler.
+- Log de 5 s: `gsp worker per host frame ms: busy, waiting for game-thread
+  calls | game thread waited (guest wait, gsp request, layout, queue full) |
+  per second: commands (lists), guest writes, game-thread calls, reads and
+  writes in place`. O probe da 1.68/1.69 saiu (as linhas `frontend worker
+  (simulated)` deixam de existir).
+- Teste no PC (`oot3d_native_pica_gsp_worker_tests.cpp`, comando no topo:
+  memória real + worker real, ASan/UBSan e TSan): 160 mil jobs com
+  capturas no estilo do cache de snapshots, escritas do dispositivo, fills, páginas observadas, escapes,
+  3 mil mudanças de layout com o worker ocupado, escritas do guest em outra
+  região durante o worker: nenhum snapshot certificado com bytes diferentes,
+  interrupções todas e em ordem, sem deadlock. Mutante (escrita do worker sem
+  zerar a geração) é pego. TSan: só as corridas intencionais (geração de
+  página escrita inline pela thread do jogo contra a leitura atômica do
+  worker).
+- Esperado: "guest" cai ~2,5–3,5 ms por quadro do host em Hyrule/combate;
+  "pica submit" (o dreno) igual. Medir parado no mesmo ponto contra a 1.69, e
+  com `gsp_worker_off` na mesma versão.
+
+## 1.71 — reserva dos planos pelo total da apresentação
+
+- Primeira sessão da 1.70 (logs de diagnóstico desligados; só o profiler,
+  47 janelas de 10 s): `SubmitGspCommand`/`SubmitDrawPacket` saíram da `main`
+  para a `gsp` (6–15% de um núcleo); a `main` quase não espera o worker
+  (< 0,1% das amostras nele). Janelas pesadas (vasos, inimigos surgindo,
+  Market; `main` 75% ocupada contra 50% nas calmas): cresce código do jogo
+  (malhas, esqueletos/curvas, colisão) e o `memcpy` da `main`, cuja maior
+  origem é `vector<Oot3dPicaVulkanDrawPlan>` crescendo no meio do quadro.
+- Causa: a reserva da 1.69 era pelo maior quadro do jogo da apresentação,
+  mas `mPendingDraws` junta todos os quadros do jogo até a próxima; abaixo de
+  60 quadros do host/s são ~1,5 por apresentação e o vetor crescia sempre.
+  1.71 reserva pelo total (+25% +16). Esperado: ~0,2–0,3 ms por quadro do
+  host nos trechos pesados.
+- O resto do `memcpy` do `Append` é o estado inline do plano (o plano já
+  vem por move); tirá-lo exigiria guardar ponteiros, fica para depois.
+
+## 1.72 — interpolação: máscara de paleta memorizada
+
+- Sessão da 1.71 com logs (87 janelas, worker ligado), CPU do jogo por
+  quadro do jogo contra 1.67–1.69: Hyrule (81) 11,0–11,3 -> 8,5 ms (host
+  45–50 -> 58 fps), Kokiri (85) 10,4–11,0 -> 8,8 (48–55 -> 59), Market (32)
+  11,7 -> 9,8 (37 -> 39). Worker: thread do jogo esperou 0,2–0,37 ms por
+  quadro do host (só na espera do guest), 0 chamadas na thread do jogo/s;
+  até ~4 ms por quadro do host saíram dela no Market.
+- No Market o limite passou a ser a thread `render` (85–89% ocupada; GPU
+  espera 1–2,6 ms): ~21% na interpolação visual (`ShareVisualPaletteMotions`
+  11,6%, `AnalyzeVisualTransitionWithMatching` 4,8%,
+  `SampleVisualFrameViewWithMatching` 3,5%, `BuildVisualDrawMatching` 1,4%),
+  ~24% gravando os draws (`SubmitPicaDraw` 18% + memcpy 6%), ~7% malloc/free.
+- `CmbPaletteSlots` (dentro de `ShareVisualPaletteMotions`) percorria todos
+  os vértices de cada draw a cada amostra, lendo os índices de osso dos dois
+  quadros. Com os dois quadros lendo o mesmo snapshot de vértices (malha que
+  não mudou: o cache de geometria devolve o mesmo buffer) a comparação é
+  igual por construção e a máscara só depende dos buffers do quadro atual:
+  memorizada pela identidade deles (a entrada segura os buffers; até 1024
+  entradas, thread de render). Esperado: a maior parte dos 11,6%.
+
+## Sessões da 1.72 — Market limitado pela GPU (6x) e pela thread `render` (3x)
+
+- Escala 6x (tela de cima 2560x1440, saída 1080p): a memorização
+  funcionou (`ShareVisualPaletteMotions` 11,6% -> 1,0% da thread `render`)
+  e o Market (32) foi de 37–39 para 46 fps de mediana, mas o render passou a
+  esperar ~3,2 ms por quadro na fence do quadro anterior (dois slots): a GPU
+  leva ~21 ms por quadro ali. Hyrule e Kokiri também esperam 2–4 ms. O
+  "sceGnmSubmitCommandBuffers avg ~3 ms" do radv é a thread de submissão do
+  winsys (a chamada bloqueia até o trabalho anterior da GPU acabar), não o
+  render.
+- Escala 3x no Market: espera da GPU ~0,1 ms; o host oscila com os draws
+  (~250 draws -> 56–60 fps, 300+ -> 40–46). A thread `render` fica ~90%
+  ocupada e a do jogo espera ~24%: sem a GPU no caminho, o limite é a CPU
+  do render. Perfil dela: `SubmitPicaDraw` 21% (três vetores alocados por
+  draw; vértices e índices copiados para o ring a cada draw, mesmo sem
+  mudança) + memcpy 6,8% + memset 3,2%, malloc/free ~8%, interpolação
+  visual ~10%, radv ~6%, `printf_core` 2,6% de origem ainda desconhecida (o
+  profiler só atribui chamadores das funções mem* folha).
+- O tracer de alocação (`src/ps4_alloc_trace.cpp`, 1.66–1.68) foi removido:
+  já respondeu (alocações da thread do jogo ~0,3 ms no total).

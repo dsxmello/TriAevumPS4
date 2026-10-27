@@ -1,8 +1,14 @@
 #include "oot3d_native_a32_memory.h"
+#include "oot3d_native_a32_memory_device.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstring>
+#include <exception>
 #include <limits>
 #include <stdexcept>
+#include <thread>
+#include <type_traits>
 
 #include <nlohmann/json.hpp>
 
@@ -44,7 +50,199 @@ void AddWriteRange(std::vector<std::pair<uint32_t, size_t>>& ranges,
     ranges.insert(position, {static_cast<uint32_t>(begin), static_cast<size_t>(end - begin)});
 }
 
+// The GSP worker's side (oot3d_native_a32_memory_device.h). The runner is set
+// only on the device thread; the rest is shared by both threads, the vectors
+// under the spinlock (a few instructions per access, never a system call).
+thread_local NativeA32DeviceAccess::GuestRunner tDeviceRunner = nullptr;
+std::atomic<void (*)()> gLayoutHook{nullptr};
+std::atomic<uint64_t> gDirectReads{0};
+std::atomic<uint64_t> gDirectWrites{0};
+std::atomic<uint64_t> gGuestCalls{0};
+std::atomic_flag gDeviceLock = ATOMIC_FLAG_INIT;
+std::vector<std::pair<uint32_t, size_t>> gOwedWrites;
+std::atomic<bool> gOwedPending{false};
+// Bumped by every escape of a write pointer; the device's copy of the ranges
+// is good while its epoch matches.
+std::atomic<uint64_t> gEscapeEpoch{1};
+std::atomic<bool> gEscapeCopyWanted{false};
+std::shared_ptr<const std::vector<std::pair<uint32_t, size_t>>> gEscapeCopy;
+uint64_t gEscapeCopyEpoch = 0;
+
+class DeviceLock final {
+  public:
+    DeviceLock() noexcept {
+        while (gDeviceLock.test_and_set(std::memory_order_acquire)) std::this_thread::yield();
+    }
+    ~DeviceLock() { gDeviceLock.clear(std::memory_order_release); }
+    DeviceLock(const DeviceLock&) = delete;
+    DeviceLock& operator=(const DeviceLock&) = delete;
+};
+
 } // namespace
+
+NativeA32DeviceAccess::ThreadScope::ThreadScope(GuestRunner runner) noexcept {
+    tDeviceRunner = runner;
+}
+
+NativeA32DeviceAccess::ThreadScope::~ThreadScope() { tDeviceRunner = nullptr; }
+
+bool NativeA32DeviceAccess::OnDeviceThread() noexcept { return tDeviceRunner != nullptr; }
+
+void NativeA32DeviceAccess::SetLayoutHook(void (*hook)()) noexcept {
+    gLayoutHook.store(hook, std::memory_order_release);
+}
+
+void NativeA32DeviceAccess::LayoutChanging() {
+    if (tDeviceRunner != nullptr)
+        throw std::logic_error("the GSP worker reached a guest memory layout change");
+    if (const auto hook = gLayoutHook.load(std::memory_order_acquire)) hook();
+}
+
+void NativeA32DeviceAccess::EscapesChanged() noexcept {
+    gEscapeEpoch.fetch_add(1, std::memory_order_release);
+}
+
+template <typename Function>
+auto NativeA32DeviceAccess::OnGuestThread(Function&& function) {
+    using Result = std::invoke_result_t<Function&>;
+    struct Call {
+        std::remove_reference_t<Function>* Body;
+        std::optional<Result> Value;
+        std::exception_ptr Error;
+    } call{&function, std::nullopt, nullptr};
+    gGuestCalls.fetch_add(1, std::memory_order_relaxed);
+    tDeviceRunner(
+        [](void* argument) {
+            auto& self = *static_cast<Call*>(argument);
+            try {
+                self.Value.emplace((*self.Body)());
+            } catch (...) {
+                self.Error = std::current_exception();
+            }
+        },
+        &call);
+    if (call.Error) std::rethrow_exception(call.Error);
+    return std::move(*call.Value);
+}
+
+uint8_t* NativeA32DeviceAccess::InPlace(const NativeA32Memory& memory, uint32_t address,
+                                        size_t size, bool write) noexcept {
+    // The mapping only changes after the layout hook let the worker finish.
+    const auto* region = memory.FindRegion(address, size);
+    if (region == nullptr || (write && !region->Writable) || !memory.mFastPages ||
+        memory.mTraceWriteFingerprint) {
+        return nullptr;
+    }
+    // Entries go from null to a pointer under the worker (a deferred page is
+    // materialized), never the other way: those changes happen in the drain.
+    const size_t last = (uint64_t{address} + size - 1U) >> NativeA32Memory::PageShift;
+    for (size_t page = address >> NativeA32Memory::PageShift; page <= last; ++page) {
+        const auto& entry = memory.mFastPages[page];
+        const bool present = write ? __atomic_load_n(&entry.Write, __ATOMIC_ACQUIRE) != nullptr
+                                   : __atomic_load_n(&entry.Read, __ATOMIC_ACQUIRE) != nullptr;
+        if (!present) return nullptr;
+    }
+    return const_cast<uint8_t*>(region->Bytes.data()) + (address - region->BaseAddress);
+}
+
+void NativeA32DeviceAccess::NoteWritten(NativeA32Memory& memory, uint32_t address,
+                                        size_t size) {
+    const size_t last = (uint64_t{address} + size - 1U) >> NativeA32Memory::PageShift;
+    for (size_t page = address >> NativeA32Memory::PageShift; page <= last; ++page) {
+        __atomic_store_n(&memory.mFastPages[page].WriteGeneration, uint64_t{0},
+                         __ATOMIC_RELEASE);
+    }
+    DeviceLock lock;
+    AddWriteRange(gOwedWrites, address, size);
+    gOwedPending.store(true, std::memory_order_relaxed);
+}
+
+std::optional<uint64_t> NativeA32DeviceAccess::RangeWriteGeneration(
+    const NativeA32Memory& memory, uint32_t address, size_t size) {
+    if (!memory.mRangeVersionsValid || memory.FindRegion(address, size) == nullptr ||
+        !memory.mFastPages) {
+        return std::nullopt;
+    }
+    const uint64_t epoch = gEscapeEpoch.load(std::memory_order_acquire);
+    {
+        DeviceLock lock;
+        if (gEscapeCopyEpoch != epoch || !gEscapeCopy) {
+            gEscapeCopyWanted.store(true, std::memory_order_relaxed);
+            return std::nullopt;
+        }
+        if (std::any_of(gEscapeCopy->begin(), gEscapeCopy->end(), [&](const auto& range) {
+                return RangesOverlap(address, size, range.first, range.second);
+            })) {
+            return std::nullopt;
+        }
+    }
+    // Read before the bytes (the caller reads them after): a write landing
+    // in between leaves a newer generation than the one kept with them.
+    uint64_t generation = 0;
+    const size_t last = (uint64_t{address} + size - 1U) >> NativeA32Memory::PageShift;
+    for (size_t page = address >> NativeA32Memory::PageShift; page <= last; ++page) {
+        const uint64_t value =
+            __atomic_load_n(&memory.mFastPages[page].WriteGeneration, __ATOMIC_ACQUIRE);
+        if (value == 0U) return std::nullopt;
+        generation = std::max(generation, value);
+    }
+    return generation;
+}
+
+bool NativeA32DeviceAccess::AlreadyObserved(const NativeA32Memory& memory, uint32_t address,
+                                            size_t size) {
+    // The observed ranges change only in ObserveWrites and the layout
+    // changes, both on the game thread while the worker waits or is idle.
+    if (!memory.mWriteObserver || !RangeFits(address, size) || !memory.IsMapped(address, size))
+        return false;
+    const uint64_t epoch = gEscapeEpoch.load(std::memory_order_acquire);
+    {
+        DeviceLock lock;
+        if (gEscapeCopyEpoch != epoch || !gEscapeCopy ||
+            std::any_of(gEscapeCopy->begin(), gEscapeCopy->end(), [&](const auto& range) {
+                return RangesOverlap(address, size, range.first, range.second);
+            })) {
+            return false;
+        }
+    }
+    const auto& ranges = memory.mObservedWriteRanges;
+    const auto covered = std::lower_bound(ranges.begin(), ranges.end(), address,
+        [](const auto& range, uint32_t value) { return uint64_t{range.first} + range.second <= value; });
+    return covered != ranges.end() && covered->first <= address &&
+           uint64_t{covered->first} + covered->second >= uint64_t{address} + size;
+}
+
+void NativeA32DeviceAccess::Service(NativeA32Memory& memory) {
+    if (gOwedPending.load(std::memory_order_relaxed)) {
+        static std::vector<std::pair<uint32_t, size_t>> owed;
+        {
+            DeviceLock lock;
+            owed.swap(gOwedWrites);
+            gOwedPending.store(false, std::memory_order_relaxed);
+        }
+        for (const auto& [address, size] : owed) {
+            ++memory.mRangeGeneration;
+            memory.MarkRangeWritten(address, size, memory.CurrentRangeGeneration());
+        }
+        owed.clear();
+    }
+    if (gEscapeCopyWanted.load(std::memory_order_relaxed)) {
+        // Escapes happen on this thread: the copy holds every one up to epoch.
+        const uint64_t epoch = gEscapeEpoch.load(std::memory_order_acquire);
+        auto copy = std::make_shared<const std::vector<std::pair<uint32_t, size_t>>>(
+            memory.mEscapedWritePointers);
+        DeviceLock lock;
+        gEscapeCopy = std::move(copy);
+        gEscapeCopyEpoch = epoch;
+        gEscapeCopyWanted.store(false, std::memory_order_relaxed);
+    }
+}
+
+NativeA32DeviceAccess::Counts NativeA32DeviceAccess::ReadCounts() noexcept {
+    return {gDirectReads.load(std::memory_order_relaxed),
+            gDirectWrites.load(std::memory_order_relaxed),
+            gGuestCalls.load(std::memory_order_relaxed)};
+}
 
 NativeA32Memory::NativeA32Memory(const NativeA32Memory& other)
     : mRegions((other.MaterializeDeferredWrites()
@@ -62,6 +260,7 @@ NativeA32Memory::NativeA32Memory(const NativeA32Memory& other)
 
 NativeA32Memory& NativeA32Memory::operator=(const NativeA32Memory& other) {
     if (this != &other) {
+        NativeA32DeviceAccess::LayoutChanging();
         if (!other.MaterializeDeferredWrites())
             throw std::runtime_error("cannot copy deferred guest memory");
         const auto nextRangeGeneration = CurrentRangeGeneration() + 1U;
@@ -69,6 +268,7 @@ NativeA32Memory& NativeA32Memory::operator=(const NativeA32Memory& other) {
         mDeferredPages.clear();
         mEscapedReadPointers.clear();
         mEscapedWritePointers.clear();
+        NativeA32DeviceAccess::EscapesChanged();
         mRegions = other.mRegions;
         mRangeGeneration = nextRangeGeneration;
         mRangeGenerationBias =
@@ -91,6 +291,7 @@ NativeA32Memory::NativeA32Memory(NativeA32Memory&& other) noexcept {
 
 NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
     if (this == &other) return *this;
+    NativeA32DeviceAccess::LayoutChanging();
     const auto nextRangeGeneration = CurrentRangeGeneration() + 1U;
     const bool versionsValid =
         mRangeVersionsValid && other.mRangeVersionsValid && nextRangeGeneration != 0U;
@@ -119,6 +320,7 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
     mObservedWriteRanges = std::move(other.mObservedWriteRanges);
     mObservedWritePages = std::move(other.mObservedWritePages);
     mEscapedWritePointers = std::move(other.mEscapedWritePointers);
+    NativeA32DeviceAccess::EscapesChanged();
     mEscapedReadPointers = std::move(other.mEscapedReadPointers);
     mDeferredWrites = std::move(other.mDeferredWrites);
     mDeferredPages = std::move(other.mDeferredPages);
@@ -165,6 +367,7 @@ bool NativeA32Memory::MapRegion(const NativeA32MemoryRegionConfig& config,
         }
     }
 
+    NativeA32DeviceAccess::LayoutChanging();
     Region region;
     region.Name = config.Name;
     region.BaseAddress = config.BaseAddress;
@@ -183,6 +386,7 @@ bool NativeA32Memory::MapRegion(const NativeA32MemoryRegionConfig& config,
 }
 
 void NativeA32Memory::RebuildPageTable() {
+    NativeA32DeviceAccess::LayoutChanging();
     mPageRegions.assign(PageCount, 0U);
     if (!mFastPages) {
         mFastPages = std::make_unique<FastPage[]>(PageCount);
@@ -308,6 +512,8 @@ uint64_t NativeA32Memory::WriteGeneration() const {
 std::optional<uint64_t>
 NativeA32Memory::RangeWriteGeneration(uint32_t address,
                                       size_t size) const noexcept {
+  if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
+      return NativeA32DeviceAccess::RangeWriteGeneration(*this, address, size);
   if (!mRangeVersionsValid || FindRegion(address, size) == nullptr ||
       HasEscapedWritePointer(address, size)) return std::nullopt;
   uint64_t generation = 0;
@@ -320,6 +526,7 @@ NativeA32Memory::RangeWriteGeneration(uint32_t address,
 }
 
 void NativeA32Memory::EnableWriteTraceFingerprint(bool enabled) noexcept {
+    NativeA32DeviceAccess::LayoutChanging();
     const bool changed = mTraceWriteFingerprint != enabled;
     mTraceWriteFingerprint = enabled;
     mWriteTraceFingerprint = 14695981039346656037ULL;
@@ -455,6 +662,7 @@ nlohmann::json NativeA32Memory::CaptureState() const {
 
 bool NativeA32Memory::RestoreState(const nlohmann::json& state,
                                    std::string* error) {
+    NativeA32DeviceAccess::LayoutChanging();
     try {
         if (!state.is_object() ||
             state.value("format", std::string{}) !=
@@ -544,6 +752,7 @@ void NativeA32Memory::ClearRangeWatch() {
 
 
 void NativeA32Memory::SetWriteObserver(WriteObserver observer) {
+    NativeA32DeviceAccess::LayoutChanging();
     mWriteObserver = std::move(observer);
     if (!mWriteObserver && !mObservedWritePages.empty()) {
         mObservedWriteRanges.clear();
@@ -558,6 +767,10 @@ bool NativeA32Memory::HasEscapedWritePointer(uint32_t address, size_t size) cons
 }
 
 bool NativeA32Memory::ObserveWrites(uint32_t address, size_t size) {
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
+        if (NativeA32DeviceAccess::AlreadyObserved(*this, address, size)) return true;
+        return NativeA32DeviceAccess::OnGuestThread([&] { return ObserveWrites(address, size); });
+    }
     if (!mWriteObserver || !RangeFits(address, size) ||
         !IsMapped(address, size) || HasEscapedWritePointer(address, size)) return false;
     const auto covered = std::lower_bound(mObservedWriteRanges.begin(), mObservedWriteRanges.end(),
@@ -590,6 +803,7 @@ void NativeA32Memory::NotifyObservedWrite(uint32_t address, size_t size) {
 }
 
 void NativeA32Memory::PreserveAccessObserversFrom(const NativeA32Memory& memory) {
+    NativeA32DeviceAccess::LayoutChanging();
     mWriteObserver = memory.mWriteObserver;
     mObservedWriteRanges = memory.mObservedWriteRanges;
     mObservedWritePages = memory.mObservedWritePages;
@@ -653,6 +867,10 @@ void NativeA32Memory::DiscardDeferredWrites(uint32_t address, size_t size) const
 
 bool NativeA32Memory::DeferWrites(
     std::span<const std::pair<uint32_t, size_t>> ranges, DeferredRead reader) {
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
+        return NativeA32DeviceAccess::OnGuestThread(
+            [&] { return DeferWrites(ranges, std::move(reader)); });
+    NativeA32DeviceAccess::LayoutChanging();
     if (!reader || ranges.empty() || mTraceWriteFingerprint) return false;
     for (const auto& [address, size] : ranges) {
         if (!RangeFits(address, size) || !IsWritable(address, size) ||
@@ -710,6 +928,8 @@ bool NativeA32Memory::ResolveDeferredRead(uint32_t address, size_t size) const {
 }
 
 bool NativeA32Memory::MaterializeDeferredWrites() const {
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
+        return NativeA32DeviceAccess::OnGuestThread([&] { return MaterializeDeferredWrites(); });
     while (!mDeferredWrites.empty()) {
         const auto address = mDeferredWrites.front().Address;
         const auto size = mDeferredWrites.front().Size;
@@ -720,6 +940,14 @@ bool NativeA32Memory::MaterializeDeferredWrites() const {
 
 std::span<const uint8_t> NativeA32Memory::SynchronousReadView(
     uint32_t address, size_t size) const {
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
+        if (const auto* bytes = NativeA32DeviceAccess::InPlace(*this, address, size, false)) {
+            gDirectReads.fetch_add(1, std::memory_order_relaxed);
+            return {bytes, size};
+        }
+        return NativeA32DeviceAccess::OnGuestThread(
+            [&] { return SynchronousReadView(address, size); });
+    }
     const auto* region = FindRegion(address, size);
     if (!region || !ResolveDeferredRead(address, size)) return {};
     return {region->Bytes.data() + (address - region->BaseAddress), size};
@@ -729,6 +957,14 @@ bool NativeA32Memory::ReadBytes(uint32_t address,
                                 std::span<uint8_t> bytes) const {
     if (bytes.empty()) {
         return true;
+    }
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
+        if (const auto* source = NativeA32DeviceAccess::InPlace(*this, address, bytes.size(), false)) {
+            std::memcpy(bytes.data(), source, bytes.size());
+            gDirectReads.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+        return NativeA32DeviceAccess::OnGuestThread([&] { return ReadBytes(address, bytes); });
     }
     const auto* region = FindRegion(address, bytes.size());
     if (region == nullptr) {
@@ -746,6 +982,8 @@ bool NativeA32Memory::ReadBytes(uint32_t address,
 
 const uint8_t* NativeA32Memory::GetReadPointer(uint32_t address,
                                                size_t size) const {
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
+        return NativeA32DeviceAccess::OnGuestThread([&] { return GetReadPointer(address, size); });
     const auto* region = FindRegion(address, size);
     if (region == nullptr) {
         return nullptr;
@@ -762,6 +1000,8 @@ const uint8_t* NativeA32Memory::GetReadPointer(uint32_t address,
 }
 
 uint8_t* NativeA32Memory::GetWritePointer(uint32_t address, size_t size) {
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
+        return NativeA32DeviceAccess::OnGuestThread([&] { return GetWritePointer(address, size); });
     auto* region = FindRegion(address, size);
     if (region == nullptr || !region->Writable) {
         return nullptr;
@@ -776,6 +1016,7 @@ uint8_t* NativeA32Memory::GetWritePointer(uint32_t address, size_t size) {
         mPendingTracedPointerWrites.emplace_back(address, size);
     }
     AddWriteRange(mEscapedWritePointers, address, size);
+    NativeA32DeviceAccess::EscapesChanged();
     NotifyObservedWrite(address, size);
     ++mRangeGeneration;
     MarkRangeWritten(address, size, CurrentRangeGeneration());
@@ -817,6 +1058,15 @@ bool NativeA32Memory::WriteBytes(uint32_t address,
     if (bytes.empty()) {
         return true;
     }
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
+        if (auto* destination = NativeA32DeviceAccess::InPlace(*this, address, bytes.size(), true)) {
+            std::memcpy(destination, bytes.data(), bytes.size());
+            NativeA32DeviceAccess::NoteWritten(*this, address, bytes.size());
+            gDirectWrites.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+        return NativeA32DeviceAccess::OnGuestThread([&] { return WriteBytes(address, bytes); });
+    }
     auto* region = FindRegion(address, bytes.size());
     if (region == nullptr || !region->Writable) {
         return false;
@@ -849,6 +1099,8 @@ bool NativeA32Memory::WriteHostBytes(
     if (bytes.empty()) {
         return true;
     }
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
+        return NativeA32DeviceAccess::OnGuestThread([&] { return WriteHostBytes(address, bytes); });
     auto* region = FindRegion(address, bytes.size());
     if (region == nullptr) {
         return false;
@@ -871,6 +1123,15 @@ bool NativeA32Memory::WriteHostBytes(
 bool NativeA32Memory::Fill(uint32_t address, size_t size, uint8_t value) {
     if (size == 0) {
         return true;
+    }
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
+        if (auto* destination = NativeA32DeviceAccess::InPlace(*this, address, size, true)) {
+            std::memset(destination, value, size);
+            NativeA32DeviceAccess::NoteWritten(*this, address, size);
+            gDirectWrites.fetch_add(1, std::memory_order_relaxed);
+            return true;
+        }
+        return NativeA32DeviceAccess::OnGuestThread([&] { return Fill(address, size, value); });
     }
     auto* region = FindRegion(address, size);
     if (region == nullptr || !region->Writable) {
@@ -896,6 +1157,15 @@ bool NativeA32Memory::Fill(uint32_t address, size_t size, uint8_t value) {
 bool NativeA32Memory::ReadSized(uint32_t address, uint8_t size,
                                 uint64_t* value,
                                 uint32_t* faultAddress) const {
+    // Typed accesses belong to the guest; the device never makes one.
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
+        try {
+            return NativeA32DeviceAccess::OnGuestThread(
+                [&] { return ReadSized(address, size, value, faultAddress); });
+        } catch (...) {
+            return false;
+        }
+    }
     if (value == nullptr || !IsSupportedSize(size)) {
         if (faultAddress != nullptr) {
             *faultAddress = address;
@@ -928,6 +1198,14 @@ bool NativeA32Memory::ReadSized(uint32_t address, uint8_t size,
 
 bool NativeA32Memory::WriteSized(uint32_t address, uint8_t size,
                                  uint64_t value, uint32_t* faultAddress) {
+    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
+        try {
+            return NativeA32DeviceAccess::OnGuestThread(
+                [&] { return WriteSized(address, size, value, faultAddress); });
+        } catch (...) {
+            return false;
+        }
+    }
     if (!IsSupportedSize(size)) {
         if (faultAddress != nullptr) {
             *faultAddress = address;

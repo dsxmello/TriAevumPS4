@@ -4,6 +4,7 @@
 #include "oot3d_native_pica_submission.h"
 #include "oot3d_native_a32_memory.h"
 
+#include <atomic>
 #include <filesystem>
 
 namespace Oot3dNativeGame {
@@ -39,7 +40,22 @@ class NativeHdFontRuntime {
         std::uint64_t ContentHash = 0;
         bool Dirty = true;
     };
+    // The surfaces: blits are observed on the game thread while the guest
+    // runs, Resolve captures on the GSP worker (PS4). Held only around the
+    // map, never across a guest memory access (the worker's may need the
+    // game thread).
+    class Guard {
+      public:
+        explicit Guard(std::atomic_flag& flag) noexcept;
+        ~Guard();
+        Guard(const Guard&) = delete;
+        Guard& operator=(const Guard&) = delete;
+
+      private:
+        std::atomic_flag& mFlag;
+    };
     std::vector<Font> mFonts;
+    std::atomic_flag mSurfaceLock = ATOMIC_FLAG_INIT;
     std::unordered_map<std::uint32_t, Surface> mSurfaces;
     std::uint32_t mOutputHeight = 0;
 };

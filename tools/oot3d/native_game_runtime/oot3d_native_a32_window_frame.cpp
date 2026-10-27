@@ -6,6 +6,8 @@
 
 #if defined(__ORBIS__)
 #include "fast/backends/gfx_orbis.h"
+#include "oot3d_native_a32_memory_device.h"
+#include "oot3d_native_pica_gsp_worker.h"
 
 #include <atomic>
 #include <chrono>
@@ -975,6 +977,44 @@ bool NativeA32WindowSession::RunFrame() {
                      qms(queue.EnqueueNanoseconds, windowQueue.EnqueueNanoseconds),
                      hostFrames > 0.0 ? static_cast<double>(queue.DrawCalls - windowQueue.DrawCalls) / hostFrames : 0.0);
         windowQueue = queue;
+      }
+      if (const auto *worker = hostServicesStorage->PicaWorker()) {
+        // The GSP worker (oot3d_native_pica_gsp_worker.h): its time, the
+        // game thread's waits for it by site, and how its accesses to guest
+        // memory went (in place, or run by the game thread for it).
+        using Site = Oot3dNativeGame::PicaGspWorker::WaitSite;
+        static auto windowWorker = worker->ReadStats();
+        static auto windowDevice = Oot3dNativeGame::NativeA32DeviceAccess::ReadCounts();
+        const auto stats = worker->ReadStats();
+        const auto device = Oot3dNativeGame::NativeA32DeviceAccess::ReadCounts();
+        const auto wms = [&](uint64_t current, uint64_t previous) {
+          return hostFrames > 0.0 ? static_cast<double>(current - previous) * 1.0e-6 / hostFrames : 0.0;
+        };
+        const auto waited = [&](Site site) {
+          const auto index = static_cast<size_t>(site);
+          return wms(stats.WaitNanoseconds[index], windowWorker.WaitNanoseconds[index]);
+        };
+        const auto rate = [&](uint64_t current, uint64_t previous) {
+          return static_cast<double>(current - previous) / seconds;
+        };
+        std::fprintf(stderr,
+                     "[triaevum] gsp worker per host frame ms: busy %.2f, waiting for game-thread"
+                     " calls %.2f | game thread waited %.2f (guest wait %.2f, gsp request %.2f,"
+                     " layout %.2f, queue full %.2f) | per second: %.0f commands (%.0f lists),"
+                     " %.0f guest writes, %.0f game-thread calls, %.0f reads and %.0f writes in place\n",
+                     wms(stats.BusyNanoseconds, windowWorker.BusyNanoseconds),
+                     wms(stats.GuestCallNanoseconds, windowWorker.GuestCallNanoseconds),
+                     waited(Site::GuestWait) + waited(Site::Request) + waited(Site::Layout) +
+                         waited(Site::Room),
+                     waited(Site::GuestWait), waited(Site::Request), waited(Site::Layout),
+                     waited(Site::Room), rate(stats.Commands, windowWorker.Commands),
+                     rate(stats.Lists, windowWorker.Lists),
+                     rate(stats.GuestWrites, windowWorker.GuestWrites),
+                     rate(device.GuestCalls, windowDevice.GuestCalls),
+                     rate(device.DirectReads, windowDevice.DirectReads),
+                     rate(device.DirectWrites, windowDevice.DirectWrites));
+        windowWorker = stats;
+        windowDevice = device;
       }
       std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
                    TakeBlockEntryHookCounts(seconds).c_str());

@@ -1,6 +1,8 @@
 // CTR host services: the gsp::Gpu session.
 #include "oot3d_native_a32_ctr_host_internal.h"
 
+#include "oot3d_native_pica_gsp_worker.h"
+
 #include <memory>
 #include <span>
 
@@ -11,6 +13,22 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
     oot3d::recomp::a32::GuestState& state, NativeA32Memory& memory,
     NativeA32HostContext& context, const std::optional<std::string>& sessionType,
     uint32_t commandBuffer, NativeA32CtrSvcEvent event) {
+    // The other requests see the GSP worker's commands done (register
+    // writes above all): wait for it first. Not the per-frame ones that
+    // never reach the frontend: queue triggers, cache maintenance and buffer
+    // swaps (framebuffer state, read at presentation, after the drain).
+    if (mPicaWorker && event.Detail != kGspTriggerCommandQueueRequest &&
+        event.Detail != kGspFlushDataCacheRequest &&
+        event.Detail != kGspInvalidateDataCacheRequest &&
+        event.Detail != kGspSetBufferSwapRequest) {
+        std::string workerError;
+        mPicaWorker->Drain(memory, mPicaDeliver,
+                           PicaGspWorker::WaitSite::Request, workerError);
+        if (!workerError.empty()) {
+            return {NativeA32HostAction::Fault, std::nullopt, 0U,
+                    std::move(workerError)};
+        }
+    }
     const auto* session = LookupHandle(state.r[0]);
     if (event.Detail == kGspFlushDataCacheRequest ||
         event.Detail == kGspInvalidateDataCacheRequest) {
@@ -185,10 +203,25 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
                         << ",p6=0x" << std::setw(8)
                         << packet.Parameters[6];
                 }
-                std::vector<uint32_t> commandList;
-                if ((packet.Control & 0xFFU) ==
+                // The command list's copy and the composition spans the
+                // hooks recorded for it, taken now (where the guest submitted
+                // it). One buffer for every list (its words are fully
+                // overwritten by the read below), instead of a fresh zeroed
+                // vector per submission; with the GSP worker, the job's own.
+                PicaGspWorker::Job* job =
+                    mPicaWorker ? &mPicaWorker->Reserve() : nullptr;
+                static thread_local std::vector<uint32_t> commandListBuffer;
+                static thread_local std::vector<
+                    Oot3dPicaCommandListCompositionSpan>
+                    compositionSpanBuffer;
+                auto& commandList = job ? job->List : commandListBuffer;
+                auto& compositionSpans =
+                    job ? job->Spans : compositionSpanBuffer;
+                const bool isCommandList =
+                    (packet.Control & 0xFFU) ==
                     static_cast<uint32_t>(
-                        Oot3dGspCommandId::SubmitCommandList)) {
+                        Oot3dGspCommandId::SubmitCommandList);
+                if (isCommandList) {
                     const uint32_t listAddress = packet.Parameters[0];
                     const uint32_t listSize = packet.Parameters[1];
                     if ((listSize & 3U) != 0 ||
@@ -219,175 +252,46 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
                     }
                 }
                 std::string picaError;
-                NativeA32CtrPicaSubmissionResult submissionResult;
+                std::optional<Oot3dPicaCompositionDomain> compositionDomain;
+                bool hasCompositionSpans = false;
 #if !defined(OOT3D_CTR_HOST_SERVICE_PICA_ONLY)
                 if (submitted && mConfig.PicaFrontend != nullptr) {
                     if (mConfig.PicaCompositionDomain != nullptr) {
-                        mConfig.PicaFrontend
-                            ->SetCommandListCompositionDomain(
-                                *mConfig.PicaCompositionDomain);
+                        compositionDomain = *mConfig.PicaCompositionDomain;
                     }
-                    if ((packet.Control & 0xFFU) ==
-                            static_cast<uint32_t>(
-                                Oot3dGspCommandId::SubmitCommandList) &&
+                    if (isCommandList &&
                         mConfig.PicaCompositionProvider != nullptr) {
-                        std::vector<Oot3dPicaCommandListCompositionSpan>
-                            compositionSpans;
+                        // The provider clears the vector.
                         submitted =
                             mConfig.PicaCompositionProvider
                                 ->TakeCommandListCompositionSpans(
                                     packet.Parameters[0],
                                     packet.Parameters[1],
-                                    compositionSpans, &picaError) &&
-                            mConfig.PicaFrontend
-                                ->SetNextCommandListCompositionSpans(
-                                    packet.Parameters[0],
-                                    packet.Parameters[1],
                                     compositionSpans, &picaError);
+                        hasCompositionSpans = true;
                     }
                 }
 #endif
-                if (submitted) {
-                    CpuPhaseProbe::Scope cpuFrontend(CpuPhaseProbe::Phase::PicaFrontend);
-                    const auto submitStart =
-                        mConfig.ProfileRuntime
-                            ? RuntimeProfileClock::now()
-                            : RuntimeProfileClock::time_point{};
-                    submitted = SubmitPicaGspCommand(
-                        packet, commandList, &submissionResult,
-                        &picaError);
-                    if (mConfig.ProfileRuntime) {
-                        mRuntimeProfile.PicaFrontendSubmitNanoseconds +=
-                            RuntimeProfileElapsedNanoseconds(
-                                submitStart);
-                    }
-                }
-                if (submitted &&
-                    (packet.Control & 0xFFU) ==
-                        static_cast<uint32_t>(
-                            Oot3dGspCommandId::MemoryFill)) {
-                    Oot3dPicaMemoryFillCommand fillCommand;
-                    fillCommand.Fills[0] = {
-                        packet.Parameters[0], packet.Parameters[2],
-                        packet.Parameters[1],
-                        static_cast<uint16_t>(packet.Parameters[6])};
-                    fillCommand.Fills[1] = {
-                        packet.Parameters[3], packet.Parameters[5],
-                        packet.Parameters[4],
-                        static_cast<uint16_t>(packet.Parameters[6] >>
-                                              16U)};
-                    const bool hasBothBuffers =
-                        fillCommand.Fills[0].StartAddress != 0U &&
-                        fillCommand.Fills[1].StartAddress != 0U;
-                    for (size_t fillIndex = 0;
-                         fillIndex < fillCommand.Fills.size() &&
-                         submitted;
-                         ++fillIndex) {
-                        const auto& fill = fillCommand.Fills[fillIndex];
-                        if (fill.StartAddress == 0U ||
-                            (fill.Control & 1U) == 0U) {
-                            continue;
-                        }
-                        submitted = ExecuteOot3dPicaMemoryFill(
-                            fill, memory, &picaError);
-                        if (!submitted ||
-                            submissionResult.MemoryFillDeferredToGpu) {
-                            continue;
-                        }
-                        if (fillIndex == 0U && !hasBothBuffers) {
-                            submitted = QueueGspInterrupt(
-                                memory,
-                                static_cast<uint8_t>(
-                                    Oot3dPicaInterruptId::Psc0));
-                        } else if (fillIndex == 1U) {
-                            submitted = QueueGspInterrupt(
-                                memory,
-                                static_cast<uint8_t>(
-                                    hasBothBuffers
-                                        ? Oot3dPicaInterruptId::Psc0
-                                        : Oot3dPicaInterruptId::Psc1));
-                        }
-                    }
-                }
-                if (submitted &&
-                    (packet.Control & 0xFFU) ==
-                        static_cast<uint32_t>(
-                            Oot3dGspCommandId::RequestDma)) {
-                    const uint32_t source = packet.Parameters[0];
-                    const uint32_t destination = packet.Parameters[1];
-                    const uint32_t size = packet.Parameters[2];
-                    // Copy in bounded chunks. The request's size field comes
-                    // straight from guest memory, and a bogus value must fail
-                    // with the range error instead of first speculating the
-                    // whole allocation: on the PS4 a deterministic 173 MiB
-                    // request at the title transition exhausted the heap and
-                    // killed the frame loop (console evidence, PKG 0.10/0.11:
-                    // one failed allocation of 181534720 bytes). Behavior for
-                    // every well-formed request is byte-identical.
-                    constexpr uint32_t kDmaChunkBytes = 0x40000U; // 256 KiB
-                    // One buffer for every request: a fresh vector zeroed
-                    // all 256 KiB for each DMA, however small (on the PS4
-                    // the PGO profile's top memset).
-                    static thread_local const std::unique_ptr<uint8_t[]> dmaBuffer(
-                        new uint8_t[kDmaChunkBytes]);
-                    const std::span<uint8_t> dmaChunk(dmaBuffer.get(), kDmaChunkBytes);
-                    submitted = size != 0U;
-                    for (uint32_t offset = 0U; offset < size && submitted;
-                         offset += kDmaChunkBytes) {
-                        const uint32_t slice =
-                            size - offset < kDmaChunkBytes
-                                ? size - offset
-                                : kDmaChunkBytes;
-                        submitted =
-                            memory.ReadBytes(
-                                source + offset,
-                                dmaChunk.first(slice)) &&
-                            memory.WriteBytes(
-                                destination + offset,
-                                std::span<const uint8_t>(dmaChunk.first(slice)));
-                    }
-                    if (submitted) {
-                        submitted = QueueGspInterrupt(
-                            memory, static_cast<uint8_t>(
-                                        Oot3dPicaInterruptId::Dma));
-                    } else {
-                        picaError = "GSP DMA range is not mapped";
-                    }
-                }
-                if (submitted &&
-                    ((packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::DisplayTransfer) ||
-                     (packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::TextureCopy)) &&
-                    !submissionResult.DisplayTransferDeferredToGpu) {
-                    if (!submissionResult
-                             .DisplayTransferCpuCopySuppressed) {
-                        if ((packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::TextureCopy)) {
-                            Oot3dPicaTextureCopyPlan copy;
-                            submitted = BuildOot3dPicaTextureCopyPlan(packet, copy, &picaError) &&
-                                        ExecuteOot3dPicaTextureCopy(copy, memory, &picaError);
-                        } else {
-                        submitted = ExecuteOot3dPicaDisplayTransfer(
-                            {packet.Parameters[0], packet.Parameters[1],
-                             packet.Parameters[2], packet.Parameters[3],
-                             packet.Parameters[4]},
-                            memory, &picaError);
-                        }
-                    }
-                    if (submitted) {
-                        submitted = QueueGspInterrupt(
-                            memory, static_cast<uint8_t>(
-                                        Oot3dPicaInterruptId::Ppf));
-                    }
-                }
-                if (submitted) {
-                    std::vector<uint8_t> interrupts;
-                    submitted = TakePicaPendingInterrupts(&interrupts,
-                                                          &picaError);
+                if (submitted && job != nullptr) {
+                    job->Packet = packet;
+                    job->Domain = compositionDomain;
+                    job->HasSpans = hasCompositionSpans;
+                    mPicaWorker->Publish();
+                } else if (submitted) {
+                    static thread_local std::vector<uint8_t> interrupts;
+                    interrupts.clear();
+                    submitted = ExecuteGspCommand(
+                        packet,
+                        isCommandList ? std::span<const uint32_t>(commandList)
+                                      : std::span<const uint32_t>{},
+                        compositionDomain,
+                        hasCompositionSpans ? &compositionSpans : nullptr,
+                        memory, interrupts, picaError);
                     for (const uint8_t interrupt : interrupts) {
-                        submitted =
-                            QueueGspInterrupt(memory, interrupt);
                         if (!submitted) {
                             break;
                         }
+                        submitted = QueueGspInterrupt(memory, interrupt);
                     }
                 }
                 if (!submitted) {
@@ -590,6 +494,194 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
     }
     mSvcEvents.push_back(std::move(event));
     return {NativeA32HostAction::Wait};
+}
+
+// One GSP command once its list was read: the frontend (with the composition
+// state captured for it), the CPU side of fills, DMA and transfers, and the
+// interrupts the command raises, appended in order. The game thread runs it
+// inline; the GSP worker runs it in order with the guest running, and guest
+// memory then takes the device's paths (oot3d_native_a32_memory_device.h).
+bool NativeA32CtrHostServices::ExecuteGspCommand(
+    const Oot3dGspCommandPacket& packet, std::span<const uint32_t> commandList,
+    std::optional<Oot3dPicaCompositionDomain> compositionDomain,
+    const std::vector<Oot3dPicaCommandListCompositionSpan>* compositionSpans,
+    NativeA32Memory& memory, std::vector<uint8_t>& interrupts,
+    std::string& picaError) {
+    bool submitted = true;
+    NativeA32CtrPicaSubmissionResult submissionResult;
+#if !defined(OOT3D_CTR_HOST_SERVICE_PICA_ONLY)
+    if (mConfig.PicaFrontend != nullptr) {
+        if (compositionDomain.has_value()) {
+            mConfig.PicaFrontend->SetCommandListCompositionDomain(
+                *compositionDomain);
+        }
+        if (compositionSpans != nullptr) {
+            submitted =
+                mConfig.PicaFrontend->SetNextCommandListCompositionSpans(
+                    packet.Parameters[0], packet.Parameters[1],
+                    *compositionSpans, &picaError);
+        }
+    }
+#endif
+    if (submitted) {
+        CpuPhaseProbe::Scope cpuFrontend(CpuPhaseProbe::Phase::PicaFrontend);
+        const auto submitStart =
+            mConfig.ProfileRuntime
+                ? RuntimeProfileClock::now()
+                : RuntimeProfileClock::time_point{};
+        submitted = SubmitPicaGspCommand(
+            packet, commandList, &submissionResult,
+            &picaError);
+        if (mConfig.ProfileRuntime) {
+            mRuntimeProfile.PicaFrontendSubmitNanoseconds +=
+                RuntimeProfileElapsedNanoseconds(
+                    submitStart);
+        }
+    }
+    if (submitted &&
+        (packet.Control & 0xFFU) ==
+            static_cast<uint32_t>(
+                Oot3dGspCommandId::MemoryFill)) {
+        Oot3dPicaMemoryFillCommand fillCommand;
+        fillCommand.Fills[0] = {
+            packet.Parameters[0], packet.Parameters[2],
+            packet.Parameters[1],
+            static_cast<uint16_t>(packet.Parameters[6])};
+        fillCommand.Fills[1] = {
+            packet.Parameters[3], packet.Parameters[5],
+            packet.Parameters[4],
+            static_cast<uint16_t>(packet.Parameters[6] >>
+                                  16U)};
+        const bool hasBothBuffers =
+            fillCommand.Fills[0].StartAddress != 0U &&
+            fillCommand.Fills[1].StartAddress != 0U;
+        for (size_t fillIndex = 0;
+             fillIndex < fillCommand.Fills.size() &&
+             submitted;
+             ++fillIndex) {
+            const auto& fill = fillCommand.Fills[fillIndex];
+            if (fill.StartAddress == 0U ||
+                (fill.Control & 1U) == 0U) {
+                continue;
+            }
+            submitted = ExecuteOot3dPicaMemoryFill(
+                fill, memory, &picaError);
+            if (!submitted ||
+                submissionResult.MemoryFillDeferredToGpu) {
+                continue;
+            }
+            if (fillIndex == 0U && !hasBothBuffers) {
+                interrupts.push_back(
+                    static_cast<uint8_t>(Oot3dPicaInterruptId::Psc0));
+            } else if (fillIndex == 1U) {
+                interrupts.push_back(static_cast<uint8_t>(
+                    hasBothBuffers ? Oot3dPicaInterruptId::Psc0
+                                   : Oot3dPicaInterruptId::Psc1));
+            }
+        }
+    }
+    if (submitted &&
+        (packet.Control & 0xFFU) ==
+            static_cast<uint32_t>(
+                Oot3dGspCommandId::RequestDma)) {
+        const uint32_t source = packet.Parameters[0];
+        const uint32_t destination = packet.Parameters[1];
+        const uint32_t size = packet.Parameters[2];
+        // Copy in bounded chunks. The request's size field comes
+        // straight from guest memory, and a bogus value must fail
+        // with the range error instead of first speculating the
+        // whole allocation: on the PS4 a deterministic 173 MiB
+        // request at the title transition exhausted the heap and
+        // killed the frame loop (console evidence, PKG 0.10/0.11:
+        // one failed allocation of 181534720 bytes). Behavior for
+        // every well-formed request is byte-identical.
+        constexpr uint32_t kDmaChunkBytes = 0x40000U; // 256 KiB
+        // One buffer for every request: a fresh vector zeroed
+        // all 256 KiB for each DMA, however small (on the PS4
+        // the PGO profile's top memset).
+        static thread_local const std::unique_ptr<uint8_t[]> dmaBuffer(
+            new uint8_t[kDmaChunkBytes]);
+        const std::span<uint8_t> dmaChunk(dmaBuffer.get(), kDmaChunkBytes);
+        submitted = size != 0U;
+        for (uint32_t offset = 0U; offset < size && submitted;
+             offset += kDmaChunkBytes) {
+            const uint32_t slice =
+                size - offset < kDmaChunkBytes
+                    ? size - offset
+                    : kDmaChunkBytes;
+            submitted =
+                memory.ReadBytes(
+                    source + offset,
+                    dmaChunk.first(slice)) &&
+                memory.WriteBytes(
+                    destination + offset,
+                    std::span<const uint8_t>(dmaChunk.first(slice)));
+        }
+        if (submitted) {
+            interrupts.push_back(
+                static_cast<uint8_t>(Oot3dPicaInterruptId::Dma));
+        } else {
+            picaError = "GSP DMA range is not mapped";
+        }
+    }
+    if (submitted &&
+        ((packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::DisplayTransfer) ||
+         (packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::TextureCopy)) &&
+        !submissionResult.DisplayTransferDeferredToGpu) {
+        if (!submissionResult
+                 .DisplayTransferCpuCopySuppressed) {
+            if ((packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::TextureCopy)) {
+                Oot3dPicaTextureCopyPlan copy;
+                submitted = BuildOot3dPicaTextureCopyPlan(packet, copy, &picaError) &&
+                            ExecuteOot3dPicaTextureCopy(copy, memory, &picaError);
+            } else {
+            submitted = ExecuteOot3dPicaDisplayTransfer(
+                {packet.Parameters[0], packet.Parameters[1],
+                 packet.Parameters[2], packet.Parameters[3],
+                 packet.Parameters[4]},
+                memory, &picaError);
+            }
+        }
+        if (submitted) {
+            interrupts.push_back(
+                static_cast<uint8_t>(Oot3dPicaInterruptId::Ppf));
+        }
+    }
+    if (submitted) {
+        static thread_local std::vector<uint8_t> pending;
+        submitted = TakePicaPendingInterrupts(&pending, &picaError);
+        interrupts.insert(interrupts.end(), pending.begin(), pending.end());
+    }
+    return submitted;
+}
+
+void NativeA32CtrHostServices::StartPicaWorker(
+    NativeA32Memory& memory, std::function<void(uint32_t, size_t)> guestWrite,
+    void (*onStart)()) {
+    mPicaDeliver = [this, &memory](uint8_t interrupt) {
+        return QueueGspInterrupt(memory, interrupt);
+    };
+    mPicaWorker = std::make_shared<PicaGspWorker>(
+        [this, &memory](const PicaGspWorker::Job& job,
+                        std::vector<uint8_t>& interrupts, std::string& error) {
+            return ExecuteGspCommand(
+                job.Packet, job.List, job.Domain,
+                job.HasSpans ? &job.Spans : nullptr, memory, interrupts, error);
+        },
+        std::move(guestWrite), onStart);
+}
+
+bool NativeA32CtrHostServices::DrainPicaWorker(NativeA32Memory& memory) {
+    if (!mPicaWorker) {
+        return false;
+    }
+    std::string error;
+    const bool delivered = mPicaWorker->Drain(
+        memory, mPicaDeliver, PicaGspWorker::WaitSite::GuestWait, error);
+    if (!error.empty()) {
+        throw std::runtime_error(error);
+    }
+    return delivered;
 }
 
 } // namespace Oot3dNativeGame

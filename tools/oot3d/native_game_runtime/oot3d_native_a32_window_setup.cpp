@@ -3,6 +3,7 @@
 #include "fast/backends/gfx_orbis.h"
 #endif
 #include "oot3d_native_a32_window_session.h"
+#include "oot3d_native_pica_gsp_worker.h"
 #include "oot3d_native_direct_aot.h"
 #include "oot3d_title_grass_rules.h"
 #include "fast/oot3d/graphics_settings_persistence.h"
@@ -784,7 +785,11 @@ void NativeA32WindowSession::Setup() {
         [&](uint32_t address, size_t size) {
           if (!picaMemoryView.SynchronizeGuestWrite(process.Memory(), address, size))
             throw std::runtime_error("cannot make a guest write visible through its physical aliases");
-          submissionQueue.NotifyGuestWrite(address, size);
+          // With the GSP worker busy, the write reaches the queue in order
+          // with the commands (and the game thread never takes its lock).
+          auto *worker = hostServicesStorage->PicaWorker();
+          if (worker == nullptr || !worker->PostGuestWrite(address, size))
+            submissionQueue.NotifyGuestWrite(address, size);
         });
     submissionQueue.BindGuestWriteObservation(
         [&](uint32_t address, size_t size) {
@@ -1180,6 +1185,25 @@ void NativeA32WindowSession::Setup() {
   // PS4: the DSP mix (~1 ms per host frame) runs on the game thread, the
   // console's bottleneck; a spare core ticks part of the sources.
   dspHle.StartSourceWorker([] { Fast::OrbisRegisterThread("dsp"); });
+  // PS4 1.70: the guest's GSP commands on a worker thread
+  // (oot3d_native_pica_gsp_worker.h). /data/triaevum/gsp_worker_off keeps
+  // them on the game thread, as before (A/B).
+  if (FILE *off = std::fopen("/data/triaevum/gsp_worker_off", "rb")) {
+    std::fclose(off);
+    std::fprintf(stderr, "[triaevum] gsp worker: off (/data/triaevum/gsp_worker_off)\n");
+  } else {
+    hostServicesStorage->StartPicaWorker(
+        processStorage->Memory(),
+        [this](uint32_t address, size_t size) {
+          submissionQueueStorage->NotifyGuestWrite(address, size);
+        },
+        [] { Fast::OrbisRegisterThread("gsp"); });
+    Oot3dNativeGame::gPicaGspWorkerAtGuestWait = [this] {
+      return hostServicesStorage->DrainPicaWorker(processStorage->Memory());
+    };
+    picaGspWorkerLifetime.emplace(*hostServicesStorage);
+    std::fprintf(stderr, "[triaevum] gsp worker: on\n");
+  }
 #endif
   context = Ship::Context::GetRawInstance();
   audio = context != nullptr ? context->GetAudio() : nullptr;
@@ -1418,6 +1442,11 @@ void NativeA32WindowSession::Setup() {
 #if defined(__SWITCH__)
   WriteSwitchBootStage("runtime_loop");
 #endif
+}
+
+NativeA32WindowSession::PicaGspWorkerLifetime::~PicaGspWorkerLifetime() {
+  Oot3dNativeGame::gPicaGspWorkerAtGuestWait = nullptr;
+  Host.StopPicaWorker();
 }
 
 // Rain is a TopScreen gameplay option: other UI profiles keep native rain.

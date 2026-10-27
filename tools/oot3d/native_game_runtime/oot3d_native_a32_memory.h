@@ -363,6 +363,8 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
     // A call-free AOT region may retain views until its next observable exit.
     // This does not change the memory object layout or the title-module ABI.
     friend class NativeA32UnobservedMemory;
+    // The GSP worker's accesses (oot3d_native_a32_memory_device.h).
+    friend class NativeA32DeviceAccess;
     struct Region {
         std::string Name;
         uint32_t BaseAddress = 0;

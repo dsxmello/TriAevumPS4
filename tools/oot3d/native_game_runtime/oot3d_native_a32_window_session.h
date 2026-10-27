@@ -239,6 +239,12 @@ private:
     ~CopyWriteObserverLifetime() { Memory.SetWriteObserver({}); }
   };
 
+  // The GSP worker (PS4): stopped before anything its jobs reach is gone.
+  struct PicaGspWorkerLifetime {
+    Oot3dNativeGame::NativeA32CtrHostServices& Host;
+    ~PicaGspWorkerLifetime();
+  };
+
   struct PhysicalMemoryAccessLifetime {
     Fast::Renderer3ds::PicaRenderBackend& Backend;
     ~PhysicalMemoryAccessLifetime() { Backend.SetPicaPhysicalMemoryAccess({}, {}, {}, {}, {}); }
@@ -584,6 +590,8 @@ private:
   bool parallelPresentation{};
   Fast::Fast3dGui *fast3dGui{};
   std::optional<GuiRendererRoutingReset> guiRendererRoutingReset;
+  // Last: destroyed first.
+  std::optional<PicaGspWorkerLifetime> picaGspWorkerLifetime;
 };
 
 } // namespace Oot3dA32Window

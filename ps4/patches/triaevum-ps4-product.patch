@@ -1483,61 +1483,539 @@ index fd373ef8..c16378de 100644
  };
  
  class InGameMenu {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.cpp
+index e9781a67..dc8c036b 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.cpp
+@@ -2,6 +2,8 @@
+ // framebuffers and interrupts, memory, timing. Services: oot3d_native_a32_ctr_host_*.cpp.
+ #include "oot3d_native_a32_ctr_host_internal.h"
+ 
++#include "oot3d_native_pica_gsp_worker.h"
++
+ #include <cstdio>
+ 
+ namespace Oot3dNativeGame {
+@@ -598,6 +600,17 @@ NativeA32HostResult NativeA32CtrHostServices::HandleControlMemory(
+ NativeA32HostResult NativeA32CtrHostServices::HandleSvc(
+     uint32_t immediate, oot3d::recomp::a32::GuestState& state,
+     NativeA32Memory& memory, NativeA32HostContext& context) {
++    // The GSP worker's calls, the generation steps it owes and the
++    // interrupts it raised: at every SVC, before the guest's own request.
++    if (mPicaWorker) {
++        std::string workerError;
++        mPicaWorker->Service(memory, mPicaDeliver, workerError);
++        if (!workerError.empty()) {
++            std::fprintf(stderr, "%s\n", workerError.c_str());
++            return {NativeA32HostAction::Fault, std::nullopt, 0U,
++                    std::move(workerError)};
++        }
++    }
+     auto result = HandleSvcImpl(immediate, state, memory, context);
+     if (result.Action == NativeA32HostAction::Wait) {
+         const auto* event = mSvcEvents.LastEvent();
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.h
+index 06f313a2..54eb03c4 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host.h
+@@ -9,6 +9,7 @@
+ #include <array>
+ #include <cstdint>
+ #include <filesystem>
++#include <functional>
+ #include <map>
+ #include <memory>
+ #include <optional>
+@@ -22,7 +23,9 @@ namespace Oot3dNativeGame {
+ 
+ class Oot3dNativePicaFrontend;
+ class Oot3dPicaCommandListCompositionProvider;
++class PicaGspWorker;
+ struct Oot3dGspCommandPacket;
++struct Oot3dPicaCommandListCompositionSpan;
+ enum class Oot3dPicaCompositionDomain : uint8_t;
+ enum class Oot3dPicaInterruptId : uint8_t;
+ 
+@@ -318,6 +321,22 @@ class NativeA32CtrHostServices final : public NativeA32HostServices {
+     bool RestoreState(const nlohmann::json& state, NativeA32Process& process,
+                       std::string* error = nullptr);
+ 
++    // PS4 1.70: the guest's GSP commands on a worker thread
++    // (oot3d_native_pica_gsp_worker.h). guestWrite passes a guest write to
++    // observed memory on to the submission queue (worker thread).
++    void StartPicaWorker(NativeA32Memory& memory,
++                         std::function<void(uint32_t, size_t)> guestWrite,
++                         void (*onStart)());
++    PicaGspWorker* PicaWorker() const noexcept { return mPicaWorker.get(); }
++    // Joins the worker (its jobs reach the session's frontend and queue).
++    void StopPicaWorker() {
++        mPicaWorker.reset();
++        mPicaDeliver = nullptr;
++    }
++    // The guest stopped: waits for the worker and queues the interrupts it
++    // raised; true if any was (the guest may run on). Throws its error.
++    bool DrainPicaWorker(NativeA32Memory& memory);
++
+   private:
+     NativeA32HostResult HandleSvcImpl(
+         uint32_t immediate, oot3d::recomp::a32::GuestState& state,
+@@ -421,6 +440,13 @@ class NativeA32CtrHostServices final : public NativeA32HostServices {
+                               std::string* error);
+     bool TakePicaPendingInterrupts(std::vector<uint8_t>* interrupts,
+                                    std::string* error);
++    bool ExecuteGspCommand(
++        const Oot3dGspCommandPacket& packet,
++        std::span<const uint32_t> commandList,
++        std::optional<Oot3dPicaCompositionDomain> compositionDomain,
++        const std::vector<Oot3dPicaCommandListCompositionSpan>* compositionSpans,
++        NativeA32Memory& memory, std::vector<uint8_t>& interrupts,
++        std::string& picaError);
+     NativeA32HostResult HandleResourceLimitValues(
+         bool current, oot3d::recomp::a32::GuestState& state,
+         NativeA32Memory& memory, NativeA32CtrSvcEvent event);
+@@ -535,6 +561,9 @@ class NativeA32CtrHostServices final : public NativeA32HostServices {
+     uint32_t mHidGyroscopeEnableCount = 0;
+     bool mNdmSchedulerSuspended = false;
+     bool mNdmSchedulerRunsInBackground = false;
++    std::function<bool(uint8_t)> mPicaDeliver;
++    // Last: destroyed (its thread joined) before everything it reaches.
++    std::shared_ptr<PicaGspWorker> mPicaWorker;
+ };
+ 
+ } // namespace Oot3dNativeGame
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
-index 571e4752..eb393c6f 100644
+index 571e4752..55a9df1e 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_ctr_host_gsp.cpp
-@@ -1,6 +1,9 @@
+@@ -1,6 +1,11 @@
  // CTR host services: the gsp::Gpu session.
  #include "oot3d_native_a32_ctr_host_internal.h"
  
++#include "oot3d_native_pica_gsp_worker.h"
++
 +#include <memory>
 +#include <span>
 +
  namespace Oot3dNativeGame {
  
  // SendSyncRequest on a client session of gsp::Gpu.
-@@ -313,10 +316,36 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
-                     const uint32_t source = packet.Parameters[0];
-                     const uint32_t destination = packet.Parameters[1];
-                     const uint32_t size = packet.Parameters[2];
+@@ -8,6 +13,22 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
+     oot3d::recomp::a32::GuestState& state, NativeA32Memory& memory,
+     NativeA32HostContext& context, const std::optional<std::string>& sessionType,
+     uint32_t commandBuffer, NativeA32CtrSvcEvent event) {
++    // The other requests see the GSP worker's commands done (register
++    // writes above all): wait for it first. Not the per-frame ones that
++    // never reach the frontend: queue triggers, cache maintenance and buffer
++    // swaps (framebuffer state, read at presentation, after the drain).
++    if (mPicaWorker && event.Detail != kGspTriggerCommandQueueRequest &&
++        event.Detail != kGspFlushDataCacheRequest &&
++        event.Detail != kGspInvalidateDataCacheRequest &&
++        event.Detail != kGspSetBufferSwapRequest) {
++        std::string workerError;
++        mPicaWorker->Drain(memory, mPicaDeliver,
++                           PicaGspWorker::WaitSite::Request, workerError);
++        if (!workerError.empty()) {
++            return {NativeA32HostAction::Fault, std::nullopt, 0U,
++                    std::move(workerError)};
++        }
++    }
+     const auto* session = LookupHandle(state.r[0]);
+     if (event.Detail == kGspFlushDataCacheRequest ||
+         event.Detail == kGspInvalidateDataCacheRequest) {
+@@ -182,10 +203,25 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
+                         << ",p6=0x" << std::setw(8)
+                         << packet.Parameters[6];
+                 }
+-                std::vector<uint32_t> commandList;
+-                if ((packet.Control & 0xFFU) ==
++                // The command list's copy and the composition spans the
++                // hooks recorded for it, taken now (where the guest submitted
++                // it). One buffer for every list (its words are fully
++                // overwritten by the read below), instead of a fresh zeroed
++                // vector per submission; with the GSP worker, the job's own.
++                PicaGspWorker::Job* job =
++                    mPicaWorker ? &mPicaWorker->Reserve() : nullptr;
++                static thread_local std::vector<uint32_t> commandListBuffer;
++                static thread_local std::vector<
++                    Oot3dPicaCommandListCompositionSpan>
++                    compositionSpanBuffer;
++                auto& commandList = job ? job->List : commandListBuffer;
++                auto& compositionSpans =
++                    job ? job->Spans : compositionSpanBuffer;
++                const bool isCommandList =
++                    (packet.Control & 0xFFU) ==
+                     static_cast<uint32_t>(
+-                        Oot3dGspCommandId::SubmitCommandList)) {
++                        Oot3dGspCommandId::SubmitCommandList);
++                if (isCommandList) {
+                     const uint32_t listAddress = packet.Parameters[0];
+                     const uint32_t listSize = packet.Parameters[1];
+                     if ((listSize & 3U) != 0 ||
+@@ -216,149 +252,46 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
+                     }
+                 }
+                 std::string picaError;
+-                NativeA32CtrPicaSubmissionResult submissionResult;
++                std::optional<Oot3dPicaCompositionDomain> compositionDomain;
++                bool hasCompositionSpans = false;
+ #if !defined(OOT3D_CTR_HOST_SERVICE_PICA_ONLY)
+                 if (submitted && mConfig.PicaFrontend != nullptr) {
+                     if (mConfig.PicaCompositionDomain != nullptr) {
+-                        mConfig.PicaFrontend
+-                            ->SetCommandListCompositionDomain(
+-                                *mConfig.PicaCompositionDomain);
++                        compositionDomain = *mConfig.PicaCompositionDomain;
+                     }
+-                    if ((packet.Control & 0xFFU) ==
+-                            static_cast<uint32_t>(
+-                                Oot3dGspCommandId::SubmitCommandList) &&
++                    if (isCommandList &&
+                         mConfig.PicaCompositionProvider != nullptr) {
+-                        std::vector<Oot3dPicaCommandListCompositionSpan>
+-                            compositionSpans;
++                        // The provider clears the vector.
+                         submitted =
+                             mConfig.PicaCompositionProvider
+                                 ->TakeCommandListCompositionSpans(
+-                                    packet.Parameters[0],
+-                                    packet.Parameters[1],
+-                                    compositionSpans, &picaError) &&
+-                            mConfig.PicaFrontend
+-                                ->SetNextCommandListCompositionSpans(
+                                     packet.Parameters[0],
+                                     packet.Parameters[1],
+                                     compositionSpans, &picaError);
++                        hasCompositionSpans = true;
+                     }
+                 }
+ #endif
+-                if (submitted) {
+-                    CpuPhaseProbe::Scope cpuFrontend(CpuPhaseProbe::Phase::PicaFrontend);
+-                    const auto submitStart =
+-                        mConfig.ProfileRuntime
+-                            ? RuntimeProfileClock::now()
+-                            : RuntimeProfileClock::time_point{};
+-                    submitted = SubmitPicaGspCommand(
+-                        packet, commandList, &submissionResult,
+-                        &picaError);
+-                    if (mConfig.ProfileRuntime) {
+-                        mRuntimeProfile.PicaFrontendSubmitNanoseconds +=
+-                            RuntimeProfileElapsedNanoseconds(
+-                                submitStart);
+-                    }
+-                }
+-                if (submitted &&
+-                    (packet.Control & 0xFFU) ==
+-                        static_cast<uint32_t>(
+-                            Oot3dGspCommandId::MemoryFill)) {
+-                    Oot3dPicaMemoryFillCommand fillCommand;
+-                    fillCommand.Fills[0] = {
+-                        packet.Parameters[0], packet.Parameters[2],
+-                        packet.Parameters[1],
+-                        static_cast<uint16_t>(packet.Parameters[6])};
+-                    fillCommand.Fills[1] = {
+-                        packet.Parameters[3], packet.Parameters[5],
+-                        packet.Parameters[4],
+-                        static_cast<uint16_t>(packet.Parameters[6] >>
+-                                              16U)};
+-                    const bool hasBothBuffers =
+-                        fillCommand.Fills[0].StartAddress != 0U &&
+-                        fillCommand.Fills[1].StartAddress != 0U;
+-                    for (size_t fillIndex = 0;
+-                         fillIndex < fillCommand.Fills.size() &&
+-                         submitted;
+-                         ++fillIndex) {
+-                        const auto& fill = fillCommand.Fills[fillIndex];
+-                        if (fill.StartAddress == 0U ||
+-                            (fill.Control & 1U) == 0U) {
+-                            continue;
+-                        }
+-                        submitted = ExecuteOot3dPicaMemoryFill(
+-                            fill, memory, &picaError);
+-                        if (!submitted ||
+-                            submissionResult.MemoryFillDeferredToGpu) {
+-                            continue;
+-                        }
+-                        if (fillIndex == 0U && !hasBothBuffers) {
+-                            submitted = QueueGspInterrupt(
+-                                memory,
+-                                static_cast<uint8_t>(
+-                                    Oot3dPicaInterruptId::Psc0));
+-                        } else if (fillIndex == 1U) {
+-                            submitted = QueueGspInterrupt(
+-                                memory,
+-                                static_cast<uint8_t>(
+-                                    hasBothBuffers
+-                                        ? Oot3dPicaInterruptId::Psc0
+-                                        : Oot3dPicaInterruptId::Psc1));
+-                        }
+-                    }
+-                }
+-                if (submitted &&
+-                    (packet.Control & 0xFFU) ==
+-                        static_cast<uint32_t>(
+-                            Oot3dGspCommandId::RequestDma)) {
+-                    const uint32_t source = packet.Parameters[0];
+-                    const uint32_t destination = packet.Parameters[1];
+-                    const uint32_t size = packet.Parameters[2];
 -                    std::vector<uint8_t> dmaBytes(size);
 -                    submitted =
 -                        memory.ReadBytes(source, dmaBytes) &&
 -                        memory.WriteBytes(destination, dmaBytes);
-+                    // Copy in bounded chunks. The request's size field comes
-+                    // straight from guest memory, and a bogus value must fail
-+                    // with the range error instead of first speculating the
-+                    // whole allocation: on the PS4 a deterministic 173 MiB
-+                    // request at the title transition exhausted the heap and
-+                    // killed the frame loop (console evidence, PKG 0.10/0.11:
-+                    // one failed allocation of 181534720 bytes). Behavior for
-+                    // every well-formed request is byte-identical.
-+                    constexpr uint32_t kDmaChunkBytes = 0x40000U; // 256 KiB
-+                    // One buffer for every request: a fresh vector zeroed
-+                    // all 256 KiB for each DMA, however small (on the PS4
-+                    // the PGO profile's top memset).
-+                    static thread_local const std::unique_ptr<uint8_t[]> dmaBuffer(
-+                        new uint8_t[kDmaChunkBytes]);
-+                    const std::span<uint8_t> dmaChunk(dmaBuffer.get(), kDmaChunkBytes);
-+                    submitted = size != 0U;
-+                    for (uint32_t offset = 0U; offset < size && submitted;
-+                         offset += kDmaChunkBytes) {
-+                        const uint32_t slice =
-+                            size - offset < kDmaChunkBytes
-+                                ? size - offset
-+                                : kDmaChunkBytes;
-+                        submitted =
-+                            memory.ReadBytes(
-+                                source + offset,
-+                                dmaChunk.first(slice)) &&
-+                            memory.WriteBytes(
-+                                destination + offset,
-+                                std::span<const uint8_t>(dmaChunk.first(slice)));
-+                    }
-                     if (submitted) {
-                         submitted = QueueGspInterrupt(
-                             memory, static_cast<uint8_t>(
+-                    if (submitted) {
+-                        submitted = QueueGspInterrupt(
+-                            memory, static_cast<uint8_t>(
+-                                        Oot3dPicaInterruptId::Dma));
+-                    } else {
+-                        picaError = "GSP DMA range is not mapped";
+-                    }
+-                }
+-                if (submitted &&
+-                    ((packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::DisplayTransfer) ||
+-                     (packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::TextureCopy)) &&
+-                    !submissionResult.DisplayTransferDeferredToGpu) {
+-                    if (!submissionResult
+-                             .DisplayTransferCpuCopySuppressed) {
+-                        if ((packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::TextureCopy)) {
+-                            Oot3dPicaTextureCopyPlan copy;
+-                            submitted = BuildOot3dPicaTextureCopyPlan(packet, copy, &picaError) &&
+-                                        ExecuteOot3dPicaTextureCopy(copy, memory, &picaError);
+-                        } else {
+-                        submitted = ExecuteOot3dPicaDisplayTransfer(
+-                            {packet.Parameters[0], packet.Parameters[1],
+-                             packet.Parameters[2], packet.Parameters[3],
+-                             packet.Parameters[4]},
+-                            memory, &picaError);
+-                        }
+-                    }
+-                    if (submitted) {
+-                        submitted = QueueGspInterrupt(
+-                            memory, static_cast<uint8_t>(
+-                                        Oot3dPicaInterruptId::Ppf));
+-                    }
+-                }
+-                if (submitted) {
+-                    std::vector<uint8_t> interrupts;
+-                    submitted = TakePicaPendingInterrupts(&interrupts,
+-                                                          &picaError);
++                if (submitted && job != nullptr) {
++                    job->Packet = packet;
++                    job->Domain = compositionDomain;
++                    job->HasSpans = hasCompositionSpans;
++                    mPicaWorker->Publish();
++                } else if (submitted) {
++                    static thread_local std::vector<uint8_t> interrupts;
++                    interrupts.clear();
++                    submitted = ExecuteGspCommand(
++                        packet,
++                        isCommandList ? std::span<const uint32_t>(commandList)
++                                      : std::span<const uint32_t>{},
++                        compositionDomain,
++                        hasCompositionSpans ? &compositionSpans : nullptr,
++                        memory, interrupts, picaError);
+                     for (const uint8_t interrupt : interrupts) {
+-                        submitted =
+-                            QueueGspInterrupt(memory, interrupt);
+                         if (!submitted) {
+                             break;
+                         }
++                        submitted = QueueGspInterrupt(memory, interrupt);
+                     }
+                 }
+                 if (!submitted) {
+@@ -563,4 +496,192 @@ NativeA32HostResult NativeA32CtrHostServices::HandleGspRequest(
+     return {NativeA32HostAction::Wait};
+ }
+ 
++// One GSP command once its list was read: the frontend (with the composition
++// state captured for it), the CPU side of fills, DMA and transfers, and the
++// interrupts the command raises, appended in order. The game thread runs it
++// inline; the GSP worker runs it in order with the guest running, and guest
++// memory then takes the device's paths (oot3d_native_a32_memory_device.h).
++bool NativeA32CtrHostServices::ExecuteGspCommand(
++    const Oot3dGspCommandPacket& packet, std::span<const uint32_t> commandList,
++    std::optional<Oot3dPicaCompositionDomain> compositionDomain,
++    const std::vector<Oot3dPicaCommandListCompositionSpan>* compositionSpans,
++    NativeA32Memory& memory, std::vector<uint8_t>& interrupts,
++    std::string& picaError) {
++    bool submitted = true;
++    NativeA32CtrPicaSubmissionResult submissionResult;
++#if !defined(OOT3D_CTR_HOST_SERVICE_PICA_ONLY)
++    if (mConfig.PicaFrontend != nullptr) {
++        if (compositionDomain.has_value()) {
++            mConfig.PicaFrontend->SetCommandListCompositionDomain(
++                *compositionDomain);
++        }
++        if (compositionSpans != nullptr) {
++            submitted =
++                mConfig.PicaFrontend->SetNextCommandListCompositionSpans(
++                    packet.Parameters[0], packet.Parameters[1],
++                    *compositionSpans, &picaError);
++        }
++    }
++#endif
++    if (submitted) {
++        CpuPhaseProbe::Scope cpuFrontend(CpuPhaseProbe::Phase::PicaFrontend);
++        const auto submitStart =
++            mConfig.ProfileRuntime
++                ? RuntimeProfileClock::now()
++                : RuntimeProfileClock::time_point{};
++        submitted = SubmitPicaGspCommand(
++            packet, commandList, &submissionResult,
++            &picaError);
++        if (mConfig.ProfileRuntime) {
++            mRuntimeProfile.PicaFrontendSubmitNanoseconds +=
++                RuntimeProfileElapsedNanoseconds(
++                    submitStart);
++        }
++    }
++    if (submitted &&
++        (packet.Control & 0xFFU) ==
++            static_cast<uint32_t>(
++                Oot3dGspCommandId::MemoryFill)) {
++        Oot3dPicaMemoryFillCommand fillCommand;
++        fillCommand.Fills[0] = {
++            packet.Parameters[0], packet.Parameters[2],
++            packet.Parameters[1],
++            static_cast<uint16_t>(packet.Parameters[6])};
++        fillCommand.Fills[1] = {
++            packet.Parameters[3], packet.Parameters[5],
++            packet.Parameters[4],
++            static_cast<uint16_t>(packet.Parameters[6] >>
++                                  16U)};
++        const bool hasBothBuffers =
++            fillCommand.Fills[0].StartAddress != 0U &&
++            fillCommand.Fills[1].StartAddress != 0U;
++        for (size_t fillIndex = 0;
++             fillIndex < fillCommand.Fills.size() &&
++             submitted;
++             ++fillIndex) {
++            const auto& fill = fillCommand.Fills[fillIndex];
++            if (fill.StartAddress == 0U ||
++                (fill.Control & 1U) == 0U) {
++                continue;
++            }
++            submitted = ExecuteOot3dPicaMemoryFill(
++                fill, memory, &picaError);
++            if (!submitted ||
++                submissionResult.MemoryFillDeferredToGpu) {
++                continue;
++            }
++            if (fillIndex == 0U && !hasBothBuffers) {
++                interrupts.push_back(
++                    static_cast<uint8_t>(Oot3dPicaInterruptId::Psc0));
++            } else if (fillIndex == 1U) {
++                interrupts.push_back(static_cast<uint8_t>(
++                    hasBothBuffers ? Oot3dPicaInterruptId::Psc0
++                                   : Oot3dPicaInterruptId::Psc1));
++            }
++        }
++    }
++    if (submitted &&
++        (packet.Control & 0xFFU) ==
++            static_cast<uint32_t>(
++                Oot3dGspCommandId::RequestDma)) {
++        const uint32_t source = packet.Parameters[0];
++        const uint32_t destination = packet.Parameters[1];
++        const uint32_t size = packet.Parameters[2];
++        // Copy in bounded chunks. The request's size field comes
++        // straight from guest memory, and a bogus value must fail
++        // with the range error instead of first speculating the
++        // whole allocation: on the PS4 a deterministic 173 MiB
++        // request at the title transition exhausted the heap and
++        // killed the frame loop (console evidence, PKG 0.10/0.11:
++        // one failed allocation of 181534720 bytes). Behavior for
++        // every well-formed request is byte-identical.
++        constexpr uint32_t kDmaChunkBytes = 0x40000U; // 256 KiB
++        // One buffer for every request: a fresh vector zeroed
++        // all 256 KiB for each DMA, however small (on the PS4
++        // the PGO profile's top memset).
++        static thread_local const std::unique_ptr<uint8_t[]> dmaBuffer(
++            new uint8_t[kDmaChunkBytes]);
++        const std::span<uint8_t> dmaChunk(dmaBuffer.get(), kDmaChunkBytes);
++        submitted = size != 0U;
++        for (uint32_t offset = 0U; offset < size && submitted;
++             offset += kDmaChunkBytes) {
++            const uint32_t slice =
++                size - offset < kDmaChunkBytes
++                    ? size - offset
++                    : kDmaChunkBytes;
++            submitted =
++                memory.ReadBytes(
++                    source + offset,
++                    dmaChunk.first(slice)) &&
++                memory.WriteBytes(
++                    destination + offset,
++                    std::span<const uint8_t>(dmaChunk.first(slice)));
++        }
++        if (submitted) {
++            interrupts.push_back(
++                static_cast<uint8_t>(Oot3dPicaInterruptId::Dma));
++        } else {
++            picaError = "GSP DMA range is not mapped";
++        }
++    }
++    if (submitted &&
++        ((packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::DisplayTransfer) ||
++         (packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::TextureCopy)) &&
++        !submissionResult.DisplayTransferDeferredToGpu) {
++        if (!submissionResult
++                 .DisplayTransferCpuCopySuppressed) {
++            if ((packet.Control & 0xFFU) == static_cast<uint32_t>(Oot3dGspCommandId::TextureCopy)) {
++                Oot3dPicaTextureCopyPlan copy;
++                submitted = BuildOot3dPicaTextureCopyPlan(packet, copy, &picaError) &&
++                            ExecuteOot3dPicaTextureCopy(copy, memory, &picaError);
++            } else {
++            submitted = ExecuteOot3dPicaDisplayTransfer(
++                {packet.Parameters[0], packet.Parameters[1],
++                 packet.Parameters[2], packet.Parameters[3],
++                 packet.Parameters[4]},
++                memory, &picaError);
++            }
++        }
++        if (submitted) {
++            interrupts.push_back(
++                static_cast<uint8_t>(Oot3dPicaInterruptId::Ppf));
++        }
++    }
++    if (submitted) {
++        static thread_local std::vector<uint8_t> pending;
++        submitted = TakePicaPendingInterrupts(&pending, &picaError);
++        interrupts.insert(interrupts.end(), pending.begin(), pending.end());
++    }
++    return submitted;
++}
++
++void NativeA32CtrHostServices::StartPicaWorker(
++    NativeA32Memory& memory, std::function<void(uint32_t, size_t)> guestWrite,
++    void (*onStart)()) {
++    mPicaDeliver = [this, &memory](uint8_t interrupt) {
++        return QueueGspInterrupt(memory, interrupt);
++    };
++    mPicaWorker = std::make_shared<PicaGspWorker>(
++        [this, &memory](const PicaGspWorker::Job& job,
++                        std::vector<uint8_t>& interrupts, std::string& error) {
++            return ExecuteGspCommand(
++                job.Packet, job.List, job.Domain,
++                job.HasSpans ? &job.Spans : nullptr, memory, interrupts, error);
++        },
++        std::move(guestWrite), onStart);
++}
++
++bool NativeA32CtrHostServices::DrainPicaWorker(NativeA32Memory& memory) {
++    if (!mPicaWorker) {
++        return false;
++    }
++    std::string error;
++    const bool delivered = mPicaWorker->Drain(
++        memory, mPicaDeliver, PicaGspWorker::WaitSite::GuestWait, error);
++    if (!error.empty()) {
++        throw std::runtime_error(error);
++    }
++    return delivered;
++}
++
+ } // namespace Oot3dNativeGame
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.cpp
 index 5e136d15..698bd097 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_dsp_hle.cpp
@@ -1901,10 +2379,223 @@ index 5b6251ee..3a66ce36 100644
      bool RestoreState(const nlohmann::json& state,
                        std::string* error = nullptr);
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp
-index d02560bf..996e6b3c 100644
+index d02560bf..33758489 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp
-@@ -50,7 +50,7 @@ NativeA32Memory::NativeA32Memory(const NativeA32Memory& other)
+@@ -1,8 +1,14 @@
+ #include "oot3d_native_a32_memory.h"
++#include "oot3d_native_a32_memory_device.h"
+ 
+ #include <algorithm>
++#include <atomic>
++#include <cstring>
++#include <exception>
+ #include <limits>
+ #include <stdexcept>
++#include <thread>
++#include <type_traits>
+ 
+ #include <nlohmann/json.hpp>
+ 
+@@ -44,13 +50,205 @@ void AddWriteRange(std::vector<std::pair<uint32_t, size_t>>& ranges,
+     ranges.insert(position, {static_cast<uint32_t>(begin), static_cast<size_t>(end - begin)});
+ }
+ 
++// The GSP worker's side (oot3d_native_a32_memory_device.h). The runner is set
++// only on the device thread; the rest is shared by both threads, the vectors
++// under the spinlock (a few instructions per access, never a system call).
++thread_local NativeA32DeviceAccess::GuestRunner tDeviceRunner = nullptr;
++std::atomic<void (*)()> gLayoutHook{nullptr};
++std::atomic<uint64_t> gDirectReads{0};
++std::atomic<uint64_t> gDirectWrites{0};
++std::atomic<uint64_t> gGuestCalls{0};
++std::atomic_flag gDeviceLock = ATOMIC_FLAG_INIT;
++std::vector<std::pair<uint32_t, size_t>> gOwedWrites;
++std::atomic<bool> gOwedPending{false};
++// Bumped by every escape of a write pointer; the device's copy of the ranges
++// is good while its epoch matches.
++std::atomic<uint64_t> gEscapeEpoch{1};
++std::atomic<bool> gEscapeCopyWanted{false};
++std::shared_ptr<const std::vector<std::pair<uint32_t, size_t>>> gEscapeCopy;
++uint64_t gEscapeCopyEpoch = 0;
++
++class DeviceLock final {
++  public:
++    DeviceLock() noexcept {
++        while (gDeviceLock.test_and_set(std::memory_order_acquire)) std::this_thread::yield();
++    }
++    ~DeviceLock() { gDeviceLock.clear(std::memory_order_release); }
++    DeviceLock(const DeviceLock&) = delete;
++    DeviceLock& operator=(const DeviceLock&) = delete;
++};
++
+ } // namespace
+ 
++NativeA32DeviceAccess::ThreadScope::ThreadScope(GuestRunner runner) noexcept {
++    tDeviceRunner = runner;
++}
++
++NativeA32DeviceAccess::ThreadScope::~ThreadScope() { tDeviceRunner = nullptr; }
++
++bool NativeA32DeviceAccess::OnDeviceThread() noexcept { return tDeviceRunner != nullptr; }
++
++void NativeA32DeviceAccess::SetLayoutHook(void (*hook)()) noexcept {
++    gLayoutHook.store(hook, std::memory_order_release);
++}
++
++void NativeA32DeviceAccess::LayoutChanging() {
++    if (tDeviceRunner != nullptr)
++        throw std::logic_error("the GSP worker reached a guest memory layout change");
++    if (const auto hook = gLayoutHook.load(std::memory_order_acquire)) hook();
++}
++
++void NativeA32DeviceAccess::EscapesChanged() noexcept {
++    gEscapeEpoch.fetch_add(1, std::memory_order_release);
++}
++
++template <typename Function>
++auto NativeA32DeviceAccess::OnGuestThread(Function&& function) {
++    using Result = std::invoke_result_t<Function&>;
++    struct Call {
++        std::remove_reference_t<Function>* Body;
++        std::optional<Result> Value;
++        std::exception_ptr Error;
++    } call{&function, std::nullopt, nullptr};
++    gGuestCalls.fetch_add(1, std::memory_order_relaxed);
++    tDeviceRunner(
++        [](void* argument) {
++            auto& self = *static_cast<Call*>(argument);
++            try {
++                self.Value.emplace((*self.Body)());
++            } catch (...) {
++                self.Error = std::current_exception();
++            }
++        },
++        &call);
++    if (call.Error) std::rethrow_exception(call.Error);
++    return std::move(*call.Value);
++}
++
++uint8_t* NativeA32DeviceAccess::InPlace(const NativeA32Memory& memory, uint32_t address,
++                                        size_t size, bool write) noexcept {
++    // The mapping only changes after the layout hook let the worker finish.
++    const auto* region = memory.FindRegion(address, size);
++    if (region == nullptr || (write && !region->Writable) || !memory.mFastPages ||
++        memory.mTraceWriteFingerprint) {
++        return nullptr;
++    }
++    // Entries go from null to a pointer under the worker (a deferred page is
++    // materialized), never the other way: those changes happen in the drain.
++    const size_t last = (uint64_t{address} + size - 1U) >> NativeA32Memory::PageShift;
++    for (size_t page = address >> NativeA32Memory::PageShift; page <= last; ++page) {
++        const auto& entry = memory.mFastPages[page];
++        const bool present = write ? __atomic_load_n(&entry.Write, __ATOMIC_ACQUIRE) != nullptr
++                                   : __atomic_load_n(&entry.Read, __ATOMIC_ACQUIRE) != nullptr;
++        if (!present) return nullptr;
++    }
++    return const_cast<uint8_t*>(region->Bytes.data()) + (address - region->BaseAddress);
++}
++
++void NativeA32DeviceAccess::NoteWritten(NativeA32Memory& memory, uint32_t address,
++                                        size_t size) {
++    const size_t last = (uint64_t{address} + size - 1U) >> NativeA32Memory::PageShift;
++    for (size_t page = address >> NativeA32Memory::PageShift; page <= last; ++page) {
++        __atomic_store_n(&memory.mFastPages[page].WriteGeneration, uint64_t{0},
++                         __ATOMIC_RELEASE);
++    }
++    DeviceLock lock;
++    AddWriteRange(gOwedWrites, address, size);
++    gOwedPending.store(true, std::memory_order_relaxed);
++}
++
++std::optional<uint64_t> NativeA32DeviceAccess::RangeWriteGeneration(
++    const NativeA32Memory& memory, uint32_t address, size_t size) {
++    if (!memory.mRangeVersionsValid || memory.FindRegion(address, size) == nullptr ||
++        !memory.mFastPages) {
++        return std::nullopt;
++    }
++    const uint64_t epoch = gEscapeEpoch.load(std::memory_order_acquire);
++    {
++        DeviceLock lock;
++        if (gEscapeCopyEpoch != epoch || !gEscapeCopy) {
++            gEscapeCopyWanted.store(true, std::memory_order_relaxed);
++            return std::nullopt;
++        }
++        if (std::any_of(gEscapeCopy->begin(), gEscapeCopy->end(), [&](const auto& range) {
++                return RangesOverlap(address, size, range.first, range.second);
++            })) {
++            return std::nullopt;
++        }
++    }
++    // Read before the bytes (the caller reads them after): a write landing
++    // in between leaves a newer generation than the one kept with them.
++    uint64_t generation = 0;
++    const size_t last = (uint64_t{address} + size - 1U) >> NativeA32Memory::PageShift;
++    for (size_t page = address >> NativeA32Memory::PageShift; page <= last; ++page) {
++        const uint64_t value =
++            __atomic_load_n(&memory.mFastPages[page].WriteGeneration, __ATOMIC_ACQUIRE);
++        if (value == 0U) return std::nullopt;
++        generation = std::max(generation, value);
++    }
++    return generation;
++}
++
++bool NativeA32DeviceAccess::AlreadyObserved(const NativeA32Memory& memory, uint32_t address,
++                                            size_t size) {
++    // The observed ranges change only in ObserveWrites and the layout
++    // changes, both on the game thread while the worker waits or is idle.
++    if (!memory.mWriteObserver || !RangeFits(address, size) || !memory.IsMapped(address, size))
++        return false;
++    const uint64_t epoch = gEscapeEpoch.load(std::memory_order_acquire);
++    {
++        DeviceLock lock;
++        if (gEscapeCopyEpoch != epoch || !gEscapeCopy ||
++            std::any_of(gEscapeCopy->begin(), gEscapeCopy->end(), [&](const auto& range) {
++                return RangesOverlap(address, size, range.first, range.second);
++            })) {
++            return false;
++        }
++    }
++    const auto& ranges = memory.mObservedWriteRanges;
++    const auto covered = std::lower_bound(ranges.begin(), ranges.end(), address,
++        [](const auto& range, uint32_t value) { return uint64_t{range.first} + range.second <= value; });
++    return covered != ranges.end() && covered->first <= address &&
++           uint64_t{covered->first} + covered->second >= uint64_t{address} + size;
++}
++
++void NativeA32DeviceAccess::Service(NativeA32Memory& memory) {
++    if (gOwedPending.load(std::memory_order_relaxed)) {
++        static std::vector<std::pair<uint32_t, size_t>> owed;
++        {
++            DeviceLock lock;
++            owed.swap(gOwedWrites);
++            gOwedPending.store(false, std::memory_order_relaxed);
++        }
++        for (const auto& [address, size] : owed) {
++            ++memory.mRangeGeneration;
++            memory.MarkRangeWritten(address, size, memory.CurrentRangeGeneration());
++        }
++        owed.clear();
++    }
++    if (gEscapeCopyWanted.load(std::memory_order_relaxed)) {
++        // Escapes happen on this thread: the copy holds every one up to epoch.
++        const uint64_t epoch = gEscapeEpoch.load(std::memory_order_acquire);
++        auto copy = std::make_shared<const std::vector<std::pair<uint32_t, size_t>>>(
++            memory.mEscapedWritePointers);
++        DeviceLock lock;
++        gEscapeCopy = std::move(copy);
++        gEscapeCopyEpoch = epoch;
++        gEscapeCopyWanted.store(false, std::memory_order_relaxed);
++    }
++}
++
++NativeA32DeviceAccess::Counts NativeA32DeviceAccess::ReadCounts() noexcept {
++    return {gDirectReads.load(std::memory_order_relaxed),
++            gDirectWrites.load(std::memory_order_relaxed),
++            gGuestCalls.load(std::memory_order_relaxed)};
++}
++
+ NativeA32Memory::NativeA32Memory(const NativeA32Memory& other)
      : mRegions((other.MaterializeDeferredWrites()
                      ? other.mRegions
                      : throw std::runtime_error("cannot copy deferred guest memory"))),
@@ -1913,9 +2604,19 @@ index d02560bf..996e6b3c 100644
        mWriteTraceFingerprint(other.mWriteTraceFingerprint),
        mTraceWriteFingerprint(other.mTraceWriteFingerprint),
        mFastReadMismatchCount(other.mFastReadMismatchCount),
-@@ -70,8 +70,9 @@ NativeA32Memory& NativeA32Memory::operator=(const NativeA32Memory& other) {
+@@ -62,6 +260,7 @@ NativeA32Memory::NativeA32Memory(const NativeA32Memory& other)
+ 
+ NativeA32Memory& NativeA32Memory::operator=(const NativeA32Memory& other) {
+     if (this != &other) {
++        NativeA32DeviceAccess::LayoutChanging();
+         if (!other.MaterializeDeferredWrites())
+             throw std::runtime_error("cannot copy deferred guest memory");
+         const auto nextRangeGeneration = CurrentRangeGeneration() + 1U;
+@@ -69,9 +268,11 @@ NativeA32Memory& NativeA32Memory::operator=(const NativeA32Memory& other) {
+         mDeferredPages.clear();
          mEscapedReadPointers.clear();
          mEscapedWritePointers.clear();
++        NativeA32DeviceAccess::EscapesChanged();
          mRegions = other.mRegions;
 -        mWriteGeneration = other.mWriteGeneration;
 -        mRangeGenerationBias = nextRangeGeneration - mWriteGeneration;
@@ -1925,7 +2626,13 @@ index d02560bf..996e6b3c 100644
          mRangeVersionsValid = mRangeVersionsValid && nextRangeGeneration != 0U;
          mWriteTraceFingerprint = other.mWriteTraceFingerprint;
          mTraceWriteFingerprint = other.mTraceWriteFingerprint;
-@@ -95,9 +96,12 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
+@@ -90,14 +291,18 @@ NativeA32Memory::NativeA32Memory(NativeA32Memory&& other) noexcept {
+ 
+ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
+     if (this == &other) return *this;
++    NativeA32DeviceAccess::LayoutChanging();
+     const auto nextRangeGeneration = CurrentRangeGeneration() + 1U;
+     const bool versionsValid =
          mRangeVersionsValid && other.mRangeVersionsValid && nextRangeGeneration != 0U;
      mRegions = std::move(other.mRegions);
      mPageRegions = std::move(other.mPageRegions);
@@ -1941,7 +2648,13 @@ index d02560bf..996e6b3c 100644
      mRangeVersionsValid = versionsValid;
      mWriteTraceFingerprint = other.mWriteTraceFingerprint;
      mTraceWriteFingerprint = other.mTraceWriteFingerprint;
-@@ -120,10 +124,9 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
+@@ -115,15 +320,15 @@ NativeA32Memory& NativeA32Memory::operator=(NativeA32Memory&& other) noexcept {
+     mObservedWriteRanges = std::move(other.mObservedWriteRanges);
+     mObservedWritePages = std::move(other.mObservedWritePages);
+     mEscapedWritePointers = std::move(other.mEscapedWritePointers);
++    NativeA32DeviceAccess::EscapesChanged();
+     mEscapedReadPointers = std::move(other.mEscapedReadPointers);
+     mDeferredWrites = std::move(other.mDeferredWrites);
      mDeferredPages = std::move(other.mDeferredPages);
      // Backing allocations and their fast pointers move together. Only the
      // destination's certificate epoch changes; no page-table allocation.
@@ -1955,9 +2668,19 @@ index d02560bf..996e6b3c 100644
      }
      // A reused moved-from image must not revive its old certificates either.
      other.mRangeVersionsValid = false;
-@@ -181,9 +184,14 @@ bool NativeA32Memory::MapRegion(const NativeA32MemoryRegionConfig& config,
+@@ -162,6 +367,7 @@ bool NativeA32Memory::MapRegion(const NativeA32MemoryRegionConfig& config,
+         }
+     }
+ 
++    NativeA32DeviceAccess::LayoutChanging();
+     Region region;
+     region.Name = config.Name;
+     region.BaseAddress = config.BaseAddress;
+@@ -180,10 +386,16 @@ bool NativeA32Memory::MapRegion(const NativeA32MemoryRegionConfig& config,
+ }
  
  void NativeA32Memory::RebuildPageTable() {
++    NativeA32DeviceAccess::LayoutChanging();
      mPageRegions.assign(PageCount, 0U);
 -    for (auto& group : mFastPageGroups) {
 -        group.reset();
@@ -1972,7 +2695,7 @@ index d02560bf..996e6b3c 100644
      for (size_t regionIndex = 0; regionIndex < mRegions.size();
           ++regionIndex) {
          auto& region = mRegions[regionIndex];
-@@ -194,6 +202,7 @@ void NativeA32Memory::RebuildPageTable() {
+@@ -194,6 +406,7 @@ void NativeA32Memory::RebuildPageTable() {
          const size_t lastPage = static_cast<size_t>(lastAddress >> PageShift);
          const uint16_t pageValue =
              static_cast<uint16_t>(regionIndex + 1U);
@@ -1980,7 +2703,7 @@ index d02560bf..996e6b3c 100644
          for (size_t page = firstPage; page <= lastPage; ++page) {
              auto& entry = mPageRegions[page];
              if (entry == 0U) {
-@@ -201,9 +210,7 @@ void NativeA32Memory::RebuildPageTable() {
+@@ -201,9 +414,7 @@ void NativeA32Memory::RebuildPageTable() {
              } else if (entry != pageValue) {
                  entry = AmbiguousPage;
              }
@@ -1991,7 +2714,7 @@ index d02560bf..996e6b3c 100644
              fastPage.WriteGeneration = CurrentRangeGeneration();
  
              const uint64_t pageAddress =
-@@ -220,7 +227,7 @@ void NativeA32Memory::RebuildPageTable() {
+@@ -220,7 +431,7 @@ void NativeA32Memory::RebuildPageTable() {
                  const bool trapped =
                      std::binary_search(mTrappedPages.begin(), mTrappedPages.end(), page) ||
                      std::binary_search(mDeferredPages.begin(), mDeferredPages.end(), page);
@@ -2000,7 +2723,7 @@ index d02560bf..996e6b3c 100644
                      continue;
                  }
                  fastPage.Read = region.Bytes.data() + offset;
-@@ -295,7 +302,7 @@ size_t NativeA32Memory::RegionCount() const {
+@@ -295,28 +506,33 @@ size_t NativeA32Memory::RegionCount() const {
  }
  
  uint64_t NativeA32Memory::WriteGeneration() const {
@@ -2009,7 +2732,12 @@ index d02560bf..996e6b3c 100644
  }
  
  std::optional<uint64_t>
-@@ -306,17 +313,19 @@ NativeA32Memory::RangeWriteGeneration(uint32_t address,
+ NativeA32Memory::RangeWriteGeneration(uint32_t address,
+                                       size_t size) const noexcept {
++  if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
++      return NativeA32DeviceAccess::RangeWriteGeneration(*this, address, size);
+   if (!mRangeVersionsValid || FindRegion(address, size) == nullptr ||
+       HasEscapedWritePointer(address, size)) return std::nullopt;
    uint64_t generation = 0;
    const size_t last = (uint64_t{address} + size - 1U) >> PageShift;
    for (size_t page = address >> PageShift; page <= last; ++page) {
@@ -2023,6 +2751,7 @@ index d02560bf..996e6b3c 100644
  }
  
  void NativeA32Memory::EnableWriteTraceFingerprint(bool enabled) noexcept {
++    NativeA32DeviceAccess::LayoutChanging();
 +    const bool changed = mTraceWriteFingerprint != enabled;
      mTraceWriteFingerprint = enabled;
      mWriteTraceFingerprint = 14695981039346656037ULL;
@@ -2032,7 +2761,7 @@ index d02560bf..996e6b3c 100644
  }
  
  uint64_t NativeA32Memory::WriteTraceFingerprint() noexcept {
-@@ -410,7 +419,8 @@ uint64_t NativeA32Memory::StateFingerprint() const {
+@@ -410,7 +626,8 @@ uint64_t NativeA32Memory::StateFingerprint() const {
              hash *= 1099511628211ULL;
          }
      };
@@ -2042,7 +2771,7 @@ index d02560bf..996e6b3c 100644
      for (const auto& region : mRegions) {
          append(region.Name.data(), region.Name.size());
          append(&region.BaseAddress, sizeof(region.BaseAddress));
-@@ -438,7 +448,7 @@ nlohmann::json NativeA32Memory::CaptureState() const {
+@@ -438,13 +655,14 @@ nlohmann::json NativeA32Memory::CaptureState() const {
      }
      return {
          {"format", "oot3d_native_a32_memory_state_v1"},
@@ -2051,7 +2780,14 @@ index d02560bf..996e6b3c 100644
          {"regions", std::move(regions)},
      };
  }
-@@ -473,9 +483,9 @@ bool NativeA32Memory::RestoreState(const nlohmann::json& state,
+ 
+ bool NativeA32Memory::RestoreState(const nlohmann::json& state,
+                                    std::string* error) {
++    NativeA32DeviceAccess::LayoutChanging();
+     try {
+         if (!state.is_object() ||
+             state.value("format", std::string{}) !=
+@@ -473,9 +691,9 @@ bool NativeA32Memory::RestoreState(const nlohmann::json& state,
                  return false;
              }
          }
@@ -2064,7 +2800,26 @@ index d02560bf..996e6b3c 100644
              SetError(error,
                       "native A32 memory write generation is invalid");
              return false;
-@@ -563,8 +573,7 @@ bool NativeA32Memory::ObserveWrites(uint32_t address, size_t size) {
+@@ -534,6 +752,7 @@ void NativeA32Memory::ClearRangeWatch() {
+ 
+ 
+ void NativeA32Memory::SetWriteObserver(WriteObserver observer) {
++    NativeA32DeviceAccess::LayoutChanging();
+     mWriteObserver = std::move(observer);
+     if (!mWriteObserver && !mObservedWritePages.empty()) {
+         mObservedWriteRanges.clear();
+@@ -548,6 +767,10 @@ bool NativeA32Memory::HasEscapedWritePointer(uint32_t address, size_t size) cons
+ }
+ 
+ bool NativeA32Memory::ObserveWrites(uint32_t address, size_t size) {
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
++        if (NativeA32DeviceAccess::AlreadyObserved(*this, address, size)) return true;
++        return NativeA32DeviceAccess::OnGuestThread([&] { return ObserveWrites(address, size); });
++    }
+     if (!mWriteObserver || !RangeFits(address, size) ||
+         !IsMapped(address, size) || HasEscapedWritePointer(address, size)) return false;
+     const auto covered = std::lower_bound(mObservedWriteRanges.begin(), mObservedWriteRanges.end(),
+@@ -563,8 +786,7 @@ bool NativeA32Memory::ObserveWrites(uint32_t address, size_t size) {
          const auto position = std::lower_bound(mObservedWritePages.begin(), mObservedWritePages.end(), page);
          if (position == mObservedWritePages.end() || *position != page)
              mObservedWritePages.insert(position, page);
@@ -2074,7 +2829,15 @@ index d02560bf..996e6b3c 100644
      }
      return true;
  }
-@@ -594,14 +603,17 @@ void NativeA32Memory::PreserveAccessObserversFrom(const NativeA32Memory& memory)
+@@ -581,6 +803,7 @@ void NativeA32Memory::NotifyObservedWrite(uint32_t address, size_t size) {
+ }
+ 
+ void NativeA32Memory::PreserveAccessObserversFrom(const NativeA32Memory& memory) {
++    NativeA32DeviceAccess::LayoutChanging();
+     mWriteObserver = memory.mWriteObserver;
+     mObservedWriteRanges = memory.mObservedWriteRanges;
+     mObservedWritePages = memory.mObservedWritePages;
+@@ -594,14 +817,17 @@ void NativeA32Memory::PreserveAccessObserversFrom(const NativeA32Memory& memory)
  
  void NativeA32Memory::ReleaseDeferredPageTraps() const {
      if (!mDeferredWrites.empty()) return;
@@ -2095,7 +2858,18 @@ index d02560bf..996e6b3c 100644
          auto* bytes = region->Bytes.data() + (address - region->BaseAddress);
          entry.Read = bytes;
          entry.Write = region->Writable &&
-@@ -658,14 +670,13 @@ bool NativeA32Memory::DeferWrites(
+@@ -641,6 +867,10 @@ void NativeA32Memory::DiscardDeferredWrites(uint32_t address, size_t size) const
+ 
+ bool NativeA32Memory::DeferWrites(
+     std::span<const std::pair<uint32_t, size_t>> ranges, DeferredRead reader) {
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
++        return NativeA32DeviceAccess::OnGuestThread(
++            [&] { return DeferWrites(ranges, std::move(reader)); });
++    NativeA32DeviceAccess::LayoutChanging();
+     if (!reader || ranges.empty() || mTraceWriteFingerprint) return false;
+     for (const auto& [address, size] : ranges) {
+         if (!RangeFits(address, size) || !IsWritable(address, size) ||
+@@ -658,14 +888,13 @@ bool NativeA32Memory::DeferWrites(
          for (size_t page = address >> PageShift; page <= last; ++page) {
              const auto at = std::lower_bound(mDeferredPages.begin(), mDeferredPages.end(), page);
              if (at == mDeferredPages.end() || *at != page) mDeferredPages.insert(at, page);
@@ -2114,16 +2888,91 @@ index d02560bf..996e6b3c 100644
          MarkRangeWritten(address, size, CurrentRangeGeneration());
      }
      return true;
-@@ -766,7 +777,7 @@ uint8_t* NativeA32Memory::GetWritePointer(uint32_t address, size_t size) {
+@@ -699,6 +928,8 @@ bool NativeA32Memory::ResolveDeferredRead(uint32_t address, size_t size) const {
+ }
+ 
+ bool NativeA32Memory::MaterializeDeferredWrites() const {
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
++        return NativeA32DeviceAccess::OnGuestThread([&] { return MaterializeDeferredWrites(); });
+     while (!mDeferredWrites.empty()) {
+         const auto address = mDeferredWrites.front().Address;
+         const auto size = mDeferredWrites.front().Size;
+@@ -709,6 +940,14 @@ bool NativeA32Memory::MaterializeDeferredWrites() const {
+ 
+ std::span<const uint8_t> NativeA32Memory::SynchronousReadView(
+     uint32_t address, size_t size) const {
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
++        if (const auto* bytes = NativeA32DeviceAccess::InPlace(*this, address, size, false)) {
++            gDirectReads.fetch_add(1, std::memory_order_relaxed);
++            return {bytes, size};
++        }
++        return NativeA32DeviceAccess::OnGuestThread(
++            [&] { return SynchronousReadView(address, size); });
++    }
+     const auto* region = FindRegion(address, size);
+     if (!region || !ResolveDeferredRead(address, size)) return {};
+     return {region->Bytes.data() + (address - region->BaseAddress), size};
+@@ -719,6 +958,14 @@ bool NativeA32Memory::ReadBytes(uint32_t address,
+     if (bytes.empty()) {
+         return true;
+     }
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
++        if (const auto* source = NativeA32DeviceAccess::InPlace(*this, address, bytes.size(), false)) {
++            std::memcpy(bytes.data(), source, bytes.size());
++            gDirectReads.fetch_add(1, std::memory_order_relaxed);
++            return true;
++        }
++        return NativeA32DeviceAccess::OnGuestThread([&] { return ReadBytes(address, bytes); });
++    }
+     const auto* region = FindRegion(address, bytes.size());
+     if (region == nullptr) {
+         return false;
+@@ -735,6 +982,8 @@ bool NativeA32Memory::ReadBytes(uint32_t address,
+ 
+ const uint8_t* NativeA32Memory::GetReadPointer(uint32_t address,
+                                                size_t size) const {
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
++        return NativeA32DeviceAccess::OnGuestThread([&] { return GetReadPointer(address, size); });
+     const auto* region = FindRegion(address, size);
+     if (region == nullptr) {
+         return nullptr;
+@@ -751,6 +1000,8 @@ const uint8_t* NativeA32Memory::GetReadPointer(uint32_t address,
+ }
+ 
+ uint8_t* NativeA32Memory::GetWritePointer(uint32_t address, size_t size) {
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
++        return NativeA32DeviceAccess::OnGuestThread([&] { return GetWritePointer(address, size); });
+     auto* region = FindRegion(address, size);
+     if (region == nullptr || !region->Writable) {
+         return nullptr;
+@@ -765,8 +1016,9 @@ uint8_t* NativeA32Memory::GetWritePointer(uint32_t address, size_t size) {
+         mPendingTracedPointerWrites.emplace_back(address, size);
      }
      AddWriteRange(mEscapedWritePointers, address, size);
++    NativeA32DeviceAccess::EscapesChanged();
      NotifyObservedWrite(address, size);
 -    ++mWriteGeneration;
 +    ++mRangeGeneration;
      MarkRangeWritten(address, size, CurrentRangeGeneration());
      return destination;
  }
-@@ -827,7 +838,7 @@ bool NativeA32Memory::WriteBytes(uint32_t address,
+@@ -806,6 +1058,15 @@ bool NativeA32Memory::WriteBytes(uint32_t address,
+     if (bytes.empty()) {
+         return true;
+     }
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
++        if (auto* destination = NativeA32DeviceAccess::InPlace(*this, address, bytes.size(), true)) {
++            std::memcpy(destination, bytes.data(), bytes.size());
++            NativeA32DeviceAccess::NoteWritten(*this, address, bytes.size());
++            gDirectWrites.fetch_add(1, std::memory_order_relaxed);
++            return true;
++        }
++        return NativeA32DeviceAccess::OnGuestThread([&] { return WriteBytes(address, bytes); });
++    }
+     auto* region = FindRegion(address, bytes.size());
+     if (region == nullptr || !region->Writable) {
+         return false;
+@@ -827,7 +1088,7 @@ bool NativeA32Memory::WriteBytes(uint32_t address,
      if (mTraceWriteFingerprint) [[unlikely]] {
          RecordTracedWrite(address, bytes);
      }
@@ -2132,7 +2981,16 @@ index d02560bf..996e6b3c 100644
      MarkRangeWritten(address, bytes.size(), CurrentRangeGeneration());
      NotifyObservedWrite(address, bytes.size());
      return true;
-@@ -848,7 +859,7 @@ bool NativeA32Memory::WriteHostBytes(
+@@ -838,6 +1099,8 @@ bool NativeA32Memory::WriteHostBytes(
+     if (bytes.empty()) {
+         return true;
+     }
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]]
++        return NativeA32DeviceAccess::OnGuestThread([&] { return WriteHostBytes(address, bytes); });
+     auto* region = FindRegion(address, bytes.size());
+     if (region == nullptr) {
+         return false;
+@@ -848,7 +1111,7 @@ bool NativeA32Memory::WriteHostBytes(
      if (mTraceWriteFingerprint) [[unlikely]] {
          RecordTracedWrite(address, bytes);
      }
@@ -2141,7 +2999,23 @@ index d02560bf..996e6b3c 100644
      MarkRangeWritten(address, bytes.size(), CurrentRangeGeneration());
      if (!mWatchSuppressed && Watches(address, bytes.size())) [[unlikely]] {
          ++mWatchCounters.HostByteWrites;
-@@ -873,7 +884,7 @@ bool NativeA32Memory::Fill(uint32_t address, size_t size, uint8_t value) {
+@@ -861,6 +1124,15 @@ bool NativeA32Memory::Fill(uint32_t address, size_t size, uint8_t value) {
+     if (size == 0) {
+         return true;
+     }
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
++        if (auto* destination = NativeA32DeviceAccess::InPlace(*this, address, size, true)) {
++            std::memset(destination, value, size);
++            NativeA32DeviceAccess::NoteWritten(*this, address, size);
++            gDirectWrites.fetch_add(1, std::memory_order_relaxed);
++            return true;
++        }
++        return NativeA32DeviceAccess::OnGuestThread([&] { return Fill(address, size, value); });
++    }
+     auto* region = FindRegion(address, size);
+     if (region == nullptr || !region->Writable) {
+         return false;
+@@ -873,7 +1145,7 @@ bool NativeA32Memory::Fill(uint32_t address, size_t size, uint8_t value) {
              address,
              std::span<const uint8_t>(region->Bytes.data() + offset, size));
      }
@@ -2150,7 +3024,38 @@ index d02560bf..996e6b3c 100644
      MarkRangeWritten(address, size, CurrentRangeGeneration());
      if (!mWatchSuppressed && Watches(address, size)) [[unlikely]] {
          ++mWatchCounters.Fills;
-@@ -942,7 +953,7 @@ bool NativeA32Memory::WriteSized(uint32_t address, uint8_t size,
+@@ -885,6 +1157,15 @@ bool NativeA32Memory::Fill(uint32_t address, size_t size, uint8_t value) {
+ bool NativeA32Memory::ReadSized(uint32_t address, uint8_t size,
+                                 uint64_t* value,
+                                 uint32_t* faultAddress) const {
++    // Typed accesses belong to the guest; the device never makes one.
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
++        try {
++            return NativeA32DeviceAccess::OnGuestThread(
++                [&] { return ReadSized(address, size, value, faultAddress); });
++        } catch (...) {
++            return false;
++        }
++    }
+     if (value == nullptr || !IsSupportedSize(size)) {
+         if (faultAddress != nullptr) {
+             *faultAddress = address;
+@@ -917,6 +1198,14 @@ bool NativeA32Memory::ReadSized(uint32_t address, uint8_t size,
+ 
+ bool NativeA32Memory::WriteSized(uint32_t address, uint8_t size,
+                                  uint64_t value, uint32_t* faultAddress) {
++    if (NativeA32DeviceAccess::OnDeviceThread()) [[unlikely]] {
++        try {
++            return NativeA32DeviceAccess::OnGuestThread(
++                [&] { return WriteSized(address, size, value, faultAddress); });
++        } catch (...) {
++            return false;
++        }
++    }
+     if (!IsSupportedSize(size)) {
+         if (faultAddress != nullptr) {
+             *faultAddress = address;
+@@ -942,7 +1231,7 @@ bool NativeA32Memory::WriteSized(uint32_t address, uint8_t size,
              address,
              std::span<const uint8_t>(region->Bytes.data() + offset, size));
      }
@@ -2159,7 +3064,7 @@ index d02560bf..996e6b3c 100644
      MarkRangeWritten(address, size, CurrentRangeGeneration());
      if (Watches(address, size)) [[unlikely]] {
          NoteWatchedWrite(address, size);
-@@ -991,14 +1002,14 @@ bool NativeA32Memory::LoadExclusive(uint32_t address, uint8_t size,
+@@ -991,14 +1280,14 @@ bool NativeA32Memory::LoadExclusive(uint32_t address, uint8_t size,
      if (token == nullptr || !ReadSized(address, size, value, faultAddress)) {
          return false;
      }
@@ -2177,7 +3082,7 @@ index d02560bf..996e6b3c 100644
      }
      if (!WriteSized(address, size, value, faultAddress)) {
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
-index 170d0788..0940c5f6 100644
+index 170d0788..3d0f974b 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory.h
 @@ -19,6 +19,14 @@
@@ -2379,7 +3284,16 @@ index 170d0788..0940c5f6 100644
          if (page->WriteGeneration == 0U) [[unlikely]] mRangeVersionsValid = false;
          return true;
      }
-@@ -317,8 +385,7 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+@@ -295,6 +363,8 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+     // A call-free AOT region may retain views until its next observable exit.
+     // This does not change the memory object layout or the title-module ABI.
+     friend class NativeA32UnobservedMemory;
++    // The GSP worker's accesses (oot3d_native_a32_memory_device.h).
++    friend class NativeA32DeviceAccess;
+     struct Region {
+         std::string Name;
+         uint32_t BaseAddress = 0;
+@@ -317,8 +387,7 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
          if (size == 0U || size > PageSize - offset) {
              return nullptr;
          }
@@ -2389,7 +3303,7 @@ index 170d0788..0940c5f6 100644
      }
      void RebuildPageTable();
      [[nodiscard]] bool Watches(uint32_t address, size_t size) const noexcept {
-@@ -364,15 +431,23 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+@@ -364,15 +433,23 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
      static void SetError(std::string* error, std::string_view message);
      void NotifyObservedWrite(uint32_t address, size_t size);
      uint64_t CurrentRangeGeneration() const noexcept {
@@ -2416,7 +3330,7 @@ index 170d0788..0940c5f6 100644
          }
      }
  
-@@ -381,16 +456,19 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
+@@ -381,16 +458,19 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
      static constexpr size_t PageSize = size_t{1} << PageShift;
      static constexpr size_t PageMask = PageSize - 1U;
      static constexpr size_t PageCount = size_t{1} << (32U - PageShift);
@@ -2444,6 +3358,103 @@ index 170d0788..0940c5f6 100644
      // Cache certificates are not serialized. Replacing an image advances this
      // epoch without changing the architectural write/exclusive generation.
      uint64_t mRangeGenerationBias = 0;
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_device.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_device.h
+new file mode 100644
+index 00000000..9b0f7d49
+--- /dev/null
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_device.h
+@@ -0,0 +1,91 @@
++#pragma once
++
++// Guest memory seen from the GSP worker (PS4 1.70). While the guest runs, a
++// worker thread executes the GPU's commands (oot3d_native_pica_gsp_worker.h),
++// concurrently with the guest on the game thread. The worker reaches guest
++// memory through the same out-of-line members as everyone else (ReadBytes,
++// WriteBytes, SynchronousReadView, RangeWriteGeneration, IsMapped,
++// ObserveWrites...); those see that the calling thread is the device's and
++// take a path that never changes the memory's bookkeeping, which belongs to
++// the game thread (the generated code updates it inline, unsynchronized):
++// - a span whose pages all have a fast entry (mapped whole, not deferred, not
++//   watched; for a write also writable and not observed) is read or written
++//   in place, as the console's GPU does. Mapping and page-table changes wait
++//   for the worker first (the layout hook), so regions and their bytes stay
++//   where they are while it runs.
++// - a device write leaves the write generation to the game thread: it zeroes
++//   the pages' generation (a range with a zero page has no certificate, so a
++//   snapshot of it compares bytes) and owes one generation step for the
++//   range, which the game thread takes at its next service (Service).
++// - escaped write pointers are checked against a copy the game thread makes
++//   when one escapes; until the copy is fresh, ranges have no certificate.
++// - everything else (deferred bytes, observed or watched pages, observing a
++//   range, typed accesses) runs on the game thread, which serves the worker
++//   at every SVC and while it waits for it (the guest runner).
++// None of this changes NativeA32Memory's layout or its inline paths: the
++// generated code compiled against the header is the same.
++
++#include <cstddef>
++#include <cstdint>
++#include <optional>
++
++namespace Oot3dNativeGame {
++
++class NativeA32Memory;
++
++class NativeA32DeviceAccess final {
++  public:
++    // Runs call(argument) on the game thread and returns once it has.
++    using GuestRunner = void (*)(void (*call)(void*), void* argument);
++
++    // Device thread: marks it as the device's for the scope's lifetime.
++    class ThreadScope final {
++      public:
++        explicit ThreadScope(GuestRunner runner) noexcept;
++        ~ThreadScope();
++        ThreadScope(const ThreadScope&) = delete;
++        ThreadScope& operator=(const ThreadScope&) = delete;
++    };
++
++    static bool OnDeviceThread() noexcept;
++
++    // Game thread: called before any change of the mapping or the page
++    // table (and before an image is replaced), to let the worker finish.
++    static void SetLayoutHook(void (*hook)()) noexcept;
++
++    // Game thread: the generation steps owed for device writes, and a fresh
++    // copy of the escaped write ranges when the worker asked for one.
++    static void Service(NativeA32Memory& memory);
++
++    // Per-process totals, for the five-second log.
++    struct Counts {
++        uint64_t DirectReads = 0;   // spans read in place by the device
++        uint64_t DirectWrites = 0;  // spans written in place by the device
++        uint64_t GuestCalls = 0;    // accesses the game thread ran for it
++    };
++    static Counts ReadCounts() noexcept;
++
++  private:
++    friend class NativeA32Memory;
++    // The bytes of [address, address + size) when every page of it has a
++    // fast read (or write) entry, else null: the caller then asks the game
++    // thread.
++    static uint8_t* InPlace(const NativeA32Memory& memory, uint32_t address,
++                            size_t size, bool write) noexcept;
++    // After an in-place write: zero generations, one step owed.
++    static void NoteWritten(NativeA32Memory& memory, uint32_t address,
++                            size_t size);
++    static std::optional<uint64_t> RangeWriteGeneration(
++        const NativeA32Memory& memory, uint32_t address, size_t size);
++    // ObserveWrites' answer without the game thread, when the range is
++    // already observed (true), else false: then ask the game thread.
++    static bool AlreadyObserved(const NativeA32Memory& memory, uint32_t address,
++                                size_t size);
++    static void LayoutChanging();
++    // Escaped write pointers (game thread): their copy is stale.
++    static void EscapesChanged() noexcept;
++    template <typename Function>
++    static auto OnGuestThread(Function&& function);
++};
++
++} // namespace Oot3dNativeGame
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_region.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_region.h
 index 9aa1fa86..47f6e173 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_memory_region.h
@@ -2649,16 +3660,81 @@ index 5f59a070..a02baf19 100644
  #if defined(OOT3D_NATIVE_DIRECT_AOT_PLUGIN)
      Oot3dNativeGame::Oot3dWholeAotPluginObservableExit(pc, state);
  #else
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window.cpp
+index d876a6dd..e2b0774a 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window.cpp
+@@ -2,6 +2,7 @@
+ #include "oot3d_native_a32_window.h"
+ #include "oot3d_native_a32_window_session.h"
+ #include "oot3d_native_a32_window_summary.h"
++#include "oot3d_native_pica_gsp_worker.h"
+ 
+ namespace Oot3dA32Window {
+ 
+@@ -108,24 +109,36 @@ RunUntilGuestWait(Oot3dNativeGame::NativeA32Process &process,
+   // resumes it immediately: this is a stack-safety boundary, not an SDL event
+   // pump or guest scheduling boundary.
+   auto result = process.Run(wholeAotBlockBudget);
+-  while (result.Kind == Oot3dNativeGame::NativeA32ProcessRunKind::Yielded) {
+-    // Low-priority workers may poll indefinitely. Once the foreground is
+-    // waiting, let the host deliver its timers, HID and GPU completions.
+-    // The worker stays Ready and resumes after those events, not next boot.
+-    if (process.OnlyBackgroundThreadsReady()) return result;
+-    if (diagnoseWait && std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(20)) {
+-      for (uint32_t id = 0; id < process.ThreadCount(); ++id) {
+-        const auto* thread = process.ThreadState(id);
+-        if (thread != nullptr)
+-          std::fprintf(stderr, "GUEST_WAIT_TIMEOUT thread=%u pc=%08x lr=%08x sp=%08x r0=%08x r1=%08x r2=%08x\n",
+-                       id, thread->r[15], thread->r[14], thread->r[13],
+-                       thread->r[0], thread->r[1], thread->r[2]);
++  for (;;) {
++    while (result.Kind == Oot3dNativeGame::NativeA32ProcessRunKind::Yielded) {
++      // Low-priority workers may poll indefinitely. Once the foreground is
++      // waiting, let the host deliver its timers, HID and GPU completions.
++      // The worker stays Ready and resumes after those events, not next boot.
++      if (process.OnlyBackgroundThreadsReady()) break;
++      if (diagnoseWait && std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(20)) {
++        for (uint32_t id = 0; id < process.ThreadCount(); ++id) {
++          const auto* thread = process.ThreadState(id);
++          if (thread != nullptr)
++            std::fprintf(stderr, "GUEST_WAIT_TIMEOUT thread=%u pc=%08x lr=%08x sp=%08x r0=%08x r1=%08x r2=%08x\n",
++                         id, thread->r[15], thread->r[14], thread->r[13],
++                         thread->r[0], thread->r[1], thread->r[2]);
++        }
++        throw std::runtime_error("guest did not reach a wait boundary within diagnostic deadline");
+       }
+-      throw std::runtime_error("guest did not reach a wait boundary within diagnostic deadline");
++      result = process.Run(wholeAotBlockBudget);
++    }
++    // The guest stopped: the GPU commands it submitted are done before the
++    // caller looks at their results (PS4 GSP worker). An interrupt they
++    // raised may let it go on, as it would have inline.
++    const bool stopped =
++        result.Kind == Oot3dNativeGame::NativeA32ProcessRunKind::Yielded ||
++        result.Kind == Oot3dNativeGame::NativeA32ProcessRunKind::Waiting;
++    if (!stopped || !Oot3dNativeGame::gPicaGspWorkerAtGuestWait ||
++        !Oot3dNativeGame::gPicaGspWorkerAtGuestWait()) {
++      return result;
+     }
+     result = process.Run(wholeAotBlockBudget);
+   }
+-  return result;
+ }
+ 
+ void RequireRunnableGuest(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..d54b9bb6 100644
+index 01026912..1714a870 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-@@ -4,10 +4,232 @@
+@@ -4,10 +4,234 @@
  #include "oot3d/renderer/ui_presentation_layout.h"
  #include "oot3d_native_room_shadow_shell.h"
  
 +#if defined(__ORBIS__)
 +#include "fast/backends/gfx_orbis.h"
++#include "oot3d_native_a32_memory_device.h"
++#include "oot3d_native_pica_gsp_worker.h"
 +
 +#include <atomic>
 +#include <chrono>
@@ -2886,7 +3962,7 @@ index 01026912..d54b9bb6 100644
  uint64_t HashDiagnosticBytes(std::span<const uint8_t> bytes) noexcept {
    uint64_t hash = 14695981039346656037ULL;
    for (const uint8_t byte : bytes) {
-@@ -162,7 +384,13 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -162,7 +386,13 @@ bool NativeA32WindowSession::RunFrame() {
    // frame rate (docs/TRIAEVUM_PARALLEL_PRESENTATION.md).
    // TRIAEVUM_INPUT_ADMISSION=1 keeps only the wait for the previous frame and
    // =0 restores the early sampling, for comparisons.
@@ -2900,7 +3976,7 @@ index 01026912..d54b9bb6 100644
    static const bool inputAdmission =
        inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
    static const bool lateInputSample =
-@@ -637,6 +865,145 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +867,183 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -3015,6 +4091,44 @@ index 01026912..d54b9bb6 100644
 +                     hostFrames > 0.0 ? static_cast<double>(queue.DrawCalls - windowQueue.DrawCalls) / hostFrames : 0.0);
 +        windowQueue = queue;
 +      }
++      if (const auto *worker = hostServicesStorage->PicaWorker()) {
++        // The GSP worker (oot3d_native_pica_gsp_worker.h): its time, the
++        // game thread's waits for it by site, and how its accesses to guest
++        // memory went (in place, or run by the game thread for it).
++        using Site = Oot3dNativeGame::PicaGspWorker::WaitSite;
++        static auto windowWorker = worker->ReadStats();
++        static auto windowDevice = Oot3dNativeGame::NativeA32DeviceAccess::ReadCounts();
++        const auto stats = worker->ReadStats();
++        const auto device = Oot3dNativeGame::NativeA32DeviceAccess::ReadCounts();
++        const auto wms = [&](uint64_t current, uint64_t previous) {
++          return hostFrames > 0.0 ? static_cast<double>(current - previous) * 1.0e-6 / hostFrames : 0.0;
++        };
++        const auto waited = [&](Site site) {
++          const auto index = static_cast<size_t>(site);
++          return wms(stats.WaitNanoseconds[index], windowWorker.WaitNanoseconds[index]);
++        };
++        const auto rate = [&](uint64_t current, uint64_t previous) {
++          return static_cast<double>(current - previous) / seconds;
++        };
++        std::fprintf(stderr,
++                     "[triaevum] gsp worker per host frame ms: busy %.2f, waiting for game-thread"
++                     " calls %.2f | game thread waited %.2f (guest wait %.2f, gsp request %.2f,"
++                     " layout %.2f, queue full %.2f) | per second: %.0f commands (%.0f lists),"
++                     " %.0f guest writes, %.0f game-thread calls, %.0f reads and %.0f writes in place\n",
++                     wms(stats.BusyNanoseconds, windowWorker.BusyNanoseconds),
++                     wms(stats.GuestCallNanoseconds, windowWorker.GuestCallNanoseconds),
++                     waited(Site::GuestWait) + waited(Site::Request) + waited(Site::Layout) +
++                         waited(Site::Room),
++                     waited(Site::GuestWait), waited(Site::Request), waited(Site::Layout),
++                     waited(Site::Room), rate(stats.Commands, windowWorker.Commands),
++                     rate(stats.Lists, windowWorker.Lists),
++                     rate(stats.GuestWrites, windowWorker.GuestWrites),
++                     rate(device.GuestCalls, windowDevice.GuestCalls),
++                     rate(device.DirectReads, windowDevice.DirectReads),
++                     rate(device.DirectWrites, windowDevice.DirectWrites));
++        windowWorker = stats;
++        windowDevice = device;
++      }
 +      std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
 +                   TakeBlockEntryHookCounts(seconds).c_str());
 +      if (gPicaPlanAhead != nullptr) {
@@ -3046,7 +4160,7 @@ index 01026912..d54b9bb6 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1136,6 +1503,9 @@ bool NativeA32WindowSession::UpdateGuestServicesForRefresh(
+@@ -1136,6 +1543,9 @@ bool NativeA32WindowSession::UpdateGuestServicesForRefresh(
        process, hostServices, processResult, nextVblankTick,
        launch.WholeAotBlockBudget);
    const double clockSeconds = SecondsSince(clockStart);
@@ -3056,7 +4170,7 @@ index 01026912..d54b9bb6 100644
    phaseTiming.GuestClockSeconds += clockSeconds;
    phaseTiming.GuestSeconds += clockSeconds;
    if (clockResolution.OvershootTicks != 0U) {
-@@ -1444,6 +1814,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1854,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -3083,7 +4197,7 @@ index 01026912..d54b9bb6 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1464,14 +1854,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1894,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
            suppressTopScreenFrontendBackdrop &&
            targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
@@ -3133,19 +4247,47 @@ index bddcb6b9..7205000f 100644
      // The mouse for the menu: its window position with the presentation
      // picture the menu is drawn in, the left button, and the wheel while a
      // host surface is up (gameplay never sees it then). The window's wheel
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_session.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_session.h
+index b6cfceec..2996c568 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_session.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_session.h
+@@ -239,6 +239,12 @@ private:
+     ~CopyWriteObserverLifetime() { Memory.SetWriteObserver({}); }
+   };
+ 
++  // The GSP worker (PS4): stopped before anything its jobs reach is gone.
++  struct PicaGspWorkerLifetime {
++    Oot3dNativeGame::NativeA32CtrHostServices& Host;
++    ~PicaGspWorkerLifetime();
++  };
++
+   struct PhysicalMemoryAccessLifetime {
+     Fast::Renderer3ds::PicaRenderBackend& Backend;
+     ~PhysicalMemoryAccessLifetime() { Backend.SetPicaPhysicalMemoryAccess({}, {}, {}, {}, {}); }
+@@ -584,6 +590,8 @@ private:
+   bool parallelPresentation{};
+   Fast::Fast3dGui *fast3dGui{};
+   std::optional<GuiRendererRoutingReset> guiRendererRoutingReset;
++  // Last: destroyed first.
++  std::optional<PicaGspWorkerLifetime> picaGspWorkerLifetime;
+ };
+ 
+ } // namespace Oot3dA32Window
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
-index 81150d82..a01a5262 100644
+index 81150d82..72ba86fa 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
-@@ -1,4 +1,7 @@
+@@ -1,5 +1,9 @@
  // Native A32 window session: setup (process image, host services, renderer, UI, initial state).
 +#if defined(__ORBIS__)
 +#include "fast/backends/gfx_orbis.h"
 +#endif
  #include "oot3d_native_a32_window_session.h"
++#include "oot3d_native_pica_gsp_worker.h"
  #include "oot3d_native_direct_aot.h"
  #include "oot3d_title_grass_rules.h"
-@@ -355,9 +358,16 @@ void NativeA32WindowSession::Setup() {
+ #include "fast/oot3d/graphics_settings_persistence.h"
+@@ -355,9 +359,16 @@ void NativeA32WindowSession::Setup() {
      blockEntryHooks.insert(blockEntryHooks.end(), diagnosticHooks.begin(),
                             diagnosticHooks.end());
    }
@@ -3163,7 +4305,7 @@ index 81150d82..a01a5262 100644
    blockEntryHooks.erase(
        std::unique(blockEntryHooks.begin(), blockEntryHooks.end()),
        blockEntryHooks.end());
-@@ -710,6 +720,23 @@ void NativeA32WindowSession::Setup() {
+@@ -710,6 +721,23 @@ void NativeA32WindowSession::Setup() {
        &nativeCandidateDispatch.TopScreenTouchCoordinateRoute;
    widescreenProjection.WholeAotObservableExitPcs =
        wholeAotObservableExitBlocks;
@@ -3187,7 +4329,20 @@ index 81150d82..a01a5262 100644
    process.SetTimingEnabled(launch.ProfileA32Runtime);
  #if !defined(OOT3D_WHOLE_AOT_PRODUCT_MODE)
    // Native candidates are experimental reconstruction aids.  The product
-@@ -777,7 +804,12 @@ void NativeA32WindowSession::Setup() {
+@@ -757,7 +785,11 @@ void NativeA32WindowSession::Setup() {
+         [&](uint32_t address, size_t size) {
+           if (!picaMemoryView.SynchronizeGuestWrite(process.Memory(), address, size))
+             throw std::runtime_error("cannot make a guest write visible through its physical aliases");
+-          submissionQueue.NotifyGuestWrite(address, size);
++          // With the GSP worker busy, the write reaches the queue in order
++          // with the commands (and the game thread never takes its lock).
++          auto *worker = hostServicesStorage->PicaWorker();
++          if (worker == nullptr || !worker->PostGuestWrite(address, size))
++            submissionQueue.NotifyGuestWrite(address, size);
+         });
+     submissionQueue.BindGuestWriteObservation(
+         [&](uint32_t address, size_t size) {
+@@ -777,7 +809,12 @@ void NativeA32WindowSession::Setup() {
            topScreenTextureOverrideRuntime->Transform(texture, payload);
          });
    }
@@ -3200,7 +4355,7 @@ index 81150d82..a01a5262 100644
    picaFrontend.SetPacketSink(&submissionQueue);
  
    hostArgs = launch.Host;
-@@ -968,7 +1000,17 @@ void NativeA32WindowSession::Setup() {
+@@ -968,7 +1005,17 @@ void NativeA32WindowSession::Setup() {
    inGameMenuStorage.emplace(Oot3dNativeGame::InGameMenuOwners{
        controlConfigRuntime,
        launch.UiProfile == Oot3dNativeGame::Oot3dUiProfile::TopScreen ? topScreenConfigRuntime : nullptr,
@@ -3219,7 +4374,7 @@ index 81150d82..a01a5262 100644
  #if defined(__SWITCH__)
    WriteSwitchBootStage("opengl_renderer_initialized");
  #endif
-@@ -1134,6 +1176,11 @@ void NativeA32WindowSession::Setup() {
+@@ -1134,6 +1181,30 @@ void NativeA32WindowSession::Setup() {
        Oot3dNativeGame::Oot3dUiProfileName(launch.UiProfile));
    auto &dspHle = dspHleStorage.emplace(
        Oot3dNativeGame::BuildNativeA32DspPhysicalRegions(*manifest));
@@ -3227,10 +4382,41 @@ index 81150d82..a01a5262 100644
 +  // PS4: the DSP mix (~1 ms per host frame) runs on the game thread, the
 +  // console's bottleneck; a spare core ticks part of the sources.
 +  dspHle.StartSourceWorker([] { Fast::OrbisRegisterThread("dsp"); });
++  // PS4 1.70: the guest's GSP commands on a worker thread
++  // (oot3d_native_pica_gsp_worker.h). /data/triaevum/gsp_worker_off keeps
++  // them on the game thread, as before (A/B).
++  if (FILE *off = std::fopen("/data/triaevum/gsp_worker_off", "rb")) {
++    std::fclose(off);
++    std::fprintf(stderr, "[triaevum] gsp worker: off (/data/triaevum/gsp_worker_off)\n");
++  } else {
++    hostServicesStorage->StartPicaWorker(
++        processStorage->Memory(),
++        [this](uint32_t address, size_t size) {
++          submissionQueueStorage->NotifyGuestWrite(address, size);
++        },
++        [] { Fast::OrbisRegisterThread("gsp"); });
++    Oot3dNativeGame::gPicaGspWorkerAtGuestWait = [this] {
++      return hostServicesStorage->DrainPicaWorker(processStorage->Memory());
++    };
++    picaGspWorkerLifetime.emplace(*hostServicesStorage);
++    std::fprintf(stderr, "[triaevum] gsp worker: on\n");
++  }
 +#endif
    context = Ship::Context::GetRawInstance();
    audio = context != nullptr ? context->GetAudio() : nullptr;
    audioPlayer = audio != nullptr ? audio->GetAudioPlayer() : nullptr;
+@@ -1373,6 +1444,11 @@ void NativeA32WindowSession::Setup() {
+ #endif
+ }
+ 
++NativeA32WindowSession::PicaGspWorkerLifetime::~PicaGspWorkerLifetime() {
++  Oot3dNativeGame::gPicaGspWorkerAtGuestWait = nullptr;
++  Host.StopPicaWorker();
++}
++
+ // Rain is a TopScreen gameplay option: other UI profiles keep native rain.
+ void NativeA32WindowSession::ApplyTopScreenRainConfig() {
+   if (!rainStorage) return;
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
 index 8071a191..78239d2d 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_shared.h
@@ -3712,6 +4898,121 @@ index 00a6f526..d87b7c52 100644
      if (launch.Host.Renderer == "opengl") {
          launch.Host.BackendId = Fast::WindowBackend::FAST3D_SDL_OPENGL;
      } else if (launch.Host.Renderer == "nri" || launch.Host.Renderer == "vulkan") {
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.cpp b/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.cpp
+index e213d40d..859d812b 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include <algorithm>
+ #include <cstring>
++#include <thread>
+ #include <nlohmann/json.hpp>
+ #include <zip.h>
+ 
+@@ -64,7 +65,16 @@ bool NativeHdFontRuntime::Load(const std::filesystem::path& path, std::string* e
+     }
+ }
+ 
+-void NativeHdFontRuntime::Reset() { mSurfaces.clear(); }
++NativeHdFontRuntime::Guard::Guard(std::atomic_flag& flag) noexcept : mFlag(flag) {
++    while (mFlag.test_and_set(std::memory_order_acquire)) std::this_thread::yield();
++}
++
++NativeHdFontRuntime::Guard::~Guard() { mFlag.clear(std::memory_order_release); }
++
++void NativeHdFontRuntime::Reset() {
++    Guard guard(mSurfaceLock);
++    mSurfaces.clear();
++}
+ 
+ void NativeHdFontRuntime::ObserveBlit(const oot3d::recomp::a32::GuestState& state,
+                                     NativeA32Memory& memory) {
+@@ -88,6 +98,7 @@ void NativeHdFontRuntime::ObserveBlit(const oot3d::recomp::a32::GuestState& stat
+             if (!source || std::memcmp(source, font.Native.data(), font.Native.size()) != 0) continue;
+             const auto offset = args[0] - qbf;
+             if (font.Coverage.Glyph(offset).empty()) continue;
++            Guard guard(mSurfaceLock);
+             if (mSurfaces.size() >= 128 && !mSurfaces.contains(state.r[1])) mSurfaces.clear();
+             auto& surface = mSurfaces[state.r[1]];
+             if (surface.Width != width || surface.Height != height) surface = {};
+@@ -115,20 +126,31 @@ void NativeHdFontRuntime::Resolve(const Oot3dPicaPhysicalMemoryView& memory,
+     const auto native = resource.ResolvedBytes();
+     const auto guest = memory.Translate(texture.PhysicalAddress, native.size());
+     if (!guest) return;
+-    auto found = mSurfaces.find(*guest);
+-    if (found == mSurfaces.end()) {
++    std::uint32_t owner = *guest;
++    std::vector<std::uint32_t> candidates;
++    {
++        Guard guard(mSurfaceLock);
++        if (!mSurfaces.contains(owner)) {
++            for (const auto& [address, surface] : mSurfaces) {
++                if (surface.Width == texture.Width && surface.Height == texture.Height)
++                    candidates.push_back(address);
++            }
++            if (candidates.empty()) return;
++        }
++    }
++    if (!candidates.empty()) {
+         // Native text uploads may copy the heap atlas into linear GPU memory.
+         // Require full byte identity with an observed owner, not a font hash
+         // guessed from a finished image. Glyph provenance still comes from blits.
+-        for (auto it = mSurfaces.begin(); it != mSurfaces.end(); ++it) {
+-            if (it->second.Width != texture.Width || it->second.Height != texture.Height) continue;
+-            const auto source = memory.ViewGuest(it->first, native.size());
+-            if (source.size() == native.size() && std::equal(native.begin(), native.end(), source.begin())) {
+-                found = it;
+-                break;
+-            }
+-        }
++        const auto match = std::find_if(candidates.begin(), candidates.end(), [&](std::uint32_t address) {
++            const auto source = memory.ViewGuest(address, native.size());
++            return source.size() == native.size() && std::equal(native.begin(), native.end(), source.begin());
++        });
++        if (match == candidates.end()) return;
++        owner = *match;
+     }
++    Guard guard(mSurfaceLock);
++    const auto found = mSurfaces.find(owner);
+     if (found == mSurfaces.end()) return;
+     auto& surface = found->second;
+     if (surface.Width != texture.Width || surface.Height != texture.Height ||
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.h b/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.h
+index c5e8e32d..9fd65f85 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_hd_font_runtime.h
+@@ -4,6 +4,7 @@
+ #include "oot3d_native_pica_submission.h"
+ #include "oot3d_native_a32_memory.h"
+ 
++#include <atomic>
+ #include <filesystem>
+ 
+ namespace Oot3dNativeGame {
+@@ -39,7 +40,22 @@ class NativeHdFontRuntime {
+         std::uint64_t ContentHash = 0;
+         bool Dirty = true;
+     };
++    // The surfaces: blits are observed on the game thread while the guest
++    // runs, Resolve captures on the GSP worker (PS4). Held only around the
++    // map, never across a guest memory access (the worker's may need the
++    // game thread).
++    class Guard {
++      public:
++        explicit Guard(std::atomic_flag& flag) noexcept;
++        ~Guard();
++        Guard(const Guard&) = delete;
++        Guard& operator=(const Guard&) = delete;
++
++      private:
++        std::atomic_flag& mFlag;
++    };
+     std::vector<Font> mFonts;
++    std::atomic_flag mSurfaceLock = ATOMIC_FLAG_INIT;
+     std::unordered_map<std::uint32_t, Surface> mSurfaces;
+     std::uint32_t mOutputHeight = 0;
+ };
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_fragment_uniform_codec.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_fragment_uniform_codec.h
 index f7ef0f39..a2dc8484 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_fragment_uniform_codec.h
@@ -3734,6 +5035,672 @@ index f7ef0f39..a2dc8484 100644
              for (auto& word : vector) if (!reader.U32(word)) return false;
      }
      return true;
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_gsp_worker.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_gsp_worker.h
+new file mode 100644
+index 00000000..b18a0b56
+--- /dev/null
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_gsp_worker.h
+@@ -0,0 +1,388 @@
++#pragma once
++
++// The GSP worker (PS4 1.70). The game thread is the console's bottleneck, and
++// ~3 ms of each host frame went to executing the guest's GSP commands (the
++// command-list walk, the draw packets and their geometry/texture capture,
++// fills, DMA, transfers) inline in its TriggerCmdReqQueue. 1.69 simulated
++// moving all of it to another thread, in order ("design B"): it hid ~all of
++// it, the guest almost never waiting for it. This is that thread.
++//
++// The game thread reads the command packets and their lists from the queue
++// (and the composition spans the hooks recorded for each list), hands each
++// command to the worker as a job, and goes on running the guest. The worker
++// executes the jobs in submission order, as the console's GPU does, and
++// leaves the interrupts they raise for the game thread, which queues them to
++// the guest at its next SVC (Service) or when it waits for the worker:
++// - whenever the guest stops (RunUntilGuestWait), so that every command it
++//   submitted is done when the frame code drains the queue, exactly as
++//   before; if that delivered an interrupt, the guest runs again;
++// - before any other GSP request (register writes and reads see every
++//   earlier command) and before a change of the guest memory layout.
++// Guest memory is reached through the device paths of
++// oot3d_native_a32_memory_device.h; what they cannot do in place the game
++// thread runs for the worker (Service), never the other way round.
++//
++// Guest writes to observed memory (raw copies the GPU owns) reach the
++// submission queue in order with the commands: as a job while the worker has
++// any, or at the end of the job a game-thread call was made for. The game
++// thread never takes the queue's lock while the worker may hold it.
++//
++// Like the DSP worker (1.64) and the plan helpers (1.63), nothing per job
++// takes a lock or makes a system call: the jobs sit in fixed slots, published
++// with one release store, and the worker spins with yields during the bursts.
++// Between bursts it waits on a condition variable with a 1 ms timeout (lost
++// notifications only delay it). Game thread and worker only.
++
++#include "oot3d_native_a32_memory_device.h"
++#include "oot3d_native_pica_frontend.h"
++
++#if defined(__ORBIS__)
++#include "fast/backends/gfx_orbis.h"
++#endif
++
++#include <array>
++#include <atomic>
++#include <chrono>
++#include <condition_variable>
++#include <cstdint>
++#include <exception>
++#include <functional>
++#include <mutex>
++#include <optional>
++#include <string>
++#include <thread>
++#include <utility>
++#include <vector>
++
++namespace Oot3dNativeGame {
++
++class NativeA32Memory;
++
++class PicaGspWorker final {
++  public:
++    using Clock = std::chrono::steady_clock;
++
++    struct Job {
++        // A guest write the submission queue has to see in order (no
++        // command): written by the guest after the jobs before it.
++        bool GuestWrite = false;
++        uint32_t WriteAddress = 0;
++        size_t WriteSize = 0;
++        Oot3dGspCommandPacket Packet{};
++        std::vector<uint32_t> List;  // the command list, read at submission
++        std::vector<Oot3dPicaCommandListCompositionSpan> Spans;
++        bool HasSpans = false;
++        std::optional<Oot3dPicaCompositionDomain> Domain;
++    };
++
++    // Worker thread: executes one command, appending the interrupts it
++    // raises in order; false (with error) fails the guest at its next SVC.
++    using Execute =
++        std::function<bool(const Job&, std::vector<uint8_t>& interrupts, std::string& error)>;
++    // Worker thread: a guest write to observed memory, for the queue.
++    using GuestWrite = std::function<void(uint32_t address, size_t size)>;
++    // Game thread: queues one interrupt to the guest.
++    using Deliver = std::function<bool(uint8_t interrupt)>;
++
++    // Where the game thread waited for the worker.
++    enum class WaitSite : uint8_t { GuestWait, Request, Layout, Room, Count };
++
++    struct Stats {
++        uint64_t Commands = 0, Lists = 0, GuestWrites = 0;
++        uint64_t BusyNanoseconds = 0;         // the worker executing jobs
++        uint64_t GuestCallNanoseconds = 0;    // the worker waiting for game-thread calls
++        std::array<uint64_t, static_cast<size_t>(WaitSite::Count)> WaitNanoseconds{};
++    };
++
++    PicaGspWorker(Execute execute, GuestWrite guestWrite, void (*onStart)())
++        : mExecute(std::move(execute)), mGuestWrite(std::move(guestWrite)), mOnStart(onStart) {
++        gWorker = this;
++        NativeA32DeviceAccess::SetLayoutHook(&LayoutHook);
++        mThread = std::thread([this] { Loop(); });
++    }
++
++    ~PicaGspWorker() {
++        NativeA32DeviceAccess::SetLayoutHook(nullptr);
++        mStop.store(true, std::memory_order_seq_cst);
++        Wake();
++        mThread.join();
++        gWorker = nullptr;
++    }
++
++    PicaGspWorker(const PicaGspWorker&) = delete;
++    PicaGspWorker& operator=(const PicaGspWorker&) = delete;
++
++    // Game thread: the next job's slot (waiting for room), then Publish.
++    Job& Reserve() {
++        const uint64_t tail = mTail.load(std::memory_order_relaxed);
++        if (tail - mHead.load(std::memory_order_acquire) == kSlots) {
++            WaitFor(tail - kSlots + 1U, WaitSite::Room);
++        }
++        Job& job = Slot(tail);
++        job.GuestWrite = false;
++        job.HasSpans = false;
++        job.Domain.reset();
++        job.List.clear();
++        job.Spans.clear();
++        return job;
++    }
++
++    void Publish() {
++        mTail.store(mTail.load(std::memory_order_relaxed) + 1U, std::memory_order_seq_cst);
++        if (mSleeping.load(std::memory_order_seq_cst)) Wake();
++    }
++
++    // Game thread: no job outstanding, so the worker holds no lock and
++    // reaches nothing until the next Publish.
++    bool Idle() const noexcept {
++        return mHead.load(std::memory_order_acquire) == mTail.load(std::memory_order_relaxed);
++    }
++
++    // Game thread, from the write observer: false when the queue can take
++    // the write right away (the worker is idle).
++    bool PostGuestWrite(uint32_t address, size_t size) {
++        if (mServicing.load(std::memory_order_relaxed)) {
++            // A call made for the worker wrote it: the worker passes it on
++            // when that job ends, before the next command.
++            mCallWrites.emplace_back(address, size);
++            return true;
++        }
++        if (Idle()) return false;
++        Job& job = Reserve();
++        job.GuestWrite = true;
++        job.WriteAddress = address;
++        job.WriteSize = size;
++        Publish();
++        return true;
++    }
++
++    // Game thread, at every SVC: the calls the worker is waiting for, the
++    // generation steps it owes, and the interrupts it raised (delivered in
++    // order; true if any was). Its first error, if any, goes to error.
++    bool Service(NativeA32Memory& memory, const Deliver& deliver, std::string& error) {
++        ServiceCall();
++        NativeA32DeviceAccess::Service(memory);
++        if (!mHasOutput.load(std::memory_order_acquire)) return false;
++        {
++            OutputLock lock(mOutputLock);
++            mDelivering.swap(mOutInterrupts);
++            if (error.empty() && !mOutError.empty()) error = mOutError;
++            mOutError.clear();
++            mHasOutput.store(false, std::memory_order_relaxed);
++        }
++        bool delivered = false;
++        for (const uint8_t interrupt : mDelivering) {
++            if (!deliver(interrupt)) {
++                if (error.empty()) error = "a GSP worker interrupt could not be queued";
++                break;
++            }
++            delivered = true;
++        }
++        mDelivering.clear();
++        return delivered;
++    }
++
++    // Game thread: waits for every published job, then Service.
++    bool Drain(NativeA32Memory& memory, const Deliver& deliver, WaitSite site,
++               std::string& error) {
++        WaitFor(mTail.load(std::memory_order_relaxed), site);
++        return Service(memory, deliver, error);
++    }
++
++    Stats ReadStats() const noexcept {
++        Stats stats;
++        stats.Commands = mCommands.load(std::memory_order_relaxed);
++        stats.Lists = mLists.load(std::memory_order_relaxed);
++        stats.GuestWrites = mGuestWrites.load(std::memory_order_relaxed);
++        stats.BusyNanoseconds = mBusyNanoseconds.load(std::memory_order_relaxed);
++        stats.GuestCallNanoseconds = mGuestCallNanoseconds.load(std::memory_order_relaxed);
++        for (size_t site = 0; site < stats.WaitNanoseconds.size(); ++site) {
++            stats.WaitNanoseconds[site] = mWaitNanoseconds[site].load(std::memory_order_relaxed);
++        }
++        return stats;
++    }
++
++  private:
++    static constexpr uint64_t kSlots = 64;
++    // After its last job the worker keeps polling this long before it sleeps
++    // (the guest submits in bursts, a few per refresh).
++    static constexpr auto kSpinAfterWork = std::chrono::milliseconds(2);
++
++    struct Call {
++        void (*Function)(void*) = nullptr;
++        void* Argument = nullptr;
++        std::atomic<bool> Done{false};
++    };
++
++    class OutputLock final {
++      public:
++        explicit OutputLock(std::atomic_flag& flag) noexcept : mFlag(flag) {
++            while (mFlag.test_and_set(std::memory_order_acquire)) std::this_thread::yield();
++        }
++        ~OutputLock() { mFlag.clear(std::memory_order_release); }
++        OutputLock(const OutputLock&) = delete;
++        OutputLock& operator=(const OutputLock&) = delete;
++
++      private:
++        std::atomic_flag& mFlag;
++    };
++
++    static uint64_t Since(Clock::time_point start) {
++        return static_cast<uint64_t>(
++            std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count());
++    }
++
++    Job& Slot(uint64_t sequence) { return mSlots[sequence % kSlots]; }
++
++    void Wake() {
++        {
++            std::lock_guard lock(mWakeMutex);
++            ++mWakeRequests;
++        }
++        mWakeCondition.notify_one();
++    }
++
++    // Game thread: until the worker has taken every job before sequence
++    // `until`, serving its calls meanwhile.
++    void WaitFor(uint64_t until, WaitSite site) {
++        if (mHead.load(std::memory_order_acquire) >= until) return;
++        const auto start = Clock::now();
++#if defined(__ORBIS__)
++        Fast::OrbisWaitScope wait("the GSP worker");
++#endif
++        while (mHead.load(std::memory_order_acquire) < until) {
++            if (!ServiceCall()) std::this_thread::yield();
++        }
++        mWaitNanoseconds[static_cast<size_t>(site)].fetch_add(Since(start),
++                                                               std::memory_order_relaxed);
++    }
++
++    // Game thread: runs the call the worker is waiting for, if any.
++    bool ServiceCall() {
++        Call* call = mCall.load(std::memory_order_acquire);
++        if (call == nullptr) return false;
++        mServicing.store(true, std::memory_order_relaxed);
++        call->Function(call->Argument);
++        mServicing.store(false, std::memory_order_relaxed);
++        mCall.store(nullptr, std::memory_order_relaxed);
++        call->Done.store(true, std::memory_order_release);
++        return true;
++    }
++
++    // Worker thread (NativeA32DeviceAccess::GuestRunner).
++    static void RunOnGuest(void (*function)(void*), void* argument) {
++        PicaGspWorker& self = *gWorker;
++        Call call;
++        call.Function = function;
++        call.Argument = argument;
++        const auto start = Clock::now();
++#if defined(__ORBIS__)
++        Fast::OrbisWaitScope wait("the game thread (GSP worker call)");
++#endif
++        self.mCall.store(&call, std::memory_order_release);
++        while (!call.Done.load(std::memory_order_acquire)) std::this_thread::yield();
++        self.mGuestCallNanoseconds.fetch_add(Since(start), std::memory_order_relaxed);
++    }
++
++    // Before the guest memory layout changes (any thread that changes it):
++    // let the worker finish. Not while serving it a call: it is stopped.
++    static void LayoutHook() {
++        PicaGspWorker* self = gWorker;
++        if (self == nullptr || self->mServicing.load(std::memory_order_relaxed)) return;
++        self->WaitFor(self->mTail.load(std::memory_order_relaxed), WaitSite::Layout);
++    }
++
++    void Loop() {
++        NativeA32DeviceAccess::ThreadScope device(&RunOnGuest);
++        if (mOnStart != nullptr) mOnStart();
++        std::vector<uint8_t> interrupts;
++        std::string error;
++        auto lastWork = Clock::now();
++        while (!mStop.load(std::memory_order_relaxed)) {
++            const uint64_t head = mHead.load(std::memory_order_relaxed);
++            if (head == mTail.load(std::memory_order_acquire)) {
++                if (Clock::now() - lastWork < kSpinAfterWork) {
++                    std::this_thread::yield();
++                    continue;
++                }
++                std::unique_lock lock(mWakeMutex);
++                mSleeping.store(true, std::memory_order_seq_cst);
++                if (head == mTail.load(std::memory_order_seq_cst) &&
++                    !mStop.load(std::memory_order_relaxed)) {
++                    const uint64_t requests = mWakeRequests;
++                    mWakeCondition.wait_for(lock, std::chrono::milliseconds(1),
++                                            [&] { return mWakeRequests != requests; });
++                }
++                mSleeping.store(false, std::memory_order_relaxed);
++                lastWork = Clock::now();
++                continue;
++            }
++            const auto start = Clock::now();
++            const Job& job = Slot(head);
++            if (job.GuestWrite) {
++                mGuestWrite(job.WriteAddress, job.WriteSize);
++                mGuestWrites.fetch_add(1, std::memory_order_relaxed);
++            } else {
++                interrupts.clear();
++                error.clear();
++                bool executed = false;
++                try {
++                    executed = mExecute(job, interrupts, error);
++                } catch (const std::exception& exception) {
++                    error = exception.what();
++                } catch (...) {
++                    error = "unknown exception";
++                }
++                if (!executed && error.empty()) error = "GSP command failed";
++                // Writes made for it by the game thread, before the next command.
++                for (const auto& [address, size] : mCallWrites) mGuestWrite(address, size);
++                mCallWrites.clear();
++                if (!interrupts.empty() || !executed) {
++                    OutputLock lock(mOutputLock);
++                    mOutInterrupts.insert(mOutInterrupts.end(), interrupts.begin(), interrupts.end());
++                    if (!executed && mOutError.empty()) mOutError = "GSP worker: " + error;
++                    mHasOutput.store(true, std::memory_order_release);
++                }
++                mCommands.fetch_add(1, std::memory_order_relaxed);
++                if (!job.List.empty()) mLists.fetch_add(1, std::memory_order_relaxed);
++            }
++            mBusyNanoseconds.fetch_add(Since(start), std::memory_order_relaxed);
++            mHead.store(head + 1U, std::memory_order_release);
++            lastWork = Clock::now();
++        }
++    }
++
++    // The process's worker (one: the layout hook and the runner are global).
++    static inline PicaGspWorker* gWorker = nullptr;
++
++    Execute mExecute;
++    GuestWrite mGuestWrite;
++    void (*mOnStart)() = nullptr;
++    std::array<Job, kSlots> mSlots;
++    std::atomic<uint64_t> mHead{0};  // jobs the worker finished
++    std::atomic<uint64_t> mTail{0};  // jobs published
++    std::atomic<bool> mStop{false};
++    std::atomic<bool> mSleeping{false};
++    std::mutex mWakeMutex;
++    std::condition_variable mWakeCondition;
++    uint64_t mWakeRequests = 0;
++    std::atomic<Call*> mCall{nullptr};
++    std::atomic<bool> mServicing{false};
++    // Written by the game thread while it serves a call (the worker waits).
++    std::vector<std::pair<uint32_t, size_t>> mCallWrites;
++    std::atomic_flag mOutputLock = ATOMIC_FLAG_INIT;
++    std::atomic<bool> mHasOutput{false};
++    std::vector<uint8_t> mOutInterrupts;
++    std::string mOutError;
++    std::vector<uint8_t> mDelivering;  // game thread
++    std::atomic<uint64_t> mCommands{0}, mLists{0}, mGuestWrites{0};
++    std::atomic<uint64_t> mBusyNanoseconds{0}, mGuestCallNanoseconds{0};
++    std::array<std::atomic<uint64_t>, static_cast<size_t>(WaitSite::Count)> mWaitNanoseconds{};
++    std::thread mThread;
++};
++
++// RunUntilGuestWait (oot3d_native_a32_window.cpp), when the guest stopped:
++// drains the worker; true if that queued an interrupt. Set while it runs.
++inline std::function<bool()> gPicaGspWorkerAtGuestWait;
++
++} // namespace Oot3dNativeGame
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_gsp_worker_tests.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_gsp_worker_tests.cpp
+new file mode 100644
+index 00000000..1cc1a839
+--- /dev/null
++++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_gsp_worker_tests.cpp
+@@ -0,0 +1,266 @@
++// Stress test of the GSP worker (oot3d_native_pica_gsp_worker.h) and the
++// device paths of NativeA32Memory (oot3d_native_a32_memory_device.h), on the PC.
++// Built by hand (the tri-host tree does not configure), from the repo root:
++//   A=tools/oot3d/native_a32_runtime/upstream/recomp
++//   clang++ -std=c++23 -O1 -g -fsanitize=address,undefined -pthread \
++//     -DOOT3D_GSP_WORKER_TEST_STANDALONE \
++//     -Itools/oot3d/native_game_runtime -Itools/oot3d/native_pica_frontend \
++//     -Itools/oot3d/native_a32_runtime -Itools/oot3d/native_a32_runtime/upstream -I$A \
++//     -Ips4/ports/ps4-vk-game/third_party -Iruntime/three_ds_recomp/include -Itools/oot3d \
++//     tools/oot3d/native_game_runtime/oot3d_native_pica_gsp_worker_tests.cpp \
++//     tools/oot3d/native_game_runtime/oot3d_native_a32_memory.cpp $A/a32_runtime.cpp \
++//     -o gsp_worker_test && ./gsp_worker_test 300000
++// (-fsanitize=thread reports only the intended races: page generations
++// written inline by the game thread against the worker's atomic reads.)
++//
++// The game thread plays the guest: it publishes jobs, serves the worker at
++// "SVCs", drains it at "guest waits", and writes guest memory. Jobs capture
++// ranges like the submission queue's snapshot caches do (write generation,
++// then bytes), write as the device (DMA/fills), observe ranges and write
++// observed pages (game-thread calls), and raise one interrupt each.
++//
++// Checked:
++// - certificate: a capture whose generation equals the one kept with the
++//   previous snapshot of the same range finds the same bytes (guest writes
++//   to those ranges happen only while the worker is idle, device writes in
++//   job order, escaped pointers write without a generation step);
++// - interrupts arrive once each, in job order;
++// - device writes land, guest writes to observed pages reach the queue
++//   callback, layout changes wait for the worker, no deadlock;
++// - after a drain and a service every page of the region has a generation.
++
++#include "oot3d_native_a32_memory.h"
++#include "oot3d_native_a32_memory_device.h"
++#include "oot3d_native_pica_gsp_worker.h"
++
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <map>
++#include <random>
++
++#if defined(OOT3D_GSP_WORKER_TEST_STANDALONE)
++// a32_runtime.cpp links the interpreter, which the test never runs.
++#include "a32_core.h"
++#include "a32_core_internal.h"
++#include "a32_vfp_scalar.h"
++#include "a32_vfp_transport.h"
++namespace oot3d::recomp::a32 {
++ExecutionResult ExecuteCore(std::uint32_t, std::uint32_t, GuestState&, MemoryBus&) { std::abort(); }
++ExecutionResult ExecuteVfpScalar(std::uint32_t, std::uint32_t, GuestState&) { std::abort(); }
++ExecutionResult ExecuteVfpTransport(std::uint32_t, std::uint32_t, GuestState&, MemoryBus&) { std::abort(); }
++namespace internal {
++ExecutionResult ExecuteCoreAlu(std::uint32_t, std::uint32_t, GuestState&, MemoryBus&) { std::abort(); }
++ExecutionResult ExecuteCoreMemory(std::uint32_t, std::uint32_t, GuestState&, MemoryBus&) { std::abort(); }
++ExecutionResult ExecuteCoreSystem(std::uint32_t, std::uint32_t, GuestState&) noexcept { std::abort(); }
++}
++}
++#endif
++
++using namespace Oot3dNativeGame;
++
++namespace {
++
++constexpr uint32_t kBase = 0x20000000U;
++constexpr uint32_t kSize = 0x40000U;  // 64 pages
++constexpr uint32_t kOther = 0x30000000U;  // the guest's own region, never the device's
++constexpr uint32_t kObserved = kBase + 0x3F000U;  // the last page: observed
++
++enum Op : uint32_t { Capture = 1, DeviceWrite = 2, Observe = 3, ObservedWrite = 4, DeviceFill = 5 };
++
++[[noreturn]] void Fail(const char* what, uint64_t detail = 0) {
++    std::fprintf(stderr, "FAIL: %s (%llu)\n", what, static_cast<unsigned long long>(detail));
++    std::abort();
++}
++
++void Require(bool condition, const char* what, uint64_t detail = 0) {
++    if (!condition) Fail(what, detail);
++}
++
++struct Snapshot {
++    std::optional<uint64_t> Generation;
++    std::vector<uint8_t> Bytes;
++};
++
++} // namespace
++
++int main(int argc, char** argv) {
++    const uint64_t iterations = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 200000;
++    NativeA32Memory memory;
++    std::string error;
++    Require(memory.MapRegion({"linear", kBase, kSize, true, false, {}}, &error), "map");
++    Require(memory.MapRegion({"other", kOther, 0x10000U, true, false, {}}, &error), "map other");
++
++    // Observer: as the window's (the queue takes it in order with the jobs).
++    std::atomic<uint64_t> queueWrites{0};  // both threads
++    uint64_t observedNotes = 0;     // game thread
++    PicaGspWorker* workerPointer = nullptr;
++    memory.SetWriteObserver([&](uint32_t address, size_t size) {
++        ++observedNotes;
++        if (workerPointer == nullptr || !workerPointer->PostGuestWrite(address, size)) ++queueWrites;
++    });
++
++    std::map<uint32_t, Snapshot> snapshots;  // worker thread only (by range key)
++    uint64_t certified = 0, compared = 0;    // worker thread
++    PicaGspWorker worker(
++        [&](const PicaGspWorker::Job& job, std::vector<uint8_t>& interrupts, std::string& jobError) {
++            const uint32_t op = job.Packet.Control;
++            const uint32_t address = job.Packet.Parameters[0];
++            const uint32_t size = job.Packet.Parameters[1];
++            const uint32_t seed = job.Packet.Parameters[2];
++            if (op == Capture) {
++                // As CaptureGeometryResource: view, generation, then the bytes.
++                const auto view = memory.SynchronousReadView(address, size);
++                const auto generation = memory.RangeWriteGeneration(address, size);
++                Require(view.size() == size, "capture view");
++                auto& snapshot = snapshots[address * 4U + size];
++                if (generation && snapshot.Generation == generation) {
++                    ++certified;
++                    if (std::memcmp(snapshot.Bytes.data(), view.data(), size) != 0)
++                        Fail("certified snapshot differs", address);
++                } else {
++                    ++compared;
++                }
++                snapshot.Generation = generation;
++                snapshot.Bytes.assign(view.begin(), view.end());
++            } else if (op == DeviceWrite || op == ObservedWrite) {
++                std::vector<uint8_t> bytes(size);
++                for (uint32_t i = 0; i < size; ++i) bytes[i] = static_cast<uint8_t>(seed + i * 7U);
++                if (!memory.WriteBytes(address, bytes)) {
++                    jobError = "device write";
++                    return false;
++                }
++                std::vector<uint8_t> back(size);
++                Require(memory.ReadBytes(address, back) && back == bytes, "device read back");
++            } else if (op == DeviceFill) {
++                Require(memory.Fill(address, size, static_cast<uint8_t>(seed)), "device fill");
++            } else if (op == Observe) {
++                Require(memory.ObserveWrites(address, size), "observe");
++            }
++            interrupts.push_back(static_cast<uint8_t>(seed));
++            return true;
++        },
++        [&](uint32_t, size_t) { ++queueWrites; },
++        nullptr);
++    workerPointer = &worker;
++
++    std::mt19937_64 random(12345);
++    uint8_t nextInterrupt = 0;   // the next job's
++    uint64_t published = 0;
++    uint8_t expected = 0;        // the next delivery's
++    uint64_t delivered = 0;
++    const PicaGspWorker::Deliver deliver = [&](uint8_t interrupt) {
++        if (interrupt != expected) Fail("interrupt order", interrupt);
++        ++expected;
++        ++delivered;
++        return true;
++    };
++    const auto publish = [&](uint32_t op, uint32_t address, uint32_t size) {
++        auto& job = worker.Reserve();
++        job.Packet.Control = op;
++        job.Packet.Parameters[0] = address;
++        job.Packet.Parameters[1] = size;
++        job.Packet.Parameters[2] = nextInterrupt++;
++        ++published;
++        worker.Publish();
++    };
++    // Capture ranges: a fixed set, so snapshots recur (some cross pages).
++    const std::array<std::pair<uint32_t, uint32_t>, 8> ranges{{{kBase, 64},
++        {kBase + 0x1000U, 0x1000U}, {kBase + 0x1F80U, 0x100U}, {kBase + 0x5000U, 0x3000U},
++        {kBase + 0x9000U, 16}, {kBase + 0x20000U, 0x800U}, {kBase + 0x30010U, 0x2000U},
++        {kObserved, 0x100U}}};
++    publish(Observe, kObserved, 0x1000U);
++    std::vector<uint8_t*> escaped;
++    uint64_t layoutChanges = 0, escapes = 0, drains = 0;
++    for (uint64_t iteration = 0; iteration < iterations; ++iteration) {
++        const uint32_t pick = static_cast<uint32_t>(random() % 100U);
++        if (pick < 40) {
++            const auto& [address, size] = ranges[random() % ranges.size()];
++            publish(Capture, address, size);
++        } else if (pick < 50) {
++            const uint32_t offset = static_cast<uint32_t>(random() % (kSize - 0x2000U));
++            publish(random() % 4U ? DeviceWrite : DeviceFill, kBase + offset,
++                    1U + static_cast<uint32_t>(random() % 0x1800U));
++        } else if (pick < 53) {
++            publish(ObservedWrite, kObserved + static_cast<uint32_t>(random() % 0x700U), 64U);
++        } else if (pick < 75) {
++            // An SVC.
++            std::string serviceError;
++            worker.Service(memory, deliver, serviceError);
++            Require(serviceError.empty(), "service error");
++        } else if (pick < 78) {
++            // The guest writes an observed page while the worker runs (away
++            // from the captured bytes): the queue gets it as a job, in order.
++            uint8_t bytes[8] = {static_cast<uint8_t>(random())};
++            Require(memory.WriteBytes(kObserved + 0x800U, bytes), "observed while busy");
++        } else if (pick < 90) {
++            // The guest's own memory while the worker runs: generation steps race the device's.
++            for (int i = 0; i < 64; ++i) {
++                memory.WriteFast<uint32_t>(kOther + static_cast<uint32_t>(random() % 0x3FF0U) & ~3U,
++                                           static_cast<uint32_t>(random()));
++            }
++        } else if (pick < 99) {
++            // A guest wait: drain, then the guest writes the device's region
++            // (typed, bytes, an observed page, through escaped pointers).
++            std::string drainError;
++            worker.Drain(memory, deliver, PicaGspWorker::WaitSite::GuestWait, drainError);
++            Require(drainError.empty(), "drain error");
++            Require(worker.Idle(), "idle after drain");
++            ++drains;
++            for (int i = 0; i < 8; ++i) {
++                const uint32_t address = kBase + (static_cast<uint32_t>(random() % (kSize - 8U)) & ~3U);
++                memory.WriteFast<uint32_t>(address, static_cast<uint32_t>(random()));
++            }
++            uint8_t bytes[32];
++            for (auto& byte : bytes) byte = static_cast<uint8_t>(random());
++            Require(memory.WriteBytes(kBase + static_cast<uint32_t>(random() % (kSize - 32U)), bytes),
++                    "guest bytes");
++            Require(memory.WriteBytes(kObserved + 8U, std::span<const uint8_t>(bytes, 8)), "observed");
++            if (random() % 64U == 0U && escapes < 4) {
++                // An escaped pointer: later writes through it take no step.
++                const uint32_t address = kBase + 0x9000U;
++                escaped.push_back(memory.GetWritePointer(address, 16));
++                ++escapes;
++            }
++            for (auto* pointer : escaped) pointer[random() % 16U] = static_cast<uint8_t>(random());
++        } else {
++            // A layout change with the worker busy (ControlMemory).
++            publish(Capture, ranges[1].first, ranges[1].second);
++            Require(memory.MapRegion({"heap" + std::to_string(layoutChanges),
++                                      0x40000000U + static_cast<uint32_t>(layoutChanges) * 0x1000U,
++                                      0x1000U, true, false, {}},
++                                     &error),
++                    "layout change");
++            Require(worker.Idle(), "layout waited for the worker");
++            ++layoutChanges;
++        }
++    }
++    std::string finalError;
++    worker.Drain(memory, deliver, PicaGspWorker::WaitSite::GuestWait, finalError);
++    worker.Service(memory, deliver, finalError);
++    Require(finalError.empty(), "final error");
++    Require(delivered == published, "every interrupt delivered", delivered);
++    // Every page has a generation again (the owed steps were taken), except
++    // the escaped one, which the game thread never certifies.
++    Require(memory.RangeWriteGeneration(kBase, 0x9000U).has_value(), "generation after service");
++    Require(!memory.RangeWriteGeneration(kBase + 0x9000U, 16).has_value() || escapes == 0,
++            "escaped range certified");
++    const auto stats = worker.ReadStats();
++    const auto device = NativeA32DeviceAccess::ReadCounts();
++    workerPointer = nullptr;
++    std::printf("ok: %llu jobs, %llu interrupts, %llu certified, %llu compared, %llu drains,"
++                " %llu layout changes, %llu escapes | guest calls %llu, in place %llu reads"
++                " %llu writes | observed notes %llu, queue writes %llu (%llu as jobs)\n",
++                static_cast<unsigned long long>(stats.Commands + stats.GuestWrites),
++                static_cast<unsigned long long>(delivered),
++                static_cast<unsigned long long>(certified), static_cast<unsigned long long>(compared),
++                static_cast<unsigned long long>(drains), static_cast<unsigned long long>(layoutChanges),
++                static_cast<unsigned long long>(escapes),
++                static_cast<unsigned long long>(device.GuestCalls),
++                static_cast<unsigned long long>(device.DirectReads),
++                static_cast<unsigned long long>(device.DirectWrites),
++                static_cast<unsigned long long>(observedNotes),
++                static_cast<unsigned long long>(queueWrites.load()),
++                static_cast<unsigned long long>(stats.GuestWrites));
++    return 0;
++}
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp
 index 4cd4764e..69b39631 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_presentation_scheduler.cpp
@@ -4148,10 +6115,140 @@ index a81e0eef..c2b5cb30 100644
      uint64_t mNextGeometryContentVersion = 1;
      uint64_t mGeometrySnapshotSequence = 0;
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp
-index ebf74085..da485733 100644
+index ebf74085..8c23093a 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.cpp
-@@ -2026,7 +2026,11 @@ void CollectOot3dPicaFrameCopyReferences(
+@@ -1102,6 +1102,70 @@ void InterpolateVisualLightBinding(
+     }
+ }
+ 
++// CmbPaletteSlots results for draws whose two endpoints share their vertex
++// snapshot (render thread only).
++struct CmbPaletteSlotKey {
++    const void* VertexBytes;
++    const void* IndexBytes;
++    uint32_t VertexCount;
++    int32_t BaseVertex;
++    uint16_t ByteStride;
++    uint16_t ByteOffset;
++    uint8_t InputRate, Format, Influences;
++    bool Indexed, IndicesAre16Bit;
++    bool operator==(const CmbPaletteSlotKey&) const = default;
++};
++struct CmbPaletteSlotKeyHash {
++    size_t operator()(const CmbPaletteSlotKey& key) const noexcept {
++        uint64_t hash = reinterpret_cast<uintptr_t>(key.VertexBytes) * 0x9E3779B97F4A7C15ULL;
++        hash ^= reinterpret_cast<uintptr_t>(key.IndexBytes) + 0x632BE59BD9B4E019ULL + (hash << 6) + (hash >> 2);
++        hash ^= (uint64_t{key.VertexCount} << 32 | static_cast<uint32_t>(key.BaseVertex)) + (hash << 6) + (hash >> 2);
++        hash ^= (uint64_t{key.ByteStride} << 32 | uint64_t{key.ByteOffset} << 16 | uint64_t{key.InputRate} << 8 |
++                 key.Format) + key.Influences * 3U + key.Indexed * 7U + key.IndicesAre16Bit * 11U +
++                (hash << 6) + (hash >> 2);
++        return static_cast<size_t>(hash);
++    }
++};
++struct CmbPaletteSlotEntry {
++    std::optional<uint32_t> Selected;
++    std::shared_ptr<const std::vector<uint8_t>> VertexBytes;
++    std::shared_ptr<const std::vector<uint8_t>> IndexBytes;
++};
++thread_local std::unordered_map<CmbPaletteSlotKey, CmbPaletteSlotEntry, CmbPaletteSlotKeyHash> gCmbPaletteSlots;
++
++template <typename Read>
++std::optional<uint32_t> ScanCmbPaletteSlots(const Oot3dPicaVulkanDrawPlan& previous,
++                                            const Oot3dPicaVulkanDrawPlan& current,
++                                            const Oot3dPicaVulkanVertexAttribute& leftAttribute,
++                                            const Oot3dPicaVulkanVertexAttribute& rightAttribute,
++                                            size_t influences, const Read& read) {
++    const auto* left = &leftAttribute;
++    const auto* right = &rightAttribute;
++    uint32_t selected = 0;
++    const auto indices = current.ResolvedIndexBytes();
++    const size_t indexSize = current.IndicesAre16Bit ? 2 : 1;
++    if (current.Indexed && current.VertexCount > indices.size()/indexSize) return {};
++    for (size_t i = 0; i < current.VertexCount; ++i) {
++        int64_t vertex = static_cast<int64_t>(i);
++        if (current.Indexed) {
++            vertex = indices[i*indexSize];
++            if (indexSize == 2) vertex |= int64_t(indices[i*indexSize+1]) << 8;
++            vertex += current.BaseVertex;
++        }
++        if (vertex < 0) return {};
++        for (size_t component = 0; component < influences; ++component) {
++            const auto from = read(previous,*left,size_t(vertex),component);
++            const auto to = read(current,*right,size_t(vertex),component);
++            // Reject fractional, wrapped and out-of-palette addresses instead
++            // of approximating PICA's MOVA/wrap semantics with a guessed span.
++            if (!from || !to || !std::isfinite(*to) || *from != *to ||
++                *to < 0 || *to >= 10 || std::floor(*to) != *to) return {};
++            selected |= 1U << static_cast<uint32_t>(*to);
++        }
++    }
++    return selected;
++}
++
+ // Return a conservative exact mask of the slots referenced by this draw.
+ // A missing snapshot or an unfamiliar addressing mode disables factoring;
+ // selecting rigid-looking rows from an unknown active palette could separate
+@@ -1155,27 +1219,37 @@ std::optional<uint32_t> CmbPaletteSlots(
+         }
+         return {};
+     };
+-    uint32_t selected = 0;
+-    const auto indices = current.ResolvedIndexBytes();
+-    const size_t indexSize = current.IndicesAre16Bit ? 2 : 1;
+-    if (current.Indexed && current.VertexCount > indices.size()/indexSize) return {};
+-    for (size_t i = 0; i < current.VertexCount; ++i) {
+-        int64_t vertex = static_cast<int64_t>(i);
+-        if (current.Indexed) {
+-            vertex = indices[i*indexSize];
+-            if (indexSize == 2) vertex |= int64_t(indices[i*indexSize+1]) << 8;
+-            vertex += current.BaseVertex;
+-        }
+-        if (vertex < 0) return {};
+-        for (size_t component = 0; component < influences; ++component) {
+-            const auto from = read(previous,*left,size_t(vertex),component);
+-            const auto to = read(current,*right,size_t(vertex),component);
+-            // Reject fractional, wrapped and out-of-palette addresses instead
+-            // of approximating PICA's MOVA/wrap semantics with a guessed span.
+-            if (!from || !to || !std::isfinite(*to) || *from != *to ||
+-                *to < 0 || *to >= 10 || std::floor(*to) != *to) return {};
+-            selected |= 1U << static_cast<uint32_t>(*to);
+-        }
++    // Both endpoints reading the same immutable vertex snapshot (the mesh
++    // did not change: the geometry cache hands out the same buffer) compare
++    // equal by construction, and the mask then depends on the current draw's
++    // buffers alone: remembered by their identity, across the samples and
++    // frames that reuse them (the per-vertex walk was most of the render
++    // thread's interpolation time in busy scenes, 1.72).
++    const auto* leftBinding = FindVertexBinding(previous, left->Binding);
++    const auto* rightBinding = FindVertexBinding(current, right->Binding);
++    const bool sameSource =
++        leftBinding && rightBinding && rightBinding->SharedBytes &&
++        leftBinding->SharedBytes == rightBinding->SharedBytes &&
++        leftBinding->ByteStride == rightBinding->ByteStride &&
++        leftBinding->InputRate == rightBinding->InputRate && left->Format == right->Format &&
++        left->ByteOffset == right->ByteOffset &&
++        (!current.Indexed || current.SharedIndexBytes);
++    CmbPaletteSlotKey key{};
++    if (sameSource) {
++        key = {rightBinding->SharedBytes.get(), current.Indexed ? current.SharedIndexBytes.get() : nullptr,
++               current.VertexCount, current.BaseVertex, rightBinding->ByteStride, right->ByteOffset,
++               static_cast<uint8_t>(rightBinding->InputRate), static_cast<uint8_t>(right->Format),
++               static_cast<uint8_t>(influences), current.Indexed, current.IndicesAre16Bit};
++        if (const auto found = gCmbPaletteSlots.find(key); found != gCmbPaletteSlots.end())
++            return found->second.Selected;
++    }
++    const auto selected = ScanCmbPaletteSlots(previous, current, *left, *right, influences, read);
++    if (sameSource) {
++        if (gCmbPaletteSlots.size() >= 1024U) gCmbPaletteSlots.clear();
++        // The entry holds the buffers, so their addresses are not reused
++        // while it is there.
++        gCmbPaletteSlots.emplace(key, CmbPaletteSlotEntry{selected, rightBinding->SharedBytes,
++                                                         current.Indexed ? current.SharedIndexBytes : nullptr});
+     }
+     return selected;
+ }
+@@ -2026,7 +2100,11 @@ void CollectOot3dPicaFrameCopyReferences(
      }
  }
  
@@ -4164,7 +6261,7 @@ index ebf74085..da485733 100644
      mPendingDraws.push_back(std::move(plan));
  }
  
-@@ -2163,8 +2167,17 @@ std::vector<Oot3dPicaVisualFrame> Oot3dPicaVisualFrameAccumulator::FinishFrames(
+@@ -2163,8 +2241,17 @@ std::vector<Oot3dPicaVisualFrame> Oot3dPicaVisualFrameAccumulator::FinishFrames(
          frame.TopTransfer = tops[segment];
          const size_t firstDraw = draw;
          while (draw < mPendingDraws.size() && mPendingDraws[draw].SubmissionId <= end) ++draw;
@@ -4184,6 +6281,32 @@ index ebf74085..da485733 100644
          frame.StrictDrawIdentities.reserve(frame.Draws.size());
          for (const auto& plan : frame.Draws) {
              frame.StrictDrawIdentities.push_back(ComputeOot3dPicaVisualDrawIdentity(plan));
+@@ -2183,15 +2270,19 @@ std::vector<Oot3dPicaVisualFrame> Oot3dPicaVisualFrameAccumulator::FinishFrames(
+             std::min(executedTransfers, transfer) - std::min(executedTransfers, firstTransfer);
+         frames.push_back(std::move(frame));
+     }
+-    const size_t largest = std::max_element(frames.begin(), frames.end(), [](const auto& a, const auto& b) {
+-        return a.Draws.size() < b.Draws.size();
+-    })->Draws.size();
++    size_t total = 0U;
++    for (const auto& frame : frames) total += frame.Draws.size();
+     mPendingDraws = std::move(nextDraws);
+     mPendingMemoryFills = std::move(nextFills);
+     mPendingDisplayTransfers = std::move(nextTransfers);
+-    // Draw plans are several kilobytes each. Starting the next frame at this
+-    // frame's size avoids regrowing the vector and moving every plan again.
+-    mPendingDraws.reserve(largest);
++    // Draw plans are several kilobytes each. Starting the next presentation
++    // at this one's size avoids regrowing the vector and moving every plan
++    // again; the headroom covers one with more draws (in combat the count
++    // changes every frame, and the regrowth moved ~28 MiB/s of plans on the
++    // PS4, 1.68 allocation trace). All of this presentation's game frames
++    // count, not the largest: below 60 host frames/s one presentation
++    // gathers ~1.5 of them, and sizing for one regrew every time (1.71).
++    mPendingDraws.reserve(mPendingDraws.size() + total + total / 4U + 16U);
+     return frames;
+ }
+ 
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.h b/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.h
 index 71c2412b..da7a519b 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_pica_visual_frame.h

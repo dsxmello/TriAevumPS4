@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <thread>
 #include <nlohmann/json.hpp>
 #include <zip.h>
 
@@ -64,7 +65,16 @@ bool NativeHdFontRuntime::Load(const std::filesystem::path& path, std::string* e
     }
 }
 
-void NativeHdFontRuntime::Reset() { mSurfaces.clear(); }
+NativeHdFontRuntime::Guard::Guard(std::atomic_flag& flag) noexcept : mFlag(flag) {
+    while (mFlag.test_and_set(std::memory_order_acquire)) std::this_thread::yield();
+}
+
+NativeHdFontRuntime::Guard::~Guard() { mFlag.clear(std::memory_order_release); }
+
+void NativeHdFontRuntime::Reset() {
+    Guard guard(mSurfaceLock);
+    mSurfaces.clear();
+}
 
 void NativeHdFontRuntime::ObserveBlit(const oot3d::recomp::a32::GuestState& state,
                                     NativeA32Memory& memory) {
@@ -88,6 +98,7 @@ void NativeHdFontRuntime::ObserveBlit(const oot3d::recomp::a32::GuestState& stat
             if (!source || std::memcmp(source, font.Native.data(), font.Native.size()) != 0) continue;
             const auto offset = args[0] - qbf;
             if (font.Coverage.Glyph(offset).empty()) continue;
+            Guard guard(mSurfaceLock);
             if (mSurfaces.size() >= 128 && !mSurfaces.contains(state.r[1])) mSurfaces.clear();
             auto& surface = mSurfaces[state.r[1]];
             if (surface.Width != width || surface.Height != height) surface = {};
@@ -115,20 +126,31 @@ void NativeHdFontRuntime::Resolve(const Oot3dPicaPhysicalMemoryView& memory,
     const auto native = resource.ResolvedBytes();
     const auto guest = memory.Translate(texture.PhysicalAddress, native.size());
     if (!guest) return;
-    auto found = mSurfaces.find(*guest);
-    if (found == mSurfaces.end()) {
+    std::uint32_t owner = *guest;
+    std::vector<std::uint32_t> candidates;
+    {
+        Guard guard(mSurfaceLock);
+        if (!mSurfaces.contains(owner)) {
+            for (const auto& [address, surface] : mSurfaces) {
+                if (surface.Width == texture.Width && surface.Height == texture.Height)
+                    candidates.push_back(address);
+            }
+            if (candidates.empty()) return;
+        }
+    }
+    if (!candidates.empty()) {
         // Native text uploads may copy the heap atlas into linear GPU memory.
         // Require full byte identity with an observed owner, not a font hash
         // guessed from a finished image. Glyph provenance still comes from blits.
-        for (auto it = mSurfaces.begin(); it != mSurfaces.end(); ++it) {
-            if (it->second.Width != texture.Width || it->second.Height != texture.Height) continue;
-            const auto source = memory.ViewGuest(it->first, native.size());
-            if (source.size() == native.size() && std::equal(native.begin(), native.end(), source.begin())) {
-                found = it;
-                break;
-            }
-        }
+        const auto match = std::find_if(candidates.begin(), candidates.end(), [&](std::uint32_t address) {
+            const auto source = memory.ViewGuest(address, native.size());
+            return source.size() == native.size() && std::equal(native.begin(), native.end(), source.begin());
+        });
+        if (match == candidates.end()) return;
+        owner = *match;
     }
+    Guard guard(mSurfaceLock);
+    const auto found = mSurfaces.find(owner);
     if (found == mSurfaces.end()) return;
     auto& surface = found->second;
     if (surface.Width != texture.Width || surface.Height != texture.Height ||

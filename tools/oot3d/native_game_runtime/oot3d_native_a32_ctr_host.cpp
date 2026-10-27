@@ -2,6 +2,8 @@
 // framebuffers and interrupts, memory, timing. Services: oot3d_native_a32_ctr_host_*.cpp.
 #include "oot3d_native_a32_ctr_host_internal.h"
 
+#include "oot3d_native_pica_gsp_worker.h"
+
 #include <cstdio>
 
 namespace Oot3dNativeGame {
@@ -598,6 +600,17 @@ NativeA32HostResult NativeA32CtrHostServices::HandleControlMemory(
 NativeA32HostResult NativeA32CtrHostServices::HandleSvc(
     uint32_t immediate, oot3d::recomp::a32::GuestState& state,
     NativeA32Memory& memory, NativeA32HostContext& context) {
+    // The GSP worker's calls, the generation steps it owes and the
+    // interrupts it raised: at every SVC, before the guest's own request.
+    if (mPicaWorker) {
+        std::string workerError;
+        mPicaWorker->Service(memory, mPicaDeliver, workerError);
+        if (!workerError.empty()) {
+            std::fprintf(stderr, "%s\n", workerError.c_str());
+            return {NativeA32HostAction::Fault, std::nullopt, 0U,
+                    std::move(workerError)};
+        }
+    }
     auto result = HandleSvcImpl(immediate, state, memory, context);
     if (result.Action == NativeA32HostAction::Wait) {
         const auto* event = mSvcEvents.LastEvent();

@@ -2,6 +2,7 @@
 #include "oot3d_native_a32_window.h"
 #include "oot3d_native_a32_window_session.h"
 #include "oot3d_native_a32_window_summary.h"
+#include "oot3d_native_pica_gsp_worker.h"
 
 namespace Oot3dA32Window {
 
@@ -108,24 +109,36 @@ RunUntilGuestWait(Oot3dNativeGame::NativeA32Process &process,
   // resumes it immediately: this is a stack-safety boundary, not an SDL event
   // pump or guest scheduling boundary.
   auto result = process.Run(wholeAotBlockBudget);
-  while (result.Kind == Oot3dNativeGame::NativeA32ProcessRunKind::Yielded) {
-    // Low-priority workers may poll indefinitely. Once the foreground is
-    // waiting, let the host deliver its timers, HID and GPU completions.
-    // The worker stays Ready and resumes after those events, not next boot.
-    if (process.OnlyBackgroundThreadsReady()) return result;
-    if (diagnoseWait && std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(20)) {
-      for (uint32_t id = 0; id < process.ThreadCount(); ++id) {
-        const auto* thread = process.ThreadState(id);
-        if (thread != nullptr)
-          std::fprintf(stderr, "GUEST_WAIT_TIMEOUT thread=%u pc=%08x lr=%08x sp=%08x r0=%08x r1=%08x r2=%08x\n",
-                       id, thread->r[15], thread->r[14], thread->r[13],
-                       thread->r[0], thread->r[1], thread->r[2]);
+  for (;;) {
+    while (result.Kind == Oot3dNativeGame::NativeA32ProcessRunKind::Yielded) {
+      // Low-priority workers may poll indefinitely. Once the foreground is
+      // waiting, let the host deliver its timers, HID and GPU completions.
+      // The worker stays Ready and resumes after those events, not next boot.
+      if (process.OnlyBackgroundThreadsReady()) break;
+      if (diagnoseWait && std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(20)) {
+        for (uint32_t id = 0; id < process.ThreadCount(); ++id) {
+          const auto* thread = process.ThreadState(id);
+          if (thread != nullptr)
+            std::fprintf(stderr, "GUEST_WAIT_TIMEOUT thread=%u pc=%08x lr=%08x sp=%08x r0=%08x r1=%08x r2=%08x\n",
+                         id, thread->r[15], thread->r[14], thread->r[13],
+                         thread->r[0], thread->r[1], thread->r[2]);
+        }
+        throw std::runtime_error("guest did not reach a wait boundary within diagnostic deadline");
       }
-      throw std::runtime_error("guest did not reach a wait boundary within diagnostic deadline");
+      result = process.Run(wholeAotBlockBudget);
+    }
+    // The guest stopped: the GPU commands it submitted are done before the
+    // caller looks at their results (PS4 GSP worker). An interrupt they
+    // raised may let it go on, as it would have inline.
+    const bool stopped =
+        result.Kind == Oot3dNativeGame::NativeA32ProcessRunKind::Yielded ||
+        result.Kind == Oot3dNativeGame::NativeA32ProcessRunKind::Waiting;
+    if (!stopped || !Oot3dNativeGame::gPicaGspWorkerAtGuestWait ||
+        !Oot3dNativeGame::gPicaGspWorkerAtGuestWait()) {
+      return result;
     }
     result = process.Run(wholeAotBlockBudget);
   }
-  return result;
 }
 
 void RequireRunnableGuest(
