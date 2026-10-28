@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -396,7 +397,11 @@ struct Ps4VkPicaRenderBackend::Impl {
         }
     };
     std::unordered_map<PipelineKey, VkPipeline, PipelineKeyHash> pipelines;
-    std::unordered_map<uint32_t, bool> vertexFormatSupport;
+    // Per VkFormat value (every vertex format the backend asks for is below
+    // 128): 0 not queried yet, 1 CPU conversion, 2 driver fetch. Asked once
+    // per attribute per draw; the hash map it replaced cost ~1.2% of the
+    // render thread (1.73).
+    std::array<uint8_t, 128> vertexFormatSupport{};
 
     struct PendingFill {
         uint64_t namespace_;
@@ -511,7 +516,13 @@ struct Ps4VkPicaRenderBackend::Impl {
     Image *GetTexture(const Oot3d::Renderer::PicaTextureView &view);
     Image *GetLightingLut(const Oot3d::Renderer::PicaLightingLutView &view);
     VkSampler GetSampler(const Oot3d::Renderer::PicaTextureView &view, uint32_t levels);
-    bool VertexFormatSupported(VkFormat format);
+    bool VertexFormatSupported(VkFormat format) {
+        const auto index = static_cast<uint32_t>(format);
+        if (index < vertexFormatSupport.size() && vertexFormatSupport[index] != 0U)
+            return vertexFormatSupport[index] == 2U;
+        return QueryVertexFormatSupport(format);
+    }
+    bool QueryVertexFormatSupport(VkFormat format);
     Fast::Renderer3ds::PicaRasterCanvas RasterCanvas(const Oot3d::Renderer::PicaDrawView &draw,
                                                      const Target &target);
     VkPipeline GetPipeline(const Oot3d::Renderer::PicaDrawView &draw, VkShaderModule vs,

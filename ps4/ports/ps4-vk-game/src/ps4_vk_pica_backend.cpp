@@ -1593,9 +1593,7 @@ VkSampler Ps4VkPicaRenderBackend::Impl::GetSampler(const Oot3d::Renderer::PicaTe
     return sampler;
 }
 
-bool Ps4VkPicaRenderBackend::Impl::VertexFormatSupported(VkFormat format) {
-    auto found = vertexFormatSupport.find(static_cast<uint32_t>(format));
-    if (found != vertexFormatSupport.end()) return found->second;
+bool Ps4VkPicaRenderBackend::Impl::QueryVertexFormatSupport(VkFormat format) {
     // Integer attributes (8/16-bit, scaled) go through the CPU conversion:
     // RADV's fetch of them on the PS4's GFX7 deforms skinned models (Link's
     // tunic and cap, 1.05 console test), the converted floats do not. Redone
@@ -1616,7 +1614,8 @@ bool Ps4VkPicaRenderBackend::Impl::VertexFormatSupported(VkFormat format) {
         (properties.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0U &&
         (isFloat || !forceConversion);
     if (!supported) Log("vk-backend: vertex format %d - CPU conversion", format);
-    vertexFormatSupport.emplace(static_cast<uint32_t>(format), supported);
+    const auto index = static_cast<uint32_t>(format);
+    if (index < vertexFormatSupport.size()) vertexFormatSupport[index] = supported ? 2U : 1U;
     return supported;
 }
 

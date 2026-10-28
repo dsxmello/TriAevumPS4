@@ -1181,3 +1181,28 @@ sessão da 1.72 (`triaevum_boot.previous.log`), por cena e escala de render:
   77 (só na 1.73) chegou a 344 draws a 36 fps na escala 3, com 13,7 ms de CPU
   por quadro do jogo: lá o limite é a thread do jogo.
 - Perfil: endereços `jit` do `samples.log` são `nm` - 0x400000.
+
+## 1.74 — formato de vértice sem hash map
+
+- `VertexFormatSupported` (consultado por atributo em cada draw, 1,2% da
+  `render` no Market na 1.73) passa de `unordered_map` para uma tabela fixa
+  de 128 entradas por valor de `VkFormat`, com o caminho rápido inline no
+  header; a consulta ao driver e o log ficam em `QueryVertexFormatSupport`.
+- hosttest: PASS, sem erro Vulkan. PGO: perdem o perfil as mesmas três
+  funções da 1.73.
+
+### Medição da 1.74 (2026-10-28)
+
+Sessão de 310 s (62 linhas `game:`), Market nas escalas 6 e 3.
+
+- `VertexFormatSupported` sumiu do perfil (inline); `SubmitPicaDraw` ficou em
+  ~1,9–2,0% da `render` (antes 2,1% + 1,2%).
+- Market escala 6: mesma faixa da 1.73 (~47–50 fps a 260–280 draws, espera
+  de GPU ~3,2 ms); ~1–2 fps abaixo da 1.73 no mesmo número de draws, dentro
+  da variação entre sessões (a CPU por quadro do jogo, que a 1.74 não toca,
+  também variou 10,2 -> 10,5 ms).
+- Market escala 3 (o teste que faltava): 230–257 draws a 60 fps (1.72: 50–60
+  fps a 250–266), 269 draws a 54,5, 294 a 45,6 (1.72: ~42,5 a 297–300).
+  Na janela pesada a `render` fica ~65% ocupada e a thread do jogo ~80%:
+  sem a GPU no caminho, o limite deixou de ser a `render` e voltou a ser a
+  thread do jogo (10,8 ms por quadro do jogo a 294 draws).
