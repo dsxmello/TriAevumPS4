@@ -8,7 +8,9 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <map>
+#include <span>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -158,6 +160,46 @@ struct Ps4VkPicaRenderBackend::Impl {
     VkDeviceSize ringBase = 0;    // the current slot's half of the ring
     VkDeviceSize ringLimit = 0;
 
+    // -- geometry cache --
+    // Vertex data (copied and converted) and indices of draws whose geometry
+    // has an identity, kept across frames: a mesh that did not change is
+    // written once instead of streamed through the ring every draw. Filled
+    // front to back; when full, recorded and in-flight work finishes and it
+    // starts over (ResetGeometryCache).
+    struct GeometryKey {
+        uint64_t identity;
+        uint64_t version;
+        uint64_t indexBytes;
+        uint32_t vertexCount;
+        uint8_t bindingCount;
+        uint8_t attributeCount;
+        bool indexed;
+        bool indices16;
+        bool operator==(const GeometryKey &o) const {
+            return identity == o.identity && version == o.version && indexBytes == o.indexBytes &&
+                   vertexCount == o.vertexCount && bindingCount == o.bindingCount &&
+                   attributeCount == o.attributeCount && indexed == o.indexed &&
+                   indices16 == o.indices16;
+        }
+    };
+    struct GeometryKeyHash {
+        size_t operator()(const GeometryKey &k) const noexcept {
+            return static_cast<size_t>(k.identity ^ (k.version * 0x9E3779B97F4A7C15ULL) ^
+                                       (k.indexBytes << 20) ^ k.vertexCount);
+        }
+    };
+    struct GeometryEntry {
+        uint32_t bindingOffsets[48];
+        uint32_t indexOffset;
+    };
+    VkBuffer geometry = VK_NULL_HANDLE;
+    VkDeviceMemory geometryMemory = VK_NULL_HANDLE;
+    uint8_t *geometryPointer = nullptr;
+    VkDeviceSize geometryHead = 0;
+    std::unordered_map<GeometryKey, GeometryEntry, GeometryKeyHash> geometryEntries;
+    VkDeviceSize GeometryAlloc(VkDeviceSize bytes, VkDeviceSize alignment);
+    void ResetGeometryCache();
+
     // -- readback --
     VkBuffer readback = VK_NULL_HANDLE;
     VkDeviceMemory readbackMemory = VK_NULL_HANDLE;
@@ -280,10 +322,80 @@ struct Ps4VkPicaRenderBackend::Impl {
         bool integerTexture0 = false;
         bool failed = false;
     };
-    std::unordered_map<std::string, Shader> shaders;
+    // By source identity and stage: looked up twice per draw, so no text key
+    // (the SPIR-V cache file name is formatted only when a shader is new).
+    struct ShaderKey {
+        uint64_t id;
+        uint64_t secondaryHash;
+        uint64_t size;
+        bool vertex;
+        bool operator==(const ShaderKey &o) const {
+            return id == o.id && secondaryHash == o.secondaryHash && size == o.size &&
+                   vertex == o.vertex;
+        }
+    };
+    struct ShaderKeyHash {
+        size_t operator()(const ShaderKey &k) const noexcept {
+            return static_cast<size_t>(k.id ^ (k.secondaryHash * 0x9E3779B97F4A7C15ULL) ^
+                                       k.size ^ (k.vertex ? 0x5bd1e995U : 0U));
+        }
+    };
+    std::unordered_map<ShaderKey, Shader, ShaderKeyHash> shaders;
     Shader fallbackFragment;
     int shaderDumps = 0;
-    std::map<std::string, VkPipeline> pipelines;
+    // Everything a PICA pipeline depends on, as POD (zeroed, padding
+    // included) so its bytes are the key.
+    struct PipelineKey {
+        VkShaderModule vertex;
+        VkShaderModule fragment;
+        uint8_t topology;
+        uint8_t cullMode;
+        uint8_t frontFace;
+        uint8_t depthTest;
+        uint8_t depthWrite;
+        uint8_t depthCompare;
+        uint8_t stencilEnable;
+        uint8_t stencilFail;
+        uint8_t stencilPass;
+        uint8_t stencilDepthFail;
+        uint8_t stencilCompare;
+        uint8_t blendEnable;
+        uint8_t blendOpRgb;
+        uint8_t blendOpAlpha;
+        uint8_t srcRgb;
+        uint8_t dstRgb;
+        uint8_t srcAlpha;
+        uint8_t dstAlpha;
+        uint8_t writeMask;
+        uint8_t logicEnable;
+        uint8_t logicOp;
+        uint8_t bindingCount;
+        uint8_t attributeCount;
+        struct {
+            uint32_t binding;
+            uint32_t stride;
+            uint32_t rate;
+        } bindings[32];
+        struct {
+            uint32_t location;
+            uint32_t binding;
+            uint32_t format;
+            uint32_t offset;
+        } attributes[16];
+        bool operator==(const PipelineKey &o) const {
+            return std::memcmp(this, &o, sizeof *this) == 0;
+        }
+    };
+    struct PipelineKeyHash {
+        size_t operator()(const PipelineKey &k) const noexcept {
+            uint64_t words[sizeof(PipelineKey) / 8U];
+            std::memcpy(words, &k, sizeof words);
+            uint64_t hash = 0xcbf29ce484222325ULL;
+            for (const uint64_t word : words) hash = (hash ^ word) * 0x100000001b3ULL;
+            return static_cast<size_t>(hash ^ (hash >> 29));
+        }
+    };
+    std::unordered_map<PipelineKey, VkPipeline, PipelineKeyHash> pipelines;
     std::unordered_map<uint32_t, bool> vertexFormatSupport;
 
     struct PendingFill {
@@ -404,8 +516,8 @@ struct Ps4VkPicaRenderBackend::Impl {
                                                      const Target &target);
     VkPipeline GetPipeline(const Oot3d::Renderer::PicaDrawView &draw, VkShaderModule vs,
                            VkShaderModule fs,
-                           const std::vector<VkVertexInputBindingDescription> &bindings,
-                           const std::vector<VkVertexInputAttributeDescription> &attributes);
+                           std::span<const VkVertexInputBindingDescription> bindings,
+                           std::span<const VkVertexInputAttributeDescription> attributes);
     VkPipeline CreatePresentPipeline(bool overlay, VkShaderModule vs, VkShaderModule fs);
 
     // transfers

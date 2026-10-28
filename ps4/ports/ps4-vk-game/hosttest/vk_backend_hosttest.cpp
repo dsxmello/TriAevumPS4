@@ -290,6 +290,15 @@ int main(int argc, char **argv) {
         constexpr uint32_t kTopDepth = 0x18600000;
         constexpr uint16_t kTopWidth = 480;
         constexpr uint16_t kTopHeight = 400;
+        // These draws carry a geometry identity: frame 0 writes them into the
+        // geometry cache, frame 1 draws them from it, and the picture matches.
+        // (With the corpus programs and these uniforms the synthetic draws
+        // leave no visible pixels, streamed or cached: the console session is
+        // what shows the geometry itself.)
+        const uint64_t hitsBefore = backend->Stats().geometryHits;
+        const uint64_t writesBefore = backend->Stats().geometryMisses;
+        uint64_t pictures[2] = {};
+        size_t drawnPixels[2] = {};
         for (int frame = 0; frame < 2; ++frame) {
             backend->BeginFrame(static_cast<uint32_t>(frame & 1));
             std::string error;
@@ -343,6 +352,10 @@ int main(int argc, char **argv) {
                 draw.IndicesAre16Bit = false;
                 draw.IndexBytes = std::span<const uint8_t>(indices8, 6);
                 draw.VertexCount = 6;
+                draw.GeometryIdentity =
+                    domain == Fast::Renderer3ds::PicaCompositionDomain::Ui ? 0x1001U : 0x1002U;
+                draw.GeometryContentVersion = 7;
+                draw.GeometryIdentityAvailable = true;
                 EXPECT(backend->SubmitPicaDraw(draw, &error));
             }
             Fast::Renderer3ds::PicaDisplayTransferView transfer{};
@@ -363,7 +376,23 @@ int main(int argc, char **argv) {
             std::printf("widescreen frame %d: left edge=%#x centre=%#x\n", frame, edge,
                         pixels[540 * pitch + 960]);
             EXPECT(edge != 0U && edge != 0xff000000U);
+            uint64_t picture = 0xcbf29ce484222325ULL;
+            for (uint32_t y = 0; y < 1080U; ++y) {
+                for (uint32_t x = 0; x < 1920U; ++x) {
+                    const uint32_t pixel = pixels[y * pitch + x];
+                    picture = (picture ^ pixel) * 0x100000001b3ULL;
+                    if (pixel != 0xff804020U && pixel != 0xff000000U) ++drawnPixels[frame];
+                }
+            }
+            pictures[frame] = picture;
         }
+        std::printf("geometry cache: %llu written, %llu hits, drawn pixels %zu/%zu\n",
+                    (unsigned long long)(backend->Stats().geometryMisses - writesBefore),
+                    (unsigned long long)(backend->Stats().geometryHits - hitsBefore),
+                    drawnPixels[0], drawnPixels[1]);
+        EXPECT(backend->Stats().geometryMisses - writesBefore == 2U);
+        EXPECT(backend->Stats().geometryHits - hitsBefore == 2U);
+        EXPECT(pictures[0] == pictures[1]);
         EXPECT(backend->Stats().vkErrors == 0U);
         EXPECT(backend->Stats().drawFailures == 0U);
     }

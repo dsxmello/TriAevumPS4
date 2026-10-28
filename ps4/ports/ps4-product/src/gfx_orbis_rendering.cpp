@@ -688,6 +688,12 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
                     perFrame(stats.textureUploadBytes, mPerf.stats.textureUploadBytes) / 1024.0,
                     perFrame(stats.pipelineCompileUs, mPerf.stats.pipelineCompileUs) / 1000.0,
                     static_cast<unsigned long long>(stats.pipelines));
+        std::printf("[triaevum] vertex cache per frame: %.0f hits, %.1f written, %.1f streamed |"
+                    " %llu restarts\n",
+                    perFrame(stats.geometryHits, mPerf.stats.geometryHits),
+                    perFrame(stats.geometryMisses, mPerf.stats.geometryMisses),
+                    perFrame(stats.geometryStreamed, mPerf.stats.geometryStreamed),
+                    static_cast<unsigned long long>(stats.geometryResets));
         mPerf.start = now;
         mPerf.flipWait = {};
         mPerf.frames = 0;

@@ -67,6 +67,12 @@ struct VkBackendStats {
     uint64_t completions = 0;
     uint64_t submits = 0;
     uint64_t gpuWaitUs = 0;
+    // Draws whose vertex/index data came from the geometry cache, were
+    // written into it, or streamed (no geometry identity); cache restarts.
+    uint64_t geometryHits = 0;
+    uint64_t geometryMisses = 0;
+    uint64_t geometryStreamed = 0;
+    uint64_t geometryResets = 0;
     uint64_t vkErrors = 0;
     char lastError[160] = "";
 };

@@ -57,6 +57,10 @@ constexpr const char *kPipelineCachePath = "/data/triaevum/vk-pipeline-cache.bin
 constexpr VkDeviceSize kRingBytes = 64ULL << 20;
 // Each frame slot streams into its own half (asynchronous frames).
 constexpr VkDeviceSize kRingSlotBytes = kRingBytes / 2U;
+// The geometry cache (~2.5 MiB of guest meshes in busy scenes; converted
+// attributes grow up to 16 bytes per element).
+constexpr VkDeviceSize kGeometryBytes = 32ULL << 20;
+constexpr size_t kGeometryEntryLimit = 16384;
 constexpr VkDeviceSize kPoolChunkBytes = 64ULL << 20;
 constexpr uint32_t kMaxSetsPerFlush = 4096;
 constexpr uint32_t kLightingLutBinding = 13;
@@ -544,6 +548,12 @@ bool Ps4VkPicaRenderBackend::Impl::CreateDeviceObjects() {
                           VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &ring, &ringMemory, &ringPointer))
+        return false;
+    if (!CreateBuffer(kGeometryBytes,
+                      VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &geometry, &geometryMemory,
+                      &geometryPointer))
         return false;
 
     // Descriptor set layout of the canonical generated programs.
@@ -1086,6 +1096,28 @@ VkDeviceSize Ps4VkPicaRenderBackend::Impl::RingAlloc(VkDeviceSize bytes, VkDevic
     return offset;
 }
 
+VkDeviceSize Ps4VkPicaRenderBackend::Impl::GeometryAlloc(VkDeviceSize bytes,
+                                                        VkDeviceSize alignment) {
+    const VkDeviceSize offset = (geometryHead + alignment - 1U) / alignment * alignment;
+    geometryHead = offset + bytes;
+    return offset;
+}
+
+// Draws recorded in this slot, and the other slot's frame still on the GPU,
+// may read any entry: both finish before the cache is rewritten.
+void Ps4VkPicaRenderBackend::Impl::ResetGeometryCache() {
+    Flush();
+    for (FrameSlot &frame : slots) {
+        if (frame.inFlight) {
+            Check(vk.vkWaitForFences(device, 1, &frame.fence, VK_TRUE, 5ULL * 1000000000ULL),
+                  "vkWaitForFences");
+        }
+    }
+    geometryEntries.clear();
+    geometryHead = 0;
+    ++stats.geometryResets;
+}
+
 VkDescriptorSet Ps4VkPicaRenderBackend::Impl::AllocateSet(VkDescriptorSetLayout layout) {
     VkDescriptorSetAllocateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     info.descriptorPool = descriptorPool;
@@ -1129,9 +1161,10 @@ void Ps4VkPicaRenderBackend::Impl::DumpShaderFailure(const char *stage, std::str
 Ps4VkPicaRenderBackend::Impl::Shader *Ps4VkPicaRenderBackend::Impl::GetShader(
     bool vertex, const Fast::Renderer3ds::PicaShaderSourceIdentity &identity,
     std::string_view source) {
-    const std::string key = IdentityKey(identity, vertex ? 'v' : 'f');
-    auto found = shaders.find(key);
+    const ShaderKey mapKey{identity.Id, identity.SecondaryHash, identity.Size, vertex};
+    auto found = shaders.find(mapKey);
     if (found != shaders.end()) return &found->second;
+    const std::string key = IdentityKey(identity, vertex ? 'v' : 'f');
     Shader shader;
     if (!vertex) {
         shader.integerTexture0 =
@@ -1154,7 +1187,7 @@ Ps4VkPicaRenderBackend::Impl::Shader *Ps4VkPicaRenderBackend::Impl::GetShader(
                       source.size());
             DumpShaderFailure(vertex ? "vertex" : "fragment", source, compileLog);
             shader.failed = true;
-            return &shaders.emplace(key, shader).first->second;
+            return &shaders.emplace(mapKey, shader).first->second;
         }
         const uint64_t elapsed = NowUs() - start;
         stats.shaderCompileUs += elapsed;
@@ -1171,7 +1204,7 @@ Ps4VkPicaRenderBackend::Impl::Shader *Ps4VkPicaRenderBackend::Impl::GetShader(
                "vkCreateShaderModule")) {
         shader.failed = true;
     }
-    return &shaders.emplace(key, shader).first->second;
+    return &shaders.emplace(mapKey, shader).first->second;
 }
 
 // =============================================================== resources ==
@@ -1565,9 +1598,10 @@ bool Ps4VkPicaRenderBackend::Impl::VertexFormatSupported(VkFormat format) {
     if (found != vertexFormatSupport.end()) return found->second;
     // Integer attributes (8/16-bit, scaled) go through the CPU conversion:
     // RADV's fetch of them on the PS4's GFX7 deforms skinned models (Link's
-    // tunic and cap, 1.05 console test), the converted floats do not. The
-    // conversion costs ~1% of the render thread. This file restores the
-    // driver's fetch, for testing a fixed driver.
+    // tunic and cap, 1.05 console test), the converted floats do not. Redone
+    // every draw the conversion took ~13% of the render thread in busy scenes
+    // (1.72); the geometry cache keeps it for meshes that did not change.
+    // This file restores the driver's fetch, for testing a fixed driver.
     static const bool forceConversion = [] {
         FILE *flag = std::fopen("/data/triaevum/native_vertex_fetch", "rb");
         if (flag != nullptr) std::fclose(flag);
@@ -1640,54 +1674,10 @@ Fast::Renderer3ds::PicaRasterCanvas Ps4VkPicaRenderBackend::Impl::RasterCanvas(
 
 // ================================================================ pipelines ==
 
-namespace {
-
-// Everything a PICA pipeline depends on, as POD so its bytes are the map key.
-struct PipelineKey {
-    VkShaderModule vertex;
-    VkShaderModule fragment;
-    uint8_t topology;
-    uint8_t cullMode;
-    uint8_t frontFace;
-    uint8_t depthTest;
-    uint8_t depthWrite;
-    uint8_t depthCompare;
-    uint8_t stencilEnable;
-    uint8_t stencilFail;
-    uint8_t stencilPass;
-    uint8_t stencilDepthFail;
-    uint8_t stencilCompare;
-    uint8_t blendEnable;
-    uint8_t blendOpRgb;
-    uint8_t blendOpAlpha;
-    uint8_t srcRgb;
-    uint8_t dstRgb;
-    uint8_t srcAlpha;
-    uint8_t dstAlpha;
-    uint8_t writeMask;
-    uint8_t logicEnable;
-    uint8_t logicOp;
-    uint8_t bindingCount;
-    uint8_t attributeCount;
-    struct {
-        uint32_t binding;
-        uint32_t stride;
-        uint32_t rate;
-    } bindings[32];
-    struct {
-        uint32_t location;
-        uint32_t binding;
-        uint32_t format;
-        uint32_t offset;
-    } attributes[16];
-};
-
-}  // namespace
-
 VkPipeline Ps4VkPicaRenderBackend::Impl::GetPipeline(
     const Oot3d::Renderer::PicaDrawView &draw, VkShaderModule vs, VkShaderModule fs,
-    const std::vector<VkVertexInputBindingDescription> &bindings,
-    const std::vector<VkVertexInputAttributeDescription> &attributes) {
+    std::span<const VkVertexInputBindingDescription> bindings,
+    std::span<const VkVertexInputAttributeDescription> attributes) {
     PipelineKey key;
     std::memset(&key, 0, sizeof key);
     key.vertex = vs;
@@ -1736,8 +1726,7 @@ VkPipeline Ps4VkPicaRenderBackend::Impl::GetPipeline(
                                  static_cast<uint32_t>(attributes[index].format),
                                  attributes[index].offset};
     }
-    std::string mapKey(reinterpret_cast<const char *>(&key), sizeof key);
-    auto found = pipelines.find(mapKey);
+    auto found = pipelines.find(key);
     if (found != pipelines.end()) return found->second;
 
     const uint64_t start = NowUs();
@@ -1831,7 +1820,7 @@ VkPipeline Ps4VkPicaRenderBackend::Impl::GetPipeline(
                 (unsigned long long)elapsed);
         }
     }
-    pipelines.emplace(std::move(mapKey), pipeline);
+    pipelines.emplace(key, pipeline);
     return pipeline;
 }
 
@@ -1974,19 +1963,24 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
 
     // Vertex input: draw bindings as they are; attributes whose format the
     // GPU cannot fetch get a float copy in a binding of their own (16+loc).
-    std::vector<VkVertexInputBindingDescription> bindings;
-    std::vector<VkVertexInputAttributeDescription> attributes;
+    // Fixed arrays: at most 16 draw bindings, 16 conversions and the default.
+    VkVertexInputBindingDescription bindings[48];
+    uint32_t bindingCount = 0;
+    VkVertexInputAttributeDescription attributes[32];
+    uint32_t attributeCount = 0;
     struct Conversion {
         const Oot3d::Renderer::PicaVertexAttributeView *attribute;
         const Oot3d::Renderer::PicaVertexBindingView *binding;
         uint32_t elements;
     };
-    std::vector<Conversion> conversions;
+    Conversion conversions[16];
+    uint32_t conversionCount = 0;
     uint32_t usedBindings = 0;
-    VkDeviceSize reserve = 0;
+    VkDeviceSize geometryBytes = 0;  // vertex and index data
     for (const auto &attribute : draw.VertexAttributes) {
         if (attribute.Location >= 16U || attribute.Binding >= 16U ||
-            attribute.ComponentCount == 0U || attribute.ComponentCount > 4U) {
+            attribute.ComponentCount == 0U || attribute.ComponentCount > 4U ||
+            attributeCount + conversionCount >= 16U) {
             ++impl.stats.drawFailures;
             return true;
         }
@@ -2000,8 +1994,8 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
         }
         const VkFormat format = ToVkVertexFormat(attribute.Format, attribute.ComponentCount);
         if (impl.VertexFormatSupported(format)) {
-            attributes.push_back({attribute.Location, attribute.Binding, format,
-                                  attribute.ByteOffset});
+            attributes[attributeCount++] = {attribute.Location, attribute.Binding, format,
+                                            attribute.ByteOffset};
             usedBindings |= 1U << attribute.Binding;
             continue;
         }
@@ -2017,26 +2011,28 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
             ++impl.stats.drawFailures;
             return true;
         }
-        conversions.push_back({&attribute, &*bindingIt, elements});
-        reserve += elements * 16U + 16U;
+        conversions[conversionCount++] = {&attribute, &*bindingIt, elements};
+        geometryBytes += elements * 16U + 16U;
     }
     for (const auto &binding : draw.VertexBindings) {
-        if ((usedBindings & (1U << binding.Binding)) == 0U) continue;
-        bindings.push_back({binding.Binding, binding.ByteStride,
-                            binding.PerInstance ? VK_VERTEX_INPUT_RATE_INSTANCE
-                                                : VK_VERTEX_INPUT_RATE_VERTEX});
-        reserve += binding.Bytes.size() + 16U;
+        if (binding.Binding >= 16U || (usedBindings & (1U << binding.Binding)) == 0U) continue;
+        bindings[bindingCount++] = {binding.Binding, binding.ByteStride,
+                                    binding.PerInstance ? VK_VERTEX_INPUT_RATE_INSTANCE
+                                                        : VK_VERTEX_INPUT_RATE_VERTEX};
+        geometryBytes += binding.Bytes.size() + 16U;
     }
     uint32_t usedLocations = 0;
     uint32_t usedBindingSlots = usedBindings;
-    for (const auto &attribute : attributes) usedLocations |= 1U << attribute.location;
-    for (const auto &conversion : conversions) {
+    for (uint32_t index = 0; index < attributeCount; ++index)
+        usedLocations |= 1U << attributes[index].location;
+    for (uint32_t index = 0; index < conversionCount; ++index) {
+        const Conversion &conversion = conversions[index];
         const uint32_t binding = 16U + conversion.attribute->Location;
-        bindings.push_back({binding, 16U,
-                            conversion.binding->PerInstance ? VK_VERTEX_INPUT_RATE_INSTANCE
-                                                            : VK_VERTEX_INPUT_RATE_VERTEX});
-        attributes.push_back({conversion.attribute->Location, binding,
-                              VK_FORMAT_R32G32B32A32_SFLOAT, 0U});
+        bindings[bindingCount++] = {binding, 16U,
+                                    conversion.binding->PerInstance ? VK_VERTEX_INPUT_RATE_INSTANCE
+                                                                    : VK_VERTEX_INPUT_RATE_VERTEX};
+        attributes[attributeCount++] = {conversion.attribute->Location, binding,
+                                        VK_FORMAT_R32G32B32A32_SFLOAT, 0U};
         usedLocations |= 1U << conversion.attribute->Location;
         usedBindingSlots |= 1U << binding;
     }
@@ -2056,14 +2052,14 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
             ++impl.stats.drawFailures;
             return true;
         }
-        bindings.push_back({defaultBinding, 16U, VK_VERTEX_INPUT_RATE_INSTANCE});
+        bindings[bindingCount++] = {defaultBinding, 16U, VK_VERTEX_INPUT_RATE_INSTANCE};
         for (uint32_t location = 0; location < 16U; ++location) {
             if ((usedLocations & (1U << location)) == 0U) {
-                attributes.push_back(
-                    {location, defaultBinding, VK_FORMAT_R32G32B32A32_SFLOAT, 0U});
+                attributes[attributeCount++] =
+                    {location, defaultBinding, VK_FORMAT_R32G32B32A32_SFLOAT, 0U};
             }
         }
-        reserve += 32U;
+        geometryBytes += 32U;
     }
     const VkDeviceSize uboAlign =
         std::max<VkDeviceSize>(16U, impl.properties.limits.minUniformBufferOffsetAlignment);
@@ -2071,7 +2067,7 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
         std::max<VkDeviceSize>(16U, (draw.VertexUniformBytes.size() + 15U) / 16U * 16U);
     const VkDeviceSize fragmentUniformBytes =
         std::max<VkDeviceSize>(16U, (draw.FragmentUniformBytes.size() + 15U) / 16U * 16U);
-    reserve += vertexUniformBytes + fragmentUniformBytes + 2U * uboAlign;
+    const VkDeviceSize uniformBytes = vertexUniformBytes + fragmentUniformBytes + 2U * uboAlign;
     const size_t indexSize = draw.IndicesAre16Bit ? 2U : 1U;
     size_t indexCount = 0;
     if (draw.Indexed) {
@@ -2080,16 +2076,42 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
             return true;
         }
         indexCount = draw.IndexBytes.size() / indexSize;
-        reserve += indexCount * 2U + 16U;
+        geometryBytes += indexCount * 2U + 16U;
     }
 
-    VkPipeline pipeline =
-        impl.GetPipeline(draw, vertex->module, fragmentModule, bindings, attributes);
+    VkPipeline pipeline = impl.GetPipeline(
+        draw, vertex->module, fragmentModule,
+        std::span<const VkVertexInputBindingDescription>(bindings, bindingCount),
+        std::span<const VkVertexInputAttributeDescription>(attributes, attributeCount));
     if (pipeline == VK_NULL_HANDLE) return skip(&impl.stats.skipPipeline, "pipeline");
+
+    // Geometry with an identity (its bytes did not change while identity and
+    // content version stay the same) is read from the geometry cache, or
+    // written into it once; the rest streams through the ring with the draw.
+    const Impl::GeometryKey geometryKey{draw.GeometryIdentity,
+                                        draw.GeometryContentVersion,
+                                        draw.IndexBytes.size(),
+                                        draw.VertexCount,
+                                        static_cast<uint8_t>(draw.VertexBindings.size()),
+                                        static_cast<uint8_t>(draw.VertexAttributes.size()),
+                                        draw.Indexed,
+                                        draw.IndicesAre16Bit};
+    const bool cacheable =
+        draw.GeometryIdentityAvailable && geometryBytes + 1024U <= kGeometryBytes / 4U;
+    const Impl::GeometryEntry *cached = nullptr;
+    if (cacheable) {
+        const auto found = impl.geometryEntries.find(geometryKey);
+        if (found != impl.geometryEntries.end()) cached = &found->second;
+    }
+    const bool writeToCache = cacheable && cached == nullptr;
 
     // Per-draw data: one reservation (a flush recycles the ring, so nothing
     // allocated before it may survive into this draw's recording).
     if (impl.setsAllocated + 1U >= kMaxSetsPerFlush) impl.Flush();
+    if (writeToCache && (impl.geometryHead + geometryBytes + 1024U > kGeometryBytes ||
+                         impl.geometryEntries.size() >= kGeometryEntryLimit))
+        impl.ResetGeometryCache();
+    const VkDeviceSize reserve = uniformBytes + (cacheable ? 0U : geometryBytes);
     if (!impl.RingReserve(reserve)) {
         ++impl.stats.drawFailures;
         impl.NoteError("draw data (%llu bytes) exceeds the ring", (unsigned long long)reserve);
@@ -2097,35 +2119,69 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
     }
 
     uint32_t bindingOffsets[48] = {};
-    for (const auto &binding : draw.VertexBindings) {
-        if ((usedBindings & (1U << binding.Binding)) == 0U) continue;
-        const VkDeviceSize offset = impl.RingAlloc(binding.Bytes.size(), 16U);
-        std::memcpy(impl.ringPointer + offset, binding.Bytes.data(), binding.Bytes.size());
-        bindingOffsets[binding.Binding] = static_cast<uint32_t>(offset);
-    }
-    for (const auto &conversion : conversions) {
-        const auto &attribute = *conversion.attribute;
-        const auto &binding = *conversion.binding;
-        const VkDeviceSize offset = impl.RingAlloc(conversion.elements * 16U, 16U);
-        float *out = reinterpret_cast<float *>(impl.ringPointer + offset);
-        const uint32_t componentBytes = VertexComponentBytes(attribute.Format);
-        for (uint32_t element = 0; element < conversion.elements; ++element) {
-            const uint8_t *source =
-                binding.Bytes.data() + size_t{element} * binding.ByteStride + attribute.ByteOffset;
-            float values[4] = {0.0F, 0.0F, 0.0F, 1.0F};
-            for (uint32_t component = 0; component < attribute.ComponentCount; ++component) {
-                values[component] =
-                    ReadVertexComponent(attribute.Format, source + component * componentBytes);
-            }
-            std::memcpy(out + size_t{element} * 4U, values, sizeof values);
+    VkDeviceSize indexOffset = 0;
+    VkBuffer geometryBuffer = cacheable ? impl.geometry : impl.ring;
+    if (cached != nullptr) {
+        std::memcpy(bindingOffsets, cached->bindingOffsets, sizeof bindingOffsets);
+        indexOffset = cached->indexOffset;
+        ++impl.stats.geometryHits;
+    } else {
+        uint8_t *const base = writeToCache ? impl.geometryPointer : impl.ringPointer;
+        const auto alloc = [&](VkDeviceSize bytes, VkDeviceSize alignment) {
+            return writeToCache ? impl.GeometryAlloc(bytes, alignment)
+                                : impl.RingAlloc(bytes, alignment);
+        };
+        for (const auto &binding : draw.VertexBindings) {
+            if (binding.Binding >= 16U || (usedBindings & (1U << binding.Binding)) == 0U)
+                continue;
+            const VkDeviceSize offset = alloc(binding.Bytes.size(), 16U);
+            std::memcpy(base + offset, binding.Bytes.data(), binding.Bytes.size());
+            bindingOffsets[binding.Binding] = static_cast<uint32_t>(offset);
         }
-        bindingOffsets[16U + attribute.Location] = static_cast<uint32_t>(offset);
-    }
-    if (defaultBinding != UINT32_MAX) {
-        const VkDeviceSize offset = impl.RingAlloc(16U, 16U);
-        const float defaults[4] = {0.0F, 0.0F, 0.0F, 1.0F};
-        std::memcpy(impl.ringPointer + offset, defaults, sizeof defaults);
-        bindingOffsets[defaultBinding] = static_cast<uint32_t>(offset);
+        for (uint32_t index = 0; index < conversionCount; ++index) {
+            const auto &attribute = *conversions[index].attribute;
+            const auto &binding = *conversions[index].binding;
+            const uint32_t elements = conversions[index].elements;
+            const VkDeviceSize offset = alloc(elements * 16U, 16U);
+            float *out = reinterpret_cast<float *>(base + offset);
+            const uint32_t componentBytes = VertexComponentBytes(attribute.Format);
+            for (uint32_t element = 0; element < elements; ++element) {
+                const uint8_t *source = binding.Bytes.data() + size_t{element} * binding.ByteStride +
+                                        attribute.ByteOffset;
+                float values[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+                for (uint32_t component = 0; component < attribute.ComponentCount; ++component) {
+                    values[component] =
+                        ReadVertexComponent(attribute.Format, source + component * componentBytes);
+                }
+                std::memcpy(out + size_t{element} * 4U, values, sizeof values);
+            }
+            bindingOffsets[16U + attribute.Location] = static_cast<uint32_t>(offset);
+        }
+        if (defaultBinding != UINT32_MAX) {
+            const VkDeviceSize offset = alloc(16U, 16U);
+            const float defaults[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+            std::memcpy(base + offset, defaults, sizeof defaults);
+            bindingOffsets[defaultBinding] = static_cast<uint32_t>(offset);
+        }
+        if (draw.Indexed) {
+            indexOffset = alloc(indexCount * 2U, 16U);
+            if (draw.IndicesAre16Bit) {
+                std::memcpy(base + indexOffset, draw.IndexBytes.data(), indexCount * 2U);
+            } else {
+                // No VK_EXT_index_type_uint8 on this path: widen 8-bit indices.
+                uint16_t *out = reinterpret_cast<uint16_t *>(base + indexOffset);
+                for (size_t index = 0; index < indexCount; ++index) out[index] = draw.IndexBytes[index];
+            }
+        }
+        if (writeToCache) {
+            Impl::GeometryEntry entry;
+            std::memcpy(entry.bindingOffsets, bindingOffsets, sizeof bindingOffsets);
+            entry.indexOffset = static_cast<uint32_t>(indexOffset);
+            impl.geometryEntries.emplace(geometryKey, entry);
+            ++impl.stats.geometryMisses;
+        } else {
+            ++impl.stats.geometryStreamed;
+        }
     }
     const VkDeviceSize vertexUbo = impl.RingAlloc(vertexUniformBytes, uboAlign);
     std::memset(impl.ringPointer + vertexUbo, 0, vertexUniformBytes);
@@ -2135,17 +2191,6 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
     std::memset(impl.ringPointer + fragmentUbo, 0, fragmentUniformBytes);
     std::memcpy(impl.ringPointer + fragmentUbo, draw.FragmentUniformBytes.data(),
                 draw.FragmentUniformBytes.size());
-    VkDeviceSize indexOffset = 0;
-    if (draw.Indexed) {
-        indexOffset = impl.RingAlloc(indexCount * 2U, 16U);
-        if (draw.IndicesAre16Bit) {
-            std::memcpy(impl.ringPointer + indexOffset, draw.IndexBytes.data(), indexCount * 2U);
-        } else {
-            // No VK_EXT_index_type_uint8 on this path: widen 8-bit indices.
-            uint16_t *out = reinterpret_cast<uint16_t *>(impl.ringPointer + indexOffset);
-            for (size_t index = 0; index < indexCount; ++index) out[index] = draw.IndexBytes[index];
-        }
-    }
 
     // Descriptors.
     VkDescriptorSet set = impl.AllocateSet(impl.picaSetLayout);
@@ -2193,9 +2238,10 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
     impl.vk.vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     impl.vk.vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, impl.picaPipelineLayout,
                                     0, 1, &set, 0, nullptr);
-    for (const auto &binding : bindings) {
-        const VkDeviceSize offset = bindingOffsets[binding.binding];
-        impl.vk.vkCmdBindVertexBuffers(cb, binding.binding, 1, &impl.ring, &offset);
+    for (uint32_t index = 0; index < bindingCount; ++index) {
+        const uint32_t binding = bindings[index].binding;
+        const VkDeviceSize offset = bindingOffsets[binding];
+        impl.vk.vkCmdBindVertexBuffers(cb, binding, 1, &geometryBuffer, &offset);
     }
     // Desktop viewport math (gfx_vulkan_pica_draw.cpp): the guest numbers
     // through the draw's raster canvas. The scene fills the host target
@@ -2227,7 +2273,7 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDraw(const Oot3d::Renderer::PicaDrawView 
     impl.vk.vkCmdSetStencilWriteMask(cb, VK_STENCIL_FACE_FRONT_AND_BACK, draw.Stencil.WriteMask);
     impl.vk.vkCmdSetStencilReference(cb, VK_STENCIL_FACE_FRONT_AND_BACK, draw.Stencil.Reference);
     if (draw.Indexed) {
-        impl.vk.vkCmdBindIndexBuffer(cb, impl.ring, indexOffset, VK_INDEX_TYPE_UINT16);
+        impl.vk.vkCmdBindIndexBuffer(cb, geometryBuffer, indexOffset, VK_INDEX_TYPE_UINT16);
         impl.vk.vkCmdDrawIndexed(cb, static_cast<uint32_t>(indexCount), 1, 0, draw.BaseVertex, 0);
     } else {
         impl.vk.vkCmdDraw(cb, draw.VertexCount, 1, 0, 0);
@@ -2726,6 +2772,10 @@ bool Ps4VkPicaRenderBackend::ResetPicaState(std::string *error) {
     impl.Flush();
     impl.vk.vkDeviceWaitIdle(impl.device);
     impl.DestroyResources();
+    // A savestate load rewinds the frontend's geometry content versions: an
+    // entry's version could name other bytes afterwards.
+    impl.geometryEntries.clear();
+    impl.geometryHead = 0;
     impl.pendingFills.clear();
     impl.completions.clear();
     impl.Log("vk-backend: PICA state reset");

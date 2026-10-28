@@ -1118,3 +1118,66 @@ Quadro do host (ms) parado, janelas com >= 40 quadros do jogo/s:
   profiler só atribui chamadores das funções mem* folha).
 - O tracer de alocação (`src/ps4_alloc_trace.cpp`, 1.66–1.68) foi removido:
   já respondeu (alocações da thread do jogo ~0,3 ms no total).
+
+## 1.73 — cache de geometria no backend, chaves sem texto
+
+Distribuindo as amostras da thread `render` dentro de `SubmitPicaDraw` por
+endereço (o backend não tem informação de linha; `llvm-objdump` do binário de
+`build/product-pgo-use`), ~14% dos ~20% caem no laço que converte atributos
+inteiros (byte/short) em floats no ring: todo atributo inteiro passa por ele
+de propósito (o fetch do RADV no GFX7 deforma o skinning, 1.05), refeito a
+cada draw. O `printf_core` era `IdentityKey` (`snprintf` com três `%016llx`)
+montando a chave do mapa de shaders duas vezes por draw.
+
+- Cache de geometria: buffer garlic de 32 MiB, por `(GeometryIdentity,
+  GeometryContentVersion)` + contagens/formato dos índices; vértices,
+  atributos convertidos, o default e os índices são escritos uma vez e os
+  draws seguintes só fazem bind. Draws sem identidade (interpolados por
+  vértice) continuam pelo ring. Cheio (ou 16384 entradas): `Flush`, espera
+  o outro slot e recomeça. `ResetPicaState` (load de savestate, que rebobina
+  o contador de versões do frontend) o esvazia.
+- Shaders por identidade binária (o nome do `.spv` só é formatado quando o
+  shader é novo); pipelines em `unordered_map` com a `PipelineKey` como chave
+  (antes, uma `std::string` de 680 bytes alocada por draw num `std::map`).
+- Bindings/atributos/conversões em arrays fixos (três vetores por draw antes).
+- Log: `vertex cache per frame: hits, written, streamed | restarts`.
+- hosttest: draws com identidade escritos no quadro 0 e lidos do cache no 1
+  (2 escritas, 2 acertos, mesma imagem, sem erro Vulkan). Os draws sintéticos
+  não deixam pixels visíveis nem pelo ring: a geometria em si só o console
+  mostra.
+- PGO: só `CreateDeviceObjects`, `GetShader` e `SubmitPicaDraw` perdem o
+  perfil (hash mismatch); as shards do jogo mantêm.
+
+### Medição da 1.73 (2026-10-28)
+
+Sessão de 240 s (48 linhas `game:`, 24 janelas de perfil), comparada com a
+sessão da 1.72 (`triaevum_boot.previous.log`), por cena e escala de render:
+
+| Cena / escala | 1.72 fps (draws) | 1.73 fps (draws) |
+|---|---|---|
+| Market (32), escala 6, ~275 draws | ~44,5 | ~49–50 |
+| Market (32), escala 6, ~300 draws | ~41 | ~45,5 |
+| Market (32), escala 6, mediana | 41,8 (289) | 49,9 (274) |
+| Hyrule (81), escala 3 | 59,8 | 59,9 |
+| Kokiri (85), escala 3 | 59,2 | 60,0 |
+
+- Thread do jogo sem mudança (esperado, o trabalho é na `render`): CPU por
+  quadro do jogo no mesmo número de draws dentro do ruído (Hyrule ~150 draws:
+  7,6–7,8 ms na 1.72, 7,8–8,0 na 1.73).
+- Thread `render` no Market, escala 6: `SubmitPicaDraw` caiu de ~19–21% para
+  2,1%; ~36% em kernel (`_umtx_op` 18%, a maior parte esperando a fence).
+  Espera de GPU subiu de ~2,6 para 3,3–4,3 ms por quadro: na escala 6 o
+  Market agora é limitado pela GPU.
+- Cache de vértices: média de 180 acertos, 1,8 escritos e 2,6 pelo ring por
+  quadro; 4 recomeços na sessão inteira. Sem travamento (`triaevum_hang.log`
+  é o da 1.57h).
+- Sobra de CPU na `render` (Market, escala 6): interpolação visual ~12%
+  (`AnalyzeVisualTransition` 5,1%, `SampleVisualFrameView` 4,2%,
+  `BuildVisualDrawMatching` 1,5%, `ShareVisualPaletteMotions` 1,3%),
+  `SubmitOot3dPicaVulkanDrawPlan` 5,5%, memcpy+memset 8,4%, malloc/free 4,3%,
+  radv ~7%, `VertexFormatSupported` 1,2% (consulta por draw, dá para
+  memoizar), buscas nos hash maps ~1,8%.
+- Não houve trecho do Market na escala 3 com 300+ draws nesta sessão; a cena
+  77 (só na 1.73) chegou a 344 draws a 36 fps na escala 3, com 13,7 ms de CPU
+  por quadro do jogo: lá o limite é a thread do jogo.
+- Perfil: endereços `jit` do `samples.log` são `nm` - 0x400000.
