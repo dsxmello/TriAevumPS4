@@ -1367,3 +1367,46 @@ cache nem de ITLB. O `.text` do produto tem 134 MB.
   frames over 17.5/20/25/34 ms: a/b/c/d of N | longest X ms (guest, present)`
   (thread do jogo) e `render pacing: presented frames over ...` (intervalo
   entre quadros apresentados na `render`).
+- Medido na 1.80 (2026-11-05, escala 6, Market andando): flips 59,7–60/s
+  na maior parte das janelas, mas a thread do jogo alterna quadros de
+  ~20–23 ms (o tick pesado do jogo) com quadros de ~10 ms: ~150 de ~300
+  quadros por janela passam de 20 ms, 9–37 passam de 25, nenhum de 34. Com 2
+  quadros em voo a fila dos flips absorve a alternância, até dois quadros
+  pesados seguidos estourarem os 33 ms do par (290 draws -> 56,5 fps): é a
+  "leve caída" que o Daniel sente. Nas trocas de área há travadas de 80–336
+  ms, todas no guest (carregamento da área). GPU 47–49%: o limite é a CPU da
+  thread do jogo.
+
+## 1.81 (experimento) — view de memória no AOT
+
+- `NativeA32AotMemoryView` (`oot3d_native_a32_memory.h`): cada função gerada
+  guarda num local o objeto de memória e a tabela de páginas (alocada uma vez,
+  nunca liberada com o guest rodando: um ponteiro velho nunca fica pendurado,
+  um nulo velho só manda ao caminho checado). No PS4 os loads/stores do guest
+  são `asm` não volátil encadeado por um token (`"+r"`): o compilador não os
+  vê tocar memória, então um store do guest deixa de forçar a recarga dos
+  registradores do guest, da tabela e do contador de gerações; a ordem entre
+  eles vem da dependência do token. `Commit` (asm volátil que consome o token)
+  antes de todo código do host, `Reload` (relê a tabela, token novo) depois.
+  Cada store grava o dado e depois a `WriteGeneration` da página no mesmo asm
+  (a worker GSP lê a geração antes dos bytes). Teste no clang: `asm volatile`
+  sem "memory" ainda conta como escrever em tudo, por isso o não volátil.
+- `ps4/tools/aot_memory_view.py`: o view entra antes do `commitState`;
+  `memory.Commit(); commitState();`, `reloadState(); memory.Reload();`, e
+  `Oot3dAotEnterBlock`/`Oot3dAotCallExternal` ganham sobrecargas com o view
+  que fazem Commit/Reload só em volta do código do host. O view não pode ir
+  para dentro dos lambdas: eles são capturados por referência e passados ao
+  caminho lento noinline, e o view escaparia (mesma causa da 1.49). Auditado:
+  as 847.907 saídas (`return`) das funções geradas são precedidas de
+  `commitState()`, e as 62.540 chamadas também; 543.380 acessos roteados em
+  12.439 funções.
+- Primeiro protótipo chamava `ReadFast`/`WriteFast` do objeto no caminho
+  lento (always_inline: dois caminhos rápidos por acesso, +33% de código);
+  corrigido para `ReadFastChecked`/`WriteFastChecked` como o original. Shard
+  230 sem PGO: .text 539 -> 564 KB (+4%, `leaq` dos offsets e recargas depois
+  das chamadas), mas a tabela fica em registrador e os stores não forçam
+  recarga do state.
+- Medição sem depender de PGO: 1.81-A (código atual) e 1.81-B (view), as duas
+  sem PGO, no mesmo ponto do Market; se B ganhar, COLETA do PGO em cima dela.
+  `build-product.sh` aceita `PRODUCT_BUILD`, `TITLE_AOT` e `BUILD_TAG`; a
+  cópia com o view fica em `title-content/aot-cpp.memview`.

@@ -365,6 +365,8 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
     friend class NativeA32UnobservedMemory;
     // The GSP worker's accesses (oot3d_native_a32_memory_device.h).
     friend class NativeA32DeviceAccess;
+    // The generated code's per-function view (below).
+    friend class NativeA32AotMemoryView;
     struct Region {
         std::string Name;
         uint32_t BaseAddress = 0;
@@ -525,5 +527,264 @@ class NativeA32Memory final : public oot3d::recomp::a32::MemoryBus {
     void DiscardDeferredWrites(uint32_t address, size_t size) const;
     void ReleaseDeferredPageTraps() const;
 };
+
+
+// The generated code's guest memory accesses, through a view each generated
+// function keeps in locals (ps4/tools/aot_memory_view.py; commitState and
+// reloadState call Commit/Reload at every call, hook and exit).
+//
+// Out of the view every fast access read the memory object from the context,
+// then the page table from the memory object, then the page entry, then the
+// data: a chain of dependent loads (~10 instructions on a 2-wide decoder),
+// all reloaded after every guest store because a store through a byte
+// pointer may alias anything; every store also stepped mRangeGeneration in
+// memory. On the PS4 the view keeps the memory object and the page table in
+// registers, and (OOT3D_AOT_MEMORY_TOKEN) the guest loads and stores are
+// non-volatile asm statements the compiler cannot see touch memory, kept in
+// order by a token they all consume and produce: guest stores then no longer
+// force the guest registers, the page table or the generation counter to be
+// reloaded. Commit (before host code runs) consumes the token in a volatile
+// asm, so every guest access is emitted before it; Reload (after host code)
+// produces a new token, so every later access is emitted after it, and
+// rereads the page table pointer.
+//
+// The page table is allocated once (RebuildPageTable) and never freed while
+// the guest runs, so a cached pointer is never dangling; a cached null only
+// sends accesses down the checked path. Each store writes its data, then the
+// page's WriteGeneration (in that order: the GSP worker reads the generation
+// before the bytes), in one asm statement. Elsewhere the view forwards to the
+// memory object, with the exact previous behavior.
+#if defined(__ORBIS__) && defined(__x86_64__)
+#ifndef OOT3D_AOT_MEMORY_TOKEN
+#define OOT3D_AOT_MEMORY_TOKEN 1
+#endif
+class NativeA32AotMemoryView final {
+  public:
+    using FastPage = NativeA32Memory::FastPage;
+    static_assert(sizeof(FastPage) == 24 && offsetof(FastPage, WriteGeneration) == 16);
+
+    OOT3D_MEMORY_FAST_PATH explicit NativeA32AotMemoryView(NativeA32Memory& memory) noexcept
+        : mOwner(&memory), mPages(memory.mFastPages.get()) {
+        NewToken();
+    }
+
+    OOT3D_MEMORY_FAST_PATH void Commit() noexcept {
+#if OOT3D_AOT_MEMORY_TOKEN
+        asm volatile("" : : "r"(mToken));
+#endif
+    }
+    OOT3D_MEMORY_FAST_PATH void Reload() noexcept {
+        mPages = mOwner->mFastPages.get();
+        NewToken();
+    }
+
+    template <typename T>
+    OOT3D_MEMORY_FAST_PATH bool ReadFast(uint32_t address, T* value,
+                                         uint32_t* faultAddress = nullptr) noexcept {
+        static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>);
+        if (value == nullptr) return false;
+        const size_t offset = address & NativeA32Memory::PageMask;
+        if (offset <= NativeA32Memory::PageSize - sizeof(T) && mPages != nullptr) {
+            const uint8_t* source = mPages[address >> NativeA32Memory::PageShift].Read;
+            if (source != nullptr) {
+                *value = Load<T>(source, offset);
+                return true;
+            }
+        }
+        // The checked path, out of line (as the memory object's own ReadFast).
+        T checked = 0;
+        Commit();
+        const bool ok = mOwner->ReadFastChecked(address, &checked, faultAddress);
+        Reload();
+        if (!ok) return false;
+        *value = checked;
+        return true;
+    }
+
+    template <typename T>
+    OOT3D_MEMORY_FAST_PATH bool WriteFast(uint32_t address, T value,
+                                          uint32_t* faultAddress = nullptr) noexcept {
+        static_assert(std::is_integral_v<T> && std::is_unsigned_v<T>);
+        const size_t offset = address & NativeA32Memory::PageMask;
+        if (offset <= NativeA32Memory::PageSize - sizeof(T) && mPages != nullptr) {
+            FastPage& entry = mPages[address >> NativeA32Memory::PageShift];
+            uint8_t* destination = entry.Write;
+            if (destination != nullptr) {
+                const uint64_t generation = ++mOwner->mRangeGeneration;
+                Store<T>(destination, offset, value, &entry, generation);
+                if (generation == 0U) [[unlikely]] mOwner->mRangeVersionsValid = false;
+                return true;
+            }
+        }
+        Commit();
+        const bool ok = mOwner->WriteFastChecked(address, value, faultAddress);
+        Reload();
+        return ok;
+    }
+
+    template <size_t N>
+    OOT3D_MEMORY_FAST_PATH bool ReadWordsFast(uint32_t address, uint32_t (&values)[N]) noexcept {
+        const size_t offset = address & NativeA32Memory::PageMask;
+        if (offset > NativeA32Memory::PageSize - N * 4U || mPages == nullptr) return false;
+        const uint8_t* source = mPages[address >> NativeA32Memory::PageShift].Read;
+        if (source == nullptr) return false;
+        for (size_t i = 0; i < N; ++i) values[i] = Load<uint32_t>(source, offset + i * 4U);
+        return true;
+    }
+
+    template <size_t N>
+    OOT3D_MEMORY_FAST_PATH bool WriteWordsFast(uint32_t address, const uint32_t (&values)[N]) noexcept {
+        const size_t offset = address & NativeA32Memory::PageMask;
+        if (offset > NativeA32Memory::PageSize - N * 4U || mPages == nullptr) return false;
+        FastPage& entry = mPages[address >> NativeA32Memory::PageShift];
+        uint8_t* destination = entry.Write;
+        if (destination == nullptr) return false;
+        const uint64_t before = mOwner->mRangeGeneration;
+        const uint64_t generation = before + N;
+        mOwner->mRangeGeneration = generation;
+        for (size_t i = 0; i + 1U < N; ++i) StoreData<uint32_t>(destination, offset + i * 4U, values[i]);
+        Store<uint32_t>(destination, offset + (N - 1U) * 4U, values[N - 1U], &entry, generation);
+        if (uint64_t{0} - before - 1U < N) [[unlikely]] mOwner->mRangeVersionsValid = false;
+        return true;
+    }
+
+    bool LoadExclusive(uint32_t address, uint8_t size, uint64_t* value, uint64_t* token,
+                       uint32_t* faultAddress) noexcept {
+        Commit();
+        const bool ok = mOwner->LoadExclusive(address, size, value, token, faultAddress);
+        Reload();
+        return ok;
+    }
+    oot3d::recomp::a32::ExclusiveStoreResult StoreExclusive(uint32_t address, uint8_t size,
+                                                            uint64_t value, uint64_t token,
+                                                            uint32_t* faultAddress) noexcept {
+        Commit();
+        const auto result = mOwner->StoreExclusive(address, size, value, token, faultAddress);
+        Reload();
+        return result;
+    }
+
+  private:
+    OOT3D_MEMORY_FAST_PATH void NewToken() noexcept {
+#if OOT3D_AOT_MEMORY_TOKEN
+        asm volatile("" : "=r"(mToken));
+#endif
+    }
+
+    template <typename T>
+    OOT3D_MEMORY_FAST_PATH T Load(const uint8_t* base, size_t offset) noexcept {
+#if OOT3D_AOT_MEMORY_TOKEN
+        if constexpr (sizeof(T) == 1) {
+            uint32_t v;
+            asm("movzbl (%[b],%[o]), %[v]" : [v] "=r"(v), [t] "+r"(mToken) : [b] "r"(base), [o] "r"(offset));
+            return static_cast<T>(v);
+        } else if constexpr (sizeof(T) == 2) {
+            uint32_t v;
+            asm("movzwl (%[b],%[o]), %[v]" : [v] "=r"(v), [t] "+r"(mToken) : [b] "r"(base), [o] "r"(offset));
+            return static_cast<T>(v);
+        } else if constexpr (sizeof(T) == 4) {
+            uint32_t v;
+            asm("movl (%[b],%[o]), %[v]" : [v] "=r"(v), [t] "+r"(mToken) : [b] "r"(base), [o] "r"(offset));
+            return static_cast<T>(v);
+        } else {
+            uint64_t v;
+            asm("movq (%[b],%[o]), %[v]" : [v] "=r"(v), [t] "+r"(mToken) : [b] "r"(base), [o] "r"(offset));
+            return static_cast<T>(v);
+        }
+#else
+        T v;
+        std::memcpy(&v, base + offset, sizeof(T));
+        return v;
+#endif
+    }
+
+    template <typename T>
+    OOT3D_MEMORY_FAST_PATH void StoreData(uint8_t* base, size_t offset, T value) noexcept {
+#if OOT3D_AOT_MEMORY_TOKEN
+        if constexpr (sizeof(T) == 1) {
+            asm("movb %b[v], (%[b],%[o])" : [t] "+r"(mToken) : [v] "q"(value), [b] "r"(base), [o] "r"(offset));
+        } else if constexpr (sizeof(T) == 2) {
+            asm("movw %w[v], (%[b],%[o])" : [t] "+r"(mToken) : [v] "r"(value), [b] "r"(base), [o] "r"(offset));
+        } else if constexpr (sizeof(T) == 4) {
+            asm("movl %k[v], (%[b],%[o])" : [t] "+r"(mToken) : [v] "r"(value), [b] "r"(base), [o] "r"(offset));
+        } else {
+            asm("movq %q[v], (%[b],%[o])" : [t] "+r"(mToken) : [v] "r"(value), [b] "r"(base), [o] "r"(offset));
+        }
+#else
+        std::memcpy(base + offset, &value, sizeof(T));
+#endif
+    }
+
+    // The data, then the page's write generation.
+    template <typename T>
+    OOT3D_MEMORY_FAST_PATH void Store(uint8_t* base, size_t offset, T value, FastPage* entry,
+                                      uint64_t generation) noexcept {
+#if OOT3D_AOT_MEMORY_TOKEN
+        if constexpr (sizeof(T) == 1) {
+            asm("movb %b[v], (%[b],%[o])\n\tmovq %[g], 16(%[e])"
+                : [t] "+r"(mToken)
+                : [v] "q"(value), [b] "r"(base), [o] "r"(offset), [g] "r"(generation), [e] "r"(entry));
+        } else if constexpr (sizeof(T) == 2) {
+            asm("movw %w[v], (%[b],%[o])\n\tmovq %[g], 16(%[e])"
+                : [t] "+r"(mToken)
+                : [v] "r"(value), [b] "r"(base), [o] "r"(offset), [g] "r"(generation), [e] "r"(entry));
+        } else if constexpr (sizeof(T) == 4) {
+            asm("movl %k[v], (%[b],%[o])\n\tmovq %[g], 16(%[e])"
+                : [t] "+r"(mToken)
+                : [v] "r"(value), [b] "r"(base), [o] "r"(offset), [g] "r"(generation), [e] "r"(entry));
+        } else {
+            asm("movq %q[v], (%[b],%[o])\n\tmovq %[g], 16(%[e])"
+                : [t] "+r"(mToken)
+                : [v] "r"(value), [b] "r"(base), [o] "r"(offset), [g] "r"(generation), [e] "r"(entry));
+        }
+#else
+        std::memcpy(base + offset, &value, sizeof(T));
+        entry->WriteGeneration = generation;
+#endif
+    }
+
+    NativeA32Memory* mOwner;
+    FastPage* mPages;
+#if OOT3D_AOT_MEMORY_TOKEN
+    uintptr_t mToken = 0;
+#endif
+};
+#else
+// Elsewhere: the memory object's own paths, unchanged.
+class NativeA32AotMemoryView final {
+  public:
+    explicit NativeA32AotMemoryView(NativeA32Memory& memory) noexcept : mOwner(&memory) {}
+    void Commit() noexcept {}
+    void Reload() noexcept {}
+    template <typename T>
+    bool ReadFast(uint32_t address, T* value, uint32_t* faultAddress = nullptr) noexcept {
+        return mOwner->ReadFast<T>(address, value, faultAddress);
+    }
+    template <typename T>
+    bool WriteFast(uint32_t address, T value, uint32_t* faultAddress = nullptr) noexcept {
+        return mOwner->WriteFast<T>(address, value, faultAddress);
+    }
+    template <size_t N>
+    bool ReadWordsFast(uint32_t address, uint32_t (&values)[N]) noexcept {
+        return mOwner->ReadWordsFast<N>(address, values);
+    }
+    template <size_t N>
+    bool WriteWordsFast(uint32_t address, const uint32_t (&values)[N]) noexcept {
+        return mOwner->WriteWordsFast<N>(address, values);
+    }
+    bool LoadExclusive(uint32_t address, uint8_t size, uint64_t* value, uint64_t* token,
+                       uint32_t* faultAddress) noexcept {
+        return mOwner->LoadExclusive(address, size, value, token, faultAddress);
+    }
+    oot3d::recomp::a32::ExclusiveStoreResult StoreExclusive(uint32_t address, uint8_t size,
+                                                            uint64_t value, uint64_t token,
+                                                            uint32_t* faultAddress) noexcept {
+        return mOwner->StoreExclusive(address, size, value, token, faultAddress);
+    }
+
+  private:
+    NativeA32Memory* mOwner;
+};
+#endif
 
 } // namespace Oot3dNativeGame

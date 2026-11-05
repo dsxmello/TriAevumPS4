@@ -13,6 +13,10 @@ build="$PS4_BUILD_ROOT/build/product"
 PGO="${PGO:-}"
 [ "$PGO" = generate ] && build="$PS4_BUILD_ROOT/build/product-pgo-gen"
 [ "$PGO" = use ] && build="$PS4_BUILD_ROOT/build/product-pgo-use"
+# Experiments: PRODUCT_BUILD=<tree name> builds in build/<name>,
+# TITLE_AOT=<dir> compiles another copy of the generated title, and
+# BUILD_TAG=<text> is appended to the version the boot log prints.
+[ -n "${PRODUCT_BUILD:-}" ] && build="$PS4_BUILD_ROOT/build/$PRODUCT_BUILD"
 
 SPDLOG_SHA=1586508029a7d0670dfcb2d97575dcdc242d3868a259742b69f100801ab4e16b
 
@@ -45,7 +49,8 @@ if [ ! -f "$build/CMakeCache.txt" ]; then
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DPS4_MALLOC_REPLACE=ON -DPS4_PAID=0x3800000000000035 \
         -DPS4_MESA_BUILD="$PS4_BUILD_ROOT/build/mesa" \
-        -DPS4_PGO="$PGO" -DPS4_PGO_PROFILE="${PGO_PROFILE:-}" >/dev/null
+        -DPS4_PGO="$PGO" -DPS4_PGO_PROFILE="${PGO_PROFILE:-}" \
+        ${TITLE_AOT:+-DTITLE_CONTENT_AOT="$TITLE_AOT"} -DPS4_BUILD_TAG="${BUILD_TAG:-}" >/dev/null
 elif [ -n "${PGO_PROFILE:-}" ]; then
     # The tree is configured once; a new profile still has to reach it.
     cmake -S "$PRODUCT" -B "$build" -DPS4_PGO_PROFILE="$PGO_PROFILE" >/dev/null

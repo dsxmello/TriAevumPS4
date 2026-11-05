@@ -464,6 +464,27 @@ OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
                                std::forward<ReloadState>(reloadState));
 }
 
+// The same with the function's guest memory view (NativeA32AotMemoryView,
+// ps4/tools/aot_memory_view.py): the view commits only around the hook's
+// host code, inline, so it never escapes into the slow path's lambdas and
+// stays in registers.
+template <typename CommitState, typename ReloadState, typename MemoryView>
+OOT3D_AOT_BLOCK_FAST_PATH bool Oot3dAotEnterBlock(
+    Oot3dWholeAotContext& context, Oot3dWholeAotFrame& frame,
+    Oot3dAotArchitecturalState& state, uint32_t pc,
+    CommitState&& commitState, ReloadState&& reloadState, MemoryView& memory) {
+    const Oot3dAotBlockEntryStep step = Oot3dAotBeginBlock(context, pc);
+    if (step != Oot3dAotBlockEntryStep::Notify) [[likely]] {
+        return step == Oot3dAotBlockEntryStep::Proceed;
+    }
+    memory.Commit();
+    const bool proceed = Oot3dAotNotifyBlock(context, frame, state, pc,
+                                             std::forward<CommitState>(commitState),
+                                             std::forward<ReloadState>(reloadState));
+    memory.Reload();
+    return proceed;
+}
+
 inline Oot3dWholeAotFlow Oot3dAotCallExternal(
     Oot3dWholeAotContext& context,
     uint32_t entry,
@@ -497,6 +518,19 @@ inline Oot3dWholeAotFlow Oot3dAotCallExternal(
     const Oot3dWholeAotFlow flow = Oot3dAotCallExternal(context, entry, frame);
     state.Reload(access.OutputGprs, access.OutputFlags);
     reloadState();
+    return flow;
+}
+
+template <typename CommitState, typename ReloadState, typename MemoryView>
+inline Oot3dWholeAotFlow Oot3dAotCallExternal(
+    Oot3dWholeAotContext& context, uint32_t entry,
+    Oot3dWholeAotFrame& frame, Oot3dAotArchitecturalState& state,
+    CommitState&& commitState, ReloadState&& reloadState, MemoryView& memory) noexcept {
+    memory.Commit();
+    const Oot3dWholeAotFlow flow = Oot3dAotCallExternal(
+        context, entry, frame, state, std::forward<CommitState>(commitState),
+        std::forward<ReloadState>(reloadState));
+    memory.Reload();
     return flow;
 }
 
