@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <span>
@@ -20,6 +21,7 @@
 #include <utility>
 
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <vulkan/vulkan_core.h>
 
@@ -459,6 +461,27 @@ bool Ps4VkPicaRenderBackend::Impl::Initialize(uint32_t width, uint32_t height) {
     }
     vk.vkGetPhysicalDeviceProperties(gpu, &properties);
     vk.vkGetPhysicalDeviceMemoryProperties(gpu, &memory);
+    // GPU timing: timestamps around each kind of work, summed per kind and
+    // logged every 5 s. Off unless /data/triaevum/gpu_timing exists.
+    const char *timingEnv = std::getenv("TRIAEVUM_GPU_TIMING");
+    if (access("/data/triaevum/gpu_timing", F_OK) == 0 ||
+        (timingEnv != nullptr && timingEnv[0] == '1')) {
+        uint32_t families = 1;
+        VkQueueFamilyProperties family{};
+        vk.vkGetPhysicalDeviceQueueFamilyProperties(gpu, &families, &family);
+        timestampNs = properties.limits.timestampPeriod;
+        if (families == 0 || family.timestampValidBits == 0 || timestampNs <= 0.0) {
+            Log("vk-backend: gpu timing unavailable (%u valid timestamp bits, period %.3f ns)",
+                families == 0 ? 0U : family.timestampValidBits, timestampNs);
+        } else {
+            gpuTiming = true;
+            timestampMask = family.timestampValidBits >= 64
+                                ? ~0ULL
+                                : (1ULL << family.timestampValidBits) - 1U;
+            Log("vk-backend: gpu timing on (%u timestamp bits, %.3f ns per tick)",
+                family.timestampValidBits, timestampNs);
+        }
+    }
     VkPhysicalDeviceFeatures supported{};
     vk.vkGetPhysicalDeviceFeatures(gpu, &supported);
     logicOpSupported = supported.logicOp == VK_TRUE;
@@ -538,6 +561,14 @@ bool Ps4VkPicaRenderBackend::Impl::CreateDeviceObjects() {
         VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
         if (!Check(vk.vkCreateFence(device, &fenceInfo, nullptr, &frame.fence), "vkCreateFence"))
             return false;
+        if (gpuTiming) {
+            VkQueryPoolCreateInfo queryInfo{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+            queryInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            queryInfo.queryCount = kGpuTimingMarks;
+            if (!Check(vk.vkCreateQueryPool(device, &queryInfo, nullptr, &frame.timestamps),
+                       "vkCreateQueryPool"))
+                gpuTiming = false;
+        }
     }
 
     // Garlic (DEVICE_LOCAL | HOST_VISIBLE) suits the ring: the CPU only
@@ -985,6 +1016,106 @@ void Ps4VkPicaRenderBackend::Impl::EnsureRecording() {
     recording = true;
     uploadsRecorded = false;
     workRecorded = false;
+    FrameSlot &frame = slots[slot];
+    frame.marks = 0;
+    frame.timingSubmitted = false;
+    if (gpuTiming) {
+        // 0: uploads start, 1: uploads end (Submit), 2: main buffer start.
+        vk.vkCmdResetQueryPool(uploadCb, frame.timestamps, 0, kGpuTimingMarks);
+        vk.vkCmdWriteTimestamp(uploadCb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, frame.timestamps, 0);
+        vk.vkCmdWriteTimestamp(mainCb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, frame.timestamps, 2);
+        frame.marks = 3;
+        gpuCurrentKey = 0;
+    }
+}
+
+void Ps4VkPicaRenderBackend::Impl::GpuMark(uint32_t next) {
+    if (!gpuTiming || !recording || next == gpuCurrentKey) {
+        if (!gpuTiming || !recording) gpuCurrentKey = next;
+        return;
+    }
+    FrameSlot &frame = slots[slot];
+    // The last query stays for Submit's closing timestamp.
+    if (frame.marks + 1U >= kGpuTimingMarks) {
+        ++gpuDroppedMarks;
+        return;
+    }
+    vk.vkCmdWriteTimestamp(mainCb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, frame.timestamps,
+                           frame.marks);
+    frame.markKey[frame.marks] = gpuCurrentKey;
+    ++frame.marks;
+    gpuCurrentKey = next;
+}
+
+void Ps4VkPicaRenderBackend::Impl::GpuCollect(FrameSlot &frame) {
+    if (!gpuTiming || !frame.timingSubmitted) return;
+    frame.timingSubmitted = false;
+    uint64_t ticks[kGpuTimingMarks];
+    if (vk.vkGetQueryPoolResults(device, frame.timestamps, 0, frame.marks, sizeof ticks, ticks,
+                                 sizeof ticks[0], VK_QUERY_RESULT_64_BIT) != VK_SUCCESS)
+        return;
+    const auto add = [&](uint32_t key, uint64_t from, uint64_t to) {
+        GpuTotal &total = gpuTotals[key];
+        total.ns += static_cast<uint64_t>(static_cast<double>((to - from) & timestampMask) *
+                                          timestampNs);
+        ++total.segments;
+    };
+    add(GpuKey(kGpuUploads), ticks[0], ticks[1]);
+    for (uint32_t i = 3; i < frame.marks; ++i) add(frame.markKey[i], ticks[i - 1], ticks[i]);
+    ++gpuSubmissions;
+    GpuReport();
+}
+
+void Ps4VkPicaRenderBackend::Impl::GpuReport() {
+    const uint64_t now = NowUs();
+    if (gpuReportStartUs == 0) {
+        gpuReportStartUs = now;
+        gpuReportPresents = stats.presents;
+        gpuTotals.clear();
+        return;
+    }
+    if (now - gpuReportStartUs < 5000000U) return;
+    const double seconds = static_cast<double>(now - gpuReportStartUs) / 1e6;
+    uint64_t totalNs = 0;
+    uint64_t frames = 0;
+    for (const auto &[key, total] : gpuTotals) {
+        totalNs += total.ns;
+        if ((key >> 28) == kGpuScanout) frames += total.segments;
+    }
+    std::vector<std::pair<uint32_t, GpuTotal>> sorted(gpuTotals.begin(), gpuTotals.end());
+    std::sort(sorted.begin(), sorted.end(),
+              [](const auto &a, const auto &b) { return a.second.ns > b.second.ns; });
+    const double perFrame = frames != 0 ? static_cast<double>(frames) : 1.0;
+    char line[480];
+    int used = std::snprintf(line, sizeof line,
+                             "vk-backend: gpu time: busy %.0f%%, %.1f composed frames/s, %.1f "
+                             "submits/s | per frame ms: total %.2f |",
+                             static_cast<double>(totalNs) / (seconds * 1e7),
+                             static_cast<double>(frames) / seconds,
+                             static_cast<double>(gpuSubmissions) / seconds,
+                             static_cast<double>(totalNs) / 1e6 / perFrame);
+    static const char *const kNames[] = {"other", "uploads", "pass", "clear",
+                                         "blit",  "readback", "scanout"};
+    for (const auto &[key, total] : sorted) {
+        if (used >= static_cast<int>(sizeof line) - 40) break;
+        const uint32_t kind = key >> 28;
+        const char *name = kind < std::size(kNames) ? kNames[kind] : "?";
+        const double ms = static_cast<double>(total.ns) / 1e6 / perFrame;
+        if (ms < 0.05) continue;
+        if (kind == kGpuPass) {
+            used += std::snprintf(line + used, sizeof line - used, " %s %ux%u %.2f (%.1f)", name,
+                                  (key >> 14) & 0x3FFFU, key & 0x3FFFU, ms,
+                                  static_cast<double>(total.segments) / perFrame);
+        } else {
+            used += std::snprintf(line + used, sizeof line - used, " %s %.2f", name, ms);
+        }
+    }
+    Log("%s%s", line, gpuDroppedMarks != 0 ? " | marks dropped" : "");
+    gpuDroppedMarks = 0;
+    gpuSubmissions = 0;
+    gpuTotals.clear();
+    gpuReportStartUs = now;
+    gpuReportPresents = stats.presents;
 }
 
 void Ps4VkPicaRenderBackend::Impl::FullBarrier(VkCommandBuffer cb) {
@@ -1035,10 +1166,19 @@ void Ps4VkPicaRenderBackend::Impl::Submit(bool async) {
     if (!recording) return;
     EndRenderPass();
     FullBarrier(uploadCb);
+    if (gpuTiming) {
+        FrameSlot &frame = slots[slot];
+        vk.vkCmdWriteTimestamp(uploadCb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, frame.timestamps, 1);
+        vk.vkCmdWriteTimestamp(mainCb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, frame.timestamps,
+                               frame.marks);
+        frame.markKey[frame.marks] = gpuCurrentKey;
+        ++frame.marks;
+    }
     vk.vkEndCommandBuffer(uploadCb);
     vk.vkEndCommandBuffer(mainCb);
     recording = false;
     if (!uploadsRecorded && !workRecorded) return;
+    slots[slot].timingSubmitted = gpuTiming;
     const VkCommandBuffer buffers[2] = {uploadCb, mainCb};
     VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submit.commandBufferCount = 2;
@@ -1067,6 +1207,7 @@ void Ps4VkPicaRenderBackend::Impl::Recycle() {
         frame.inFlight = false;
         stats.gpuWaitUs += NowUs() - start;
     }
+    GpuCollect(frame);
     vk.vkResetCommandPool(device, commandPool, 0);
     vk.vkResetDescriptorPool(device, descriptorPool, 0);
     setsAllocated = 0;
@@ -1305,6 +1446,7 @@ void Ps4VkPicaRenderBackend::Impl::ApplyFillsTo(const TargetKey &key, Target &ta
             continue;
         }
         EndRenderPass();
+        GpuMark(GpuKey(kGpuClear));
         FullBarrier(mainCb);
         const Fast::Renderer3ds::PicaMemoryFillView view{it->namespace_, it->start, it->end,
                                                          it->value, it->control};
@@ -1330,6 +1472,7 @@ void Ps4VkPicaRenderBackend::Impl::ApplyFillsTo(const TargetKey &key, Target &ta
 void Ps4VkPicaRenderBackend::Impl::BeginTargetPass(Target &target) {
     if (activeTarget == &target) return;
     EndRenderPass();
+    GpuMark(GpuKey(kGpuPass, target.color.width, target.color.height));
     VkRenderPassBeginInfo begin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     begin.renderPass = picaPass;
     begin.framebuffer = target.framebuffer;
@@ -2399,6 +2542,7 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDisplayTransfer(
     }
     Impl::Display &display = found->second;
 
+    impl.GpuMark(Impl::GpuKey(Impl::kGpuBlit));
     impl.FullBarrier(impl.mainCb);
     VkImageBlit blit{};
     blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
@@ -2442,6 +2586,7 @@ void Ps4VkPicaRenderBackend::Impl::MaterializeRawCopy(
         }
     }
     EndRenderPass();
+    GpuMark(GpuKey(kGpuReadback));
     VkBufferImageCopy copy{};
     copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     copy.imageExtent = {imageWidth, imageHeight, 1};
@@ -2499,6 +2644,7 @@ void Ps4VkPicaRenderBackend::Impl::PresentDisplay(
 void Ps4VkPicaRenderBackend::Impl::OpenScanoutPass() {
     if (scanoutPassActive) return;
     EndRenderPass();
+    GpuMark(GpuKey(kGpuScanout));
     FullBarrier(mainCb);
     VkRenderPassBeginInfo begin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     begin.renderPass = scanoutPass;
@@ -2555,6 +2701,7 @@ void Ps4VkPicaRenderBackend::Impl::DrawScreen(const ScreenRecord &record, int x,
 
 void Ps4VkPicaRenderBackend::Impl::ComposeScanout() {
     EndRenderPass();
+    GpuMark(GpuKey(kGpuScanout));
     FullBarrier(mainCb);
     Scanout &scanout = scanouts[frameScanout];
     VkRenderPassBeginInfo begin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};

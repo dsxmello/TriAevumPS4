@@ -1300,3 +1300,22 @@ cache nem de ITLB. O `.text` do produto tem 134 MB.
   vale mais que o padrão: foi trocada por FTP (cópia em
   `oot3d_controls.json.before-1.77`). Os menus do TriAevum (confirmar com X,
   voltar com bolinha) não mudaram.
+
+## 1.78 — medição da GPU por etapa
+
+- Na escala 6 (o "4K" do menu; saída 1080p) o Market fica a 48–52 fps com
+  251–279 draws, 4,3–4,8 ms de espera da GPU por quadro e a CPU do jogo
+  sobrando (9,6–10,1 ms por quadro do jogo): o limite é a GPU. O Daniel não
+  quer resolução dinâmica; primeiro medir, depois otimizar o que pesar.
+- Backend (`ps4_vk_pica_backend.cpp`): com `/data/triaevum/gpu_timing` (ou
+  `TRIAEVUM_GPU_TIMING=1` no PC) cada slot de quadro tem um pool de 256
+  timestamps: 0/1 em volta do buffer de uploads e uma marca a cada troca de
+  trabalho no buffer principal (passe de cada render target com o tamanho,
+  clear, blit de display, readback, composição da saída). Somado por
+  etapa na reciclagem do slot (fence já sinalizada) e logado a cada 5 s:
+  `vk-backend: gpu time: busy N%, composed frames/s, submits/s | per frame
+  ms: total | pass WxH ms (passes por quadro) ...`.
+- Hosttest no PC com o timing ligado: PASS, linha sai com os passes.
+- O backend perdeu o perfil PGO nas funções que mudaram (Initialize,
+  CreateDeviceObjects, EnsureRecording, Submit, GetShader, SubmitPicaDraw):
+  build de medição; o código do jogo não muda.

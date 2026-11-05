@@ -97,7 +97,11 @@ namespace detail {
     X(vkCmdClearColorImage)            \
     X(vkCmdClearDepthStencilImage)     \
     X(vkCmdClearAttachments)           \
-    X(vkCmdPushConstants)
+    X(vkCmdPushConstants)              \
+    X(vkCreateQueryPool)               \
+    X(vkCmdResetQueryPool)             \
+    X(vkCmdWriteTimestamp)             \
+    X(vkGetQueryPoolResults)
 
 struct Vk {
 #define PS4VK_DECLARE(name) PFN_##name name = nullptr;
@@ -140,6 +144,13 @@ struct Ps4VkPicaRenderBackend::Impl {
         VkFence fence = VK_NULL_HANDLE;
         VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
         bool inFlight = false;
+        // GPU timing (/data/triaevum/gpu_timing): timestamps 0/1 bracket the
+        // upload buffer, then one per change of work in the main buffer;
+        // markKey[i] names the work between timestamps i-1 and i.
+        VkQueryPool timestamps = VK_NULL_HANDLE;
+        uint32_t marks = 0;
+        bool timingSubmitted = false;
+        uint32_t markKey[256] = {};
     };
     FrameSlot slots[2];
     uint32_t slot = 0;
@@ -152,6 +163,33 @@ struct Ps4VkPicaRenderBackend::Impl {
     bool recording = false;
     bool uploadsRecorded = false;
     bool workRecorded = false;
+
+    // -- GPU timing --
+    // Work kinds; a render pass key also carries its target's size.
+    enum GpuWork : uint32_t {
+        kGpuUploads = 1, kGpuPass, kGpuClear, kGpuBlit, kGpuReadback, kGpuScanout
+    };
+    static constexpr uint32_t kGpuTimingMarks = 256;
+    static uint32_t GpuKey(GpuWork kind, uint32_t width = 0, uint32_t height = 0) {
+        return (uint32_t{kind} << 28) | ((width & 0x3FFFU) << 14) | (height & 0x3FFFU);
+    }
+    bool gpuTiming = false;
+    double timestampNs = 0.0;
+    uint64_t timestampMask = ~0ULL;
+    uint32_t gpuCurrentKey = 0;
+    struct GpuTotal {
+        uint64_t ns = 0;
+        uint64_t segments = 0;
+    };
+    std::map<uint32_t, GpuTotal> gpuTotals;
+    uint64_t gpuReportStartUs = 0;
+    uint64_t gpuSubmissions = 0;
+    uint64_t gpuReportPresents = 0;
+    uint64_t gpuDroppedMarks = 0;
+    // A timestamp after everything recorded so far; the work from here on is `next`.
+    void GpuMark(uint32_t next);
+    void GpuCollect(FrameSlot &frame);
+    void GpuReport();
 
     // -- streaming ring (vertex/index/uniform data and texture staging) --
     VkBuffer ring = VK_NULL_HANDLE;
