@@ -463,6 +463,14 @@ bool Ps4VkPicaRenderBackend::Impl::Initialize(uint32_t width, uint32_t height) {
     vk.vkGetPhysicalDeviceMemoryProperties(gpu, &memory);
     // GPU timing: timestamps around each kind of work, summed per kind and
     // logged every 5 s. Off unless /data/triaevum/gpu_timing exists.
+    // Upstream's policy (render_resolution_policy.h): from 480 presented lines
+    // the top screen renders at the output's density and its transfer copies
+    // instead of averaging the game's 2x samples. /data/triaevum/top_aa_full
+    // (or TRIAEVUM_TOP_AA_FULL=1) keeps the 2x samples at every scale.
+    const char *aaEnv = std::getenv("TRIAEVUM_TOP_AA_FULL");
+    topAaHalf = !(access("/data/triaevum/top_aa_full", F_OK) == 0 ||
+                  (aaEnv != nullptr && aaEnv[0] == '1'));
+    Log("vk-backend: top screen at %s from scale 2", topAaHalf ? "presented density" : "the game's 2x samples");
     const char *timingEnv = std::getenv("TRIAEVUM_GPU_TIMING");
     if (access("/data/triaevum/gpu_timing", F_OK) == 0 ||
         (timingEnv != nullptr && timingEnv[0] == '1')) {
@@ -1365,13 +1373,26 @@ Ps4VkPicaRenderBackend::Impl::Target *Ps4VkPicaRenderBackend::Impl::GetTarget(
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     const VkImageAspectFlags depthAspect =
         VK_IMAGE_ASPECT_DEPTH_BIT | (depthHasStencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0U);
-    const uint32_t width = uint32_t{key.width} * renderScale;
     // The native top screen (480x400, stored rotated: storage Y is the
     // presented width) widens with the output aspect.
     const bool topScreen = key.width == Fast::Oot3d::kNativeTopScreenPhysicalWidth &&
                            key.height == Fast::Oot3d::kNativeTopScreenPhysicalHeight;
+    // The bottom screen (240x320) is never shown in the TopOnly layout (the
+    // product's: the TopScreen HUD is drawn by the game into the top
+    // screen), so its targets stay at the native size: at scale 6 its pass
+    // was ~3 ms of GPU per frame (1.78 timing).
+    const bool hiddenBottomScreen = key.width == 240U && key.height == 320U &&
+                                    options.layout == ScreenLayout::TopOnly;
+    const uint32_t scale = hiddenBottomScreen ? 1U : renderScale;
+    // The top screen's storage X holds the 3DS's 2x antialiasing samples
+    // (480 for 240 presented lines); from scale 2 that axis renders at half
+    // the scale (upstream's presented density), the display transfer then
+    // copies instead of averaging.
+    const bool aaHalved = topScreen && topAaHalf && renderScale >= 2U;
+    const uint32_t width = aaHalved ? (uint32_t{key.width} * renderScale + 1U) / 2U
+                                    : uint32_t{key.width} * scale;
     const uint32_t height = static_cast<uint32_t>(std::lround(
-        static_cast<float>(key.height) * static_cast<float>(renderScale) *
+        static_cast<float>(key.height) * static_cast<float>(scale) *
         (topScreen ? topScreenExpansion : 1.0F)));
     if (!CreateImage(target.color, width, height, VK_FORMAT_R8G8B8A8_UNORM, colorUsage,
                      VK_IMAGE_ASPECT_COLOR_BIT, false) ||
@@ -1401,6 +1422,7 @@ Ps4VkPicaRenderBackend::Impl::Target *Ps4VkPicaRenderBackend::Impl::GetTarget(
     }
     target.scaleX = static_cast<float>(width) / static_cast<float>(key.width);
     target.scaleY = static_cast<float>(height) / static_cast<float>(key.height);
+    target.aaHalved = aaHalved;
     ToGeneral(mainCb, target.color);
     ToGeneral(mainCb, target.depth);
     const VkImageSubresourceRange colorRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
@@ -1808,10 +1830,11 @@ Fast::Renderer3ds::PicaRasterCanvas Ps4VkPicaRenderBackend::Impl::RasterCanvas(
     }
     const auto content = Fast::Renderer3ds::ResolvePicaUiFrameContent(draw.CompositionDomain,
                                                                       evidence);
-    // This target keeps the guest's own sampling along storage X.
+    // A top target at presented density holds one host column per two
+    // native ones along storage X (NativeTopScreenStorageSamplingX).
     return Oot3d::Renderer::ResolvePicaRasterCanvas(
         content.Domain, content.Content, draw.FramebufferWidth, draw.FramebufferHeight,
-        target.color.width, target.color.height, 1.0F);
+        target.color.width, target.color.height, target.aaHalved ? 0.5F : 1.0F);
 }
 
 // ================================================================ pipelines ==
@@ -2501,10 +2524,14 @@ bool Ps4VkPicaRenderBackend::SubmitPicaDisplayTransfer(
     impl.EndRenderPass();
     // The display image keeps its source's host density (the copy reads
     // horizontalSamples x verticalSamples guest pixels per output pixel).
+    // A source rendered at half density along its antialiasing axis keeps
+    // the full density in the display image (the averaging copy becomes 1:1).
+    const float densityX = source->scaleX * (source->aaHalved ? static_cast<float>(horizontalSamples) : 1.0F);
+    const float densityY = source->scaleY * (source->aaHalved ? static_cast<float>(verticalSamples) : 1.0F);
     const uint32_t displayWidth =
-        std::max<uint32_t>(1U, static_cast<uint32_t>(std::lround(outputWidth * source->scaleX)));
+        std::max<uint32_t>(1U, static_cast<uint32_t>(std::lround(outputWidth * densityX)));
     const uint32_t displayHeight =
-        std::max<uint32_t>(1U, static_cast<uint32_t>(std::lround(outputHeight * source->scaleY)));
+        std::max<uint32_t>(1U, static_cast<uint32_t>(std::lround(outputHeight * densityY)));
     const auto displayKey =
         std::make_pair(transfer.RenderTargetNamespace, transfer.OutputPhysicalAddress);
     auto found = impl.displays.find(displayKey);

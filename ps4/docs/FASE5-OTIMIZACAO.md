@@ -1319,3 +1319,29 @@ cache nem de ITLB. O `.text` do produto tem 134 MB.
 - O backend perdeu o perfil PGO nas funções que mudaram (Initialize,
   CreateDeviceObjects, EnsureRecording, Submit, GetShader, SubmitPicaDraw):
   build de medição; o código do jogo não muda.
+- Medido na 1.78 (2026-11-05, escala 6, saída 1080p). A linha divide por
+  "composed frames", que são 2 por quadro apresentado (imediato + composição):
+  os números abaixo já estão por quadro apresentado (x2). Market (32),
+  221–264 draws, 49–55 fps, GPU ocupada 84–88%: ~16,7 ms de GPU por quadro =
+  passe do topo 2880x2560 ~11,1 ms + passe de baixo 1440x1920 ~3,0 ms + blit
+  dos displays ~1,3 ms + composição da saída ~1,3 ms. Hyrule/Kokiri: ~12–15
+  ms (topo 7–9,8 ms, baixo ~2,8–3,0 ms).
+- Duas sobras: (1) a tela de baixo nunca aparece no layout TopOnly do
+  produto (o HUD do TopScreen é desenhado pelo jogo na de cima), mas era
+  renderizada na escala 6; (2) o alvo de cima (480x400) guarda o AA 2x do
+  próprio 3DS ao longo do X de armazenamento, que o display transfer reduz
+  2:1. O upstream (`render_resolution_policy.h`) já deixa esse eixo na
+  densidade apresentada a partir de 480 linhas e o transfer só copia; o port
+  mantinha o 2x em toda escala (2880 colunas para 1440 apresentadas).
+
+## 1.79 — tela de baixo nativa no TopOnly, topo na densidade apresentada
+
+- Alvos 240x320 com layout TopOnly: escala 1 (o conteúdo continua sendo
+  desenhado, só não em 6x).
+- Alvo do topo a partir da escala 2: eixo do AA na metade da escala
+  (2880x2560 -> 1440x2560 na escala 6), `aaHalved` no alvo; os display images
+  mantêm a densidade apresentada (o transfer 2:1 vira cópia 1:1) e o canvas
+  de UI recebe `storageSamplingX` 0,5, como o desktop
+  (`NativeTopScreenStorageSamplingX`). `/data/triaevum/top_aa_full` (ou
+  `TRIAEVUM_TOP_AA_FULL=1`) volta ao 2x para comparar.
+- Hosttest no PC nos dois modos: PASS (escala 2: topo 480x853 contra 960x853).

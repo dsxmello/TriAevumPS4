@@ -308,6 +308,11 @@ struct Ps4VkPicaRenderBackend::Impl {
         // screen is wider than renderScale along Y in widescreen).
         float scaleX = 1.0F;
         float scaleY = 1.0F;
+        // The top screen's 2x storage-X samples (the 3DS antialiasing the
+        // display transfer averages) rendered at the presented density
+        // (1.79, upstream's policy from scale 2): its display images keep
+        // that density instead of halving it again.
+        bool aaHalved = false;
     };
     std::map<TargetKey, Target> targets;
     Target *activeTarget = nullptr;  // render pass open on this target
@@ -474,6 +479,9 @@ struct Ps4VkPicaRenderBackend::Impl {
     // Widening of the top screen's presented width (storage Y), from the
     // output aspect; 1 keeps the native 5:3.
     float topScreenExpansion = 1.0F;
+    // The top screen's own 2x antialiasing axis at half the render scale
+    // (renderScale >= 2); /data/triaevum/top_aa_full turns it off.
+    bool topAaHalf = true;
     // Colour targets the scene (CompositionDomain::Scene) drew into this
     // frame: UI covering one of them may be frame content (desktop
     // PicaSceneFrame::HasSceneDrawOnColorTarget).
