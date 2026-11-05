@@ -1289,3 +1289,14 @@ cache nem de ITLB. O `.text` do produto tem 134 MB.
   o RMW da geração das escritas cortaria ~1/3 disso, ~0,3–0,8 ms por quadro
   do jogo. Mexe no código gerado e no header da memória: invalida o perfil
   PGO (nova COLETA).
+
+## 1.77 — botões na posição do 3DS
+
+- Pedido do Daniel: A do 3DS (direita) = bolinha, B (embaixo) = X,
+  X (em cima) = triângulo, Y (esquerda) = quadrado. O padrão do controle no
+  PS4 (`oot3d_native_control_config.cpp`, só `__ORBIS__`) liga A->SDL B,
+  B->SDL A, X->SDL Y, Y->SDL X; o desktop continua igual.
+- A config salva no console (`/data/triaevum/config/oot3d_controls.json`)
+  vale mais que o padrão: foi trocada por FTP (cópia em
+  `oot3d_controls.json.before-1.77`). Os menus do TriAevum (confirmar com X,
+  voltar com bolinha) não mudaram.

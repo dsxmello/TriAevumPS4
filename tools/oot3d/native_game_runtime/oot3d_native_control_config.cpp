@@ -515,6 +515,20 @@ NativeControlConfig NativeControlPreset(NativeControlProfile profile) {
   SetKeyboardBinding(config, NativeControlAction::LookRight,
                      NativeKeyboardKey::Numpad6);
 
+#if defined(__ORBIS__)
+  // PS4: the face buttons follow the 3DS by position, not by letter. SDL's
+  // A/B/X/Y are the bottom/right/left/top buttons (cross, circle, square,
+  // triangle); the 3DS has A on the right, B at the bottom, X on top and Y
+  // on the left.
+  SetGamepadBinding(config, NativeControlAction::A,
+                    NativeGamepadButton::B);
+  SetGamepadBinding(config, NativeControlAction::B,
+                    NativeGamepadButton::A);
+  SetGamepadBinding(config, NativeControlAction::X,
+                    NativeGamepadButton::Y);
+  SetGamepadBinding(config, NativeControlAction::Y,
+                    NativeGamepadButton::X);
+#else
   SetGamepadBinding(config, NativeControlAction::A,
                     NativeGamepadButton::A);
   SetGamepadBinding(config, NativeControlAction::B,
@@ -523,6 +537,7 @@ NativeControlConfig NativeControlPreset(NativeControlProfile profile) {
                     NativeGamepadButton::X);
   SetGamepadBinding(config, NativeControlAction::Y,
                     NativeGamepadButton::Y);
+#endif
   SetGamepadBinding(config, NativeControlAction::L,
                     NativeGamepadButton::LeftShoulder);
   SetGamepadBinding(config, NativeControlAction::R,

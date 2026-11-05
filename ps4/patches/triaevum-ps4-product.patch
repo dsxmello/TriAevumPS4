@@ -4740,6 +4740,39 @@ index 8d432189..d501044d 100644
  }
  
  void ComputeSoftMtx3x4Multiply(const std::array<uint32_t, 12>& left,
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_control_config.cpp b/tools/oot3d/native_game_runtime/oot3d_native_control_config.cpp
+index 024618c5..8a143023 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_control_config.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_control_config.cpp
+@@ -515,6 +515,20 @@ NativeControlConfig NativeControlPreset(NativeControlProfile profile) {
+   SetKeyboardBinding(config, NativeControlAction::LookRight,
+                      NativeKeyboardKey::Numpad6);
+ 
++#if defined(__ORBIS__)
++  // PS4: the face buttons follow the 3DS by position, not by letter. SDL's
++  // A/B/X/Y are the bottom/right/left/top buttons (cross, circle, square,
++  // triangle); the 3DS has A on the right, B at the bottom, X on top and Y
++  // on the left.
++  SetGamepadBinding(config, NativeControlAction::A,
++                    NativeGamepadButton::B);
++  SetGamepadBinding(config, NativeControlAction::B,
++                    NativeGamepadButton::A);
++  SetGamepadBinding(config, NativeControlAction::X,
++                    NativeGamepadButton::Y);
++  SetGamepadBinding(config, NativeControlAction::Y,
++                    NativeGamepadButton::X);
++#else
+   SetGamepadBinding(config, NativeControlAction::A,
+                     NativeGamepadButton::A);
+   SetGamepadBinding(config, NativeControlAction::B,
+@@ -523,6 +537,7 @@ NativeControlConfig NativeControlPreset(NativeControlProfile profile) {
+                     NativeGamepadButton::X);
+   SetGamepadBinding(config, NativeControlAction::Y,
+                     NativeGamepadButton::Y);
++#endif
+   SetGamepadBinding(config, NativeControlAction::L,
+                     NativeGamepadButton::LeftShoulder);
+   SetGamepadBinding(config, NativeControlAction::R,
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp b/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
 index 2487dd8f..1ed0165e 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_direct_aot.cpp
