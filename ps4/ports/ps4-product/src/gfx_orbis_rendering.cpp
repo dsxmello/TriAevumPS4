@@ -575,6 +575,12 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
         mOverlay.lastFrame = now;
         ++mOverlay.frames;
         mOverlay.maxFrameMs = std::max(mOverlay.maxFrameMs, frameMs);
+        // Presented-frame spikes for the "render pacing" log line (1.80).
+        static constexpr double kBounds[4] = {17.5, 20.0, 25.0, 34.0};
+        for (int i = 0; i < 4; ++i) {
+            if (frameMs > kBounds[i]) ++mPerf.spikes[i];
+        }
+        mPerf.maxFrameMs = std::max(mPerf.maxFrameMs, frameMs);
         const double seconds = std::chrono::duration<double>(now - mOverlay.start).count();
         if (seconds < 0.5) return;
         const uint64_t gpuWaitUs = mPica->Stats().gpuWaitUs;
@@ -600,6 +606,8 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
         uint32_t frames = 0;
         uint64_t flips = 0;
         triaevum::ps4::VkBackendStats stats{};
+        uint32_t spikes[4] = {};
+        double maxFrameMs = 0.0;
     } mPerf;
     // The settings runtime runs display changes (window mode, resolution,
     // vsync) as a transaction the renderer acknowledges, and saves nothing
@@ -694,6 +702,12 @@ class GfxRenderingAPIOrbis final : public GfxRenderingAPI, public ImGuiRenderHoo
                     perFrame(stats.geometryMisses, mPerf.stats.geometryMisses),
                     perFrame(stats.geometryStreamed, mPerf.stats.geometryStreamed),
                     static_cast<unsigned long long>(stats.geometryResets));
+        std::printf("[triaevum] render pacing: presented frames over 17.5/20/25/34 ms:"
+                    " %u/%u/%u/%u of %.0f | longest %.1f ms\n",
+                    mPerf.spikes[0], mPerf.spikes[1], mPerf.spikes[2], mPerf.spikes[3], frames,
+                    mPerf.maxFrameMs);
+        for (uint32_t& count : mPerf.spikes) count = 0;
+        mPerf.maxFrameMs = 0.0;
         mPerf.start = now;
         mPerf.flipWait = {};
         mPerf.frames = 0;

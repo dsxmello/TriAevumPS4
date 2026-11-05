@@ -1354,3 +1354,16 @@ cache nem de ITLB. O `.text` do produto tem 134 MB.
   ocupada); a GPU sobra. Ou seja, o limite voltou à CPU: thread do jogo
   (otimização do acesso à memória) e a espera de 1 quadro em voo (A/B da
   1.75, `frames_in_flight_2`, criado no console para a próxima sessão).
+
+## 1.80 — 2 quadros em voo por padrão, picos de frametime no log
+
+- A/B da 1.75 no Market (2026-11-05, 1.79, escala 6): 286–302 draws de
+  49,7–53,6 fps (1 quadro) para 57,5–60 fps (2 quadros); 240–275 draws
+  59,6–60. CPU do jogo igual (~10–11 ms por quadro do jogo), GPU 46–58%.
+  O Daniel não sentiu diferença nos controles. Agora é o padrão;
+  `/data/triaevum/frames_in_flight_1` volta a 1.
+- Ele percebe pequenas quedas: a média fica em 60, mas alguns quadros passam
+  de 16,7 ms. Linhas novas a cada 5 s: `frame pacing: game thread host
+  frames over 17.5/20/25/34 ms: a/b/c/d of N | longest X ms (guest, present)`
+  (thread do jogo) e `render pacing: presented frames over ...` (intervalo
+  entre quadros apresentados na `render`).

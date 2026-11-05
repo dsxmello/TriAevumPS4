@@ -3724,7 +3724,7 @@ index d876a6dd..e2b0774a 100644
  
  void RequireRunnableGuest(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..f9771c3d 100644
+index 01026912..3ee67836 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 @@ -4,10 +4,234 @@
@@ -3976,11 +3976,38 @@ index 01026912..f9771c3d 100644
    static const bool inputAdmission =
        inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
    static const bool lateInputSample =
-@@ -637,6 +867,193 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +867,227 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
 +#if defined(__ORBIS__)
++  // PS4 (1.80): game-thread frame-time spikes. Averages hide a frame that
++  // misses its vblank; this counts the host frames over each bound, keeps the
++  // longest, and what its guest and present phases took, for the "frame
++  // pacing" line of the five-second window below.
++  static auto spikeLastFrame = std::chrono::steady_clock::now();
++  static double spikeLastGuest = phaseTiming.GuestSeconds;
++  static double spikeLastPresent = phaseTiming.PresentSeconds;
++  static uint32_t spikeCounts[4] = {};
++  static double spikeMaxMs = 0.0, spikeMaxGuestMs = 0.0, spikeMaxPresentMs = 0.0;
++  {
++    const auto now = std::chrono::steady_clock::now();
++    const double frameMs = std::chrono::duration<double, std::milli>(now - spikeLastFrame).count();
++    const double guestMs = (phaseTiming.GuestSeconds - spikeLastGuest) * 1000.0;
++    const double presentMs = (phaseTiming.PresentSeconds - spikeLastPresent) * 1000.0;
++    spikeLastFrame = now;
++    spikeLastGuest = phaseTiming.GuestSeconds;
++    spikeLastPresent = phaseTiming.PresentSeconds;
++    static constexpr double kBounds[4] = {17.5, 20.0, 25.0, 34.0};
++    for (int i = 0; i < 4; ++i) {
++      if (frameMs > kBounds[i]) ++spikeCounts[i];
++    }
++    if (frameMs > spikeMaxMs) {
++      spikeMaxMs = frameMs;
++      spikeMaxGuestMs = guestMs;
++      spikeMaxPresentMs = presentMs;
++    }
++  }
 +  // PS4: the performance overlay's game numbers, every half second.
 +  {
 +    static auto overlayStart = std::chrono::steady_clock::now();
@@ -4091,6 +4118,13 @@ index 01026912..f9771c3d 100644
 +                     hostFrames > 0.0 ? static_cast<double>(queue.DrawCalls - windowQueue.DrawCalls) / hostFrames : 0.0);
 +        windowQueue = queue;
 +      }
++      std::fprintf(stderr,
++                   "[triaevum] frame pacing: game thread host frames over 17.5/20/25/34 ms:"
++                   " %u/%u/%u/%u of %.0f | longest %.1f ms (guest %.1f, present %.1f)\n",
++                   spikeCounts[0], spikeCounts[1], spikeCounts[2], spikeCounts[3], hostFrames,
++                   spikeMaxMs, spikeMaxGuestMs, spikeMaxPresentMs);
++      for (uint32_t &count : spikeCounts) count = 0;
++      spikeMaxMs = spikeMaxGuestMs = spikeMaxPresentMs = 0.0;
 +      if (const auto *worker = hostServicesStorage->PicaWorker()) {
 +        // The GSP worker (oot3d_native_pica_gsp_worker.h): its time, the
 +        // game thread's waits for it by site, and how its accesses to guest
@@ -4170,7 +4204,7 @@ index 01026912..f9771c3d 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1136,6 +1553,9 @@ bool NativeA32WindowSession::UpdateGuestServicesForRefresh(
+@@ -1136,6 +1587,9 @@ bool NativeA32WindowSession::UpdateGuestServicesForRefresh(
        process, hostServices, processResult, nextVblankTick,
        launch.WholeAotBlockBudget);
    const double clockSeconds = SecondsSince(clockStart);
@@ -4180,7 +4214,7 @@ index 01026912..f9771c3d 100644
    phaseTiming.GuestClockSeconds += clockSeconds;
    phaseTiming.GuestSeconds += clockSeconds;
    if (clockResolution.OvershootTicks != 0U) {
-@@ -1444,6 +1864,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1898,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -4207,7 +4241,7 @@ index 01026912..f9771c3d 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1464,14 +1904,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1938,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
            suppressTopScreenFrontendBackdrop &&
            targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
@@ -4284,7 +4318,7 @@ index b6cfceec..2996c568 100644
  
  } // namespace Oot3dA32Window
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
-index 81150d82..6c36b70f 100644
+index 81150d82..0f2a3b01 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 @@ -1,5 +1,9 @@
@@ -4415,17 +4449,20 @@ index 81150d82..6c36b70f 100644
    context = Ship::Context::GetRawInstance();
    audio = context != nullptr ? context->GetAudio() : nullptr;
    audioPlayer = audio != nullptr ? audio->GetAudioPlayer() : nullptr;
-@@ -1355,6 +1426,17 @@ void NativeA32WindowSession::Setup() {
+@@ -1355,6 +1426,20 @@ void NativeA32WindowSession::Setup() {
      rendererTiming = &workerPhaseTiming;
      renderStream.SetMode(
          Oot3dNativeGame::NativeRenderCommandStream::Mode::Worker);
 +#if defined(__ORBIS__)
-+    // PS4 1.75 A/B: with /data/triaevum/frames_in_flight_2 the game thread
-+    // may run one more frame ahead of the render thread (one frame more of
-+    // input latency) instead of waiting on a slower render frame.
-+    if (FILE *flag = std::fopen("/data/triaevum/frames_in_flight_2", "rb")) {
++    // PS4: the game thread may run one frame ahead of the render thread
++    // (one frame more of input latency) instead of waiting on a slower render
++    // frame: Market at 286-302 draws went from 50-54 to ~60 fps with no
++    // felt input change (1.75 A/B, default since 1.80).
++    // /data/triaevum/frames_in_flight_1 keeps one frame in flight.
++    renderStream.SetMaxFramesInFlight(2U);
++    if (FILE *flag = std::fopen("/data/triaevum/frames_in_flight_1", "rb")) {
 +      std::fclose(flag);
-+      renderStream.SetMaxFramesInFlight(2U);
++      renderStream.SetMaxFramesInFlight(1U);
 +    }
 +    std::fprintf(stderr, "[triaevum] render stream: %zu frames in flight\n",
 +                 renderStream.MaxFramesInFlight());
@@ -4433,7 +4470,7 @@ index 81150d82..6c36b70f 100644
      // The ImGui overlay (and the display composition it triggers) renders
      // in renderer order, from a copy of each frame's draw data.
      if (fast3dGui != nullptr) {
-@@ -1373,6 +1455,11 @@ void NativeA32WindowSession::Setup() {
+@@ -1373,6 +1458,11 @@ void NativeA32WindowSession::Setup() {
  #endif
  }
  

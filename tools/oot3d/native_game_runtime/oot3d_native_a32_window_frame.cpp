@@ -868,6 +868,33 @@ bool NativeA32WindowSession::RunFrame() {
   ++presentationFrameCount;
   ++runFrameCount;
 #if defined(__ORBIS__)
+  // PS4 (1.80): game-thread frame-time spikes. Averages hide a frame that
+  // misses its vblank; this counts the host frames over each bound, keeps the
+  // longest, and what its guest and present phases took, for the "frame
+  // pacing" line of the five-second window below.
+  static auto spikeLastFrame = std::chrono::steady_clock::now();
+  static double spikeLastGuest = phaseTiming.GuestSeconds;
+  static double spikeLastPresent = phaseTiming.PresentSeconds;
+  static uint32_t spikeCounts[4] = {};
+  static double spikeMaxMs = 0.0, spikeMaxGuestMs = 0.0, spikeMaxPresentMs = 0.0;
+  {
+    const auto now = std::chrono::steady_clock::now();
+    const double frameMs = std::chrono::duration<double, std::milli>(now - spikeLastFrame).count();
+    const double guestMs = (phaseTiming.GuestSeconds - spikeLastGuest) * 1000.0;
+    const double presentMs = (phaseTiming.PresentSeconds - spikeLastPresent) * 1000.0;
+    spikeLastFrame = now;
+    spikeLastGuest = phaseTiming.GuestSeconds;
+    spikeLastPresent = phaseTiming.PresentSeconds;
+    static constexpr double kBounds[4] = {17.5, 20.0, 25.0, 34.0};
+    for (int i = 0; i < 4; ++i) {
+      if (frameMs > kBounds[i]) ++spikeCounts[i];
+    }
+    if (frameMs > spikeMaxMs) {
+      spikeMaxMs = frameMs;
+      spikeMaxGuestMs = guestMs;
+      spikeMaxPresentMs = presentMs;
+    }
+  }
   // PS4: the performance overlay's game numbers, every half second.
   {
     static auto overlayStart = std::chrono::steady_clock::now();
@@ -978,6 +1005,13 @@ bool NativeA32WindowSession::RunFrame() {
                      hostFrames > 0.0 ? static_cast<double>(queue.DrawCalls - windowQueue.DrawCalls) / hostFrames : 0.0);
         windowQueue = queue;
       }
+      std::fprintf(stderr,
+                   "[triaevum] frame pacing: game thread host frames over 17.5/20/25/34 ms:"
+                   " %u/%u/%u/%u of %.0f | longest %.1f ms (guest %.1f, present %.1f)\n",
+                   spikeCounts[0], spikeCounts[1], spikeCounts[2], spikeCounts[3], hostFrames,
+                   spikeMaxMs, spikeMaxGuestMs, spikeMaxPresentMs);
+      for (uint32_t &count : spikeCounts) count = 0;
+      spikeMaxMs = spikeMaxGuestMs = spikeMaxPresentMs = 0.0;
       if (const auto *worker = hostServicesStorage->PicaWorker()) {
         // The GSP worker (oot3d_native_pica_gsp_worker.h): its time, the
         // game thread's waits for it by site, and how its accesses to guest

@@ -1427,12 +1427,15 @@ void NativeA32WindowSession::Setup() {
     renderStream.SetMode(
         Oot3dNativeGame::NativeRenderCommandStream::Mode::Worker);
 #if defined(__ORBIS__)
-    // PS4 1.75 A/B: with /data/triaevum/frames_in_flight_2 the game thread
-    // may run one more frame ahead of the render thread (one frame more of
-    // input latency) instead of waiting on a slower render frame.
-    if (FILE *flag = std::fopen("/data/triaevum/frames_in_flight_2", "rb")) {
+    // PS4: the game thread may run one frame ahead of the render thread
+    // (one frame more of input latency) instead of waiting on a slower render
+    // frame: Market at 286-302 draws went from 50-54 to ~60 fps with no
+    // felt input change (1.75 A/B, default since 1.80).
+    // /data/triaevum/frames_in_flight_1 keeps one frame in flight.
+    renderStream.SetMaxFramesInFlight(2U);
+    if (FILE *flag = std::fopen("/data/triaevum/frames_in_flight_1", "rb")) {
       std::fclose(flag);
-      renderStream.SetMaxFramesInFlight(2U);
+      renderStream.SetMaxFramesInFlight(1U);
     }
     std::fprintf(stderr, "[triaevum] render stream: %zu frames in flight\n",
                  renderStream.MaxFramesInFlight());
