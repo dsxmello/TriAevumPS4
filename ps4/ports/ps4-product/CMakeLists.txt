@@ -43,7 +43,7 @@ include(${DOLPHINPS4}/toolchain/ps4-love-style.cmake)
 # compiled library and the third-party headers of this build root. fmt 10
 # (bundled with spdlog) trips clang's consteval checks; its runtime-checked
 # format strings are what the desktop gets with MSVC anyway.
-set(TRIAEVUM_PS4_BUILD_VERSION "1.75")
+set(TRIAEVUM_PS4_BUILD_VERSION "1.76")
 add_compile_definitions(TRIAEVUM_PS4_HOST=1 SPDLOG_COMPILED_LIB=1 FMT_CONSTEVAL=)
 include_directories(SYSTEM
     "${SPDLOG_ROOT}/include"
@@ -60,6 +60,23 @@ include_directories(SYSTEM
 set_source_files_properties(${PS4_RUNTIME_SOURCES} PROPERTIES
     COMPILE_DEFINITIONS PS4_HEAP_CHECKS=0)
 
+# Code layout (1.76). OpenOrbis' script takes `*(.text .text.*)` in input
+# order, so each object's .text.hot.* sits between its own normal and
+# .text.unlikely.* code: with PGO the AOT shards are ~10 MB hot, 20 MB
+# normal and 79 MB unlikely, and the hot 10 MB end up spread over the whole
+# 130 MB .text. The Jaguar decodes 2 instructions per cycle from a 32 KiB
+# I-cache, with 2 MiB of L2 per cluster and small ITLBs; keeping the hot code
+# together is the GNU ld default order (unlikely, startup, hot, then the
+# rest). Placement only: the generated code and the PGO profile don't change.
+file(READ "${PS4_LINK_SCRIPT}" PS4_LAYOUT_LINK_SCRIPT)
+string(FIND "${PS4_LAYOUT_LINK_SCRIPT}" "*(.text .text.*)" PS4_TEXT_RULE_POS)
+if (PS4_TEXT_RULE_POS EQUAL -1)
+    message(FATAL_ERROR "Unexpected ${PS4_LINK_SCRIPT}: no '*(.text .text.*)' rule to patch")
+endif ()
+string(REPLACE "*(.text .text.*)"
+    "*(.text.unlikely .text.*_unlikely .text.unlikely.*)\n\t\t*(.text.exit .text.exit.*)\n\t\t*(.text.startup .text.startup.*)\n\t\t*(.text.hot .text.hot.*)\n\t\t*(.text .text.*)"
+    PS4_LAYOUT_LINK_SCRIPT "${PS4_LAYOUT_LINK_SCRIPT}")
+file(WRITE "${PS4_LINK_SCRIPT}" "${PS4_LAYOUT_LINK_SCRIPT}")
 # Profile-guided optimization (tools/build-product.sh PGO=generate|use): the
 # game thread is CPU-bound in thousands of generated AOT functions, the
 # kind of branchy code PGO lays out best. `generate` instruments every TU and

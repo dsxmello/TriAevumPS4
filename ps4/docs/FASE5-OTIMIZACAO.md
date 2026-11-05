@@ -1230,3 +1230,24 @@ o jogo mesmo com a `render` ~65% ocupada na média.
   `gfx_orbis.h`) sob TSan e ASan/UBSan.
 - Medir: Market na mesma rota com e sem o arquivo; comparar `present` e fps
   no mesmo número de draws.
+
+## 1.76 — código quente junto (ideia da palestra "Taming the Jaguar")
+
+Palestra da GDC 2016 (Andreas Fredriksson, Insomniac) sobre o Jaguar: o
+frontend decodifica só 2 instruções por ciclo de um I-cache de 32 KiB, o L2
+é de 2 MiB por cluster, e a execução fora de ordem não esconde falta de
+cache nem de ITLB. O `.text` do produto tem 134 MB.
+
+- Com o PGO, o clang já separa o AOT em `.text.hot.` (~10 MB),
+  `.text` (~20 MB) e `.text.unlikely.` (~79 MB). Mas o script do OpenOrbis
+  junta `*(.text .text.*)` na ordem dos objetos: o quente de cada shard fica
+  entre o normal e o frio do próprio shard, espalhado pelo `.text` inteiro.
+- 1.76: o `CMakeLists.txt` do produto reescreve a regra na ordem padrão do
+  GNU ld (unlikely, exit, startup, hot, resto). Só muda a posição: o código
+  gerado e o perfil PGO da 1.65 continuam valendo.
+- Conferido no binário: as funções quentes de 5 shards de amostra iam de
+  0x8a2c10 a 0x75292c0 (108,5 MB) na 1.75 e agora cabem em 9,4 MB; o
+  `.text` tem o mesmo tamanho.
+- Medir: mesmas rotas paradas (Kokiri na porta da casa do Link, Hyrule, e
+  o Market pesado a 720p, onde a thread do jogo é o limite); comparar a
+  CPU por quadro do jogo nos mesmos draws contra a 1.75.
