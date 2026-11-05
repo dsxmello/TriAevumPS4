@@ -4,12 +4,22 @@ Estado de partida: build 1.75 (commit e96c7551), PGO da 1.65
 (`pgo/product-165.profdata`), testado só em GoldHEN 13.52. Meta de
 desempenho da fase 5: ~16 ms de CPU e de GPU por quadro apresentado.
 
+## Metas do produto (Daniel, 2026-11-04)
+
+1. Instala o `.pkg`, manda a ROM por FTP e o próprio console prepara tudo
+   para o jogo rodar (Forge no console).
+2. Texturas HD e mods (tradução e outros) instaláveis pelo console.
+3. Savestates.
+4. Shaders e pipelines compiladas antes da primeira vez que o jogo roda,
+   para não haver travadas de shader durante a gameplay.
+5. Estabilidade.
+
 Legenda: `[ ]` aberto, `[x]` feito, **(decidir)** = depende do Daniel.
 
 ## 1. Repositório e infraestrutura
 
-- [ ] Repositório próprio `dsxmello/TriAevumPS4` (não-fork, histórico
-      completo, público) — falta apagar o fork antigo e fazer o push.
+- [x] Repositório próprio `dsxmello/TriAevumPS4` (não-fork, histórico
+      completo, público), criado em 2026-11-04.
 - [x] README/`ps4/README.md`/`sync-upstream.sh` sem a palavra "fork".
 - [ ] Descrição, topics e link do upstream na página do repositório.
 - [ ] Remote `upstream` (coccofresco/TriAevum) continua no clone; testar
@@ -39,6 +49,7 @@ Legenda: `[ ]` aberto, `[x]` feito, **(decidir)** = depende do Daniel.
       **(decidir)** a escala de render padrão (A/B 3 / 4 / 6 nunca feito).
 - [ ] Sobra de CPU na `render`: interpolação visual ~12%, submit do
       DrawPlan 5,5%, memcpy/memset 8%, malloc 4%.
+- [ ] Remedir tudo com texturas HD ligadas (memória e GPU).
 - [ ] PGO final: nova COLETA com o código da release (o profile da 1.65
       invalida se o código gerado ou o header do runtime mudar) e conferir
       "pgo: profile written" no boot log antes de baixar.
@@ -58,20 +69,54 @@ Legenda: `[ ]` aberto, `[x]` feito, **(decidir)** = depende do Daniel.
 - [ ] Áudio: estalos/dessincronia com o worker DSP em cenas pesadas.
 - [ ] Testar em pelo menos mais um firmware/GoldHEN além do 13.52.
 
-## 4. Primeiro início (Forge no console) e interface
+## 4. Primeiro início (meta 1)
 
 - [ ] Fluxo completo nas três receitas aceitas (EUR base, EUR Rev 1, USA
       via adaptador) partindo de console limpo (`/data/triaevum` apagado).
 - [ ] Mensagens de erro claras: sem ROM, ROM de revisão não suportada,
       ROM encriptada, falta de espaço.
-- [ ] Fase 4 do Forge: pré-compilar as pipelines de GPU com progresso (hoje
-      pendente; evita travadas na primeira vez que um shader aparece).
-      **(decidir)** se entra na estável ou fica para depois.
+- [ ] Perguntar se apaga a ROM ao terminar; retomar se o console desligar
+      no meio da preparação.
 - [ ] README: a preparação no console existe desde a 1.33; atualizar o
-      aviso de "milestone" e o passo a passo.
+      aviso de "milestone" e o passo a passo (pkg -> FTP -> abrir).
 - [ ] Menu (L3+R3): revisar as opções; tirar ou esconder as de diagnóstico.
 
-## 5. Build de release
+## 5. Shaders e pipelines antes do jogo (meta 4; fase 4 do Forge)
+
+- [ ] Corpus de shaders/pipelines do jogo: registrar as combinações vistas
+      numa sessão longa (zerar o jogo) e guardar no repositório/pkg.
+- [ ] Etapa do Forge que compila todas as pipelines do corpus com barra de
+      progresso, e cache de pipelines Vulkan gravado em `/data/triaevum`.
+- [ ] Invalidar o cache quando a versão do pkg ou do Mesa mudar.
+- [ ] Medir: contar pipelines criadas durante a gameplay (meta: zero
+      depois da preparação) numa linha do log.
+
+## 6. Texturas HD e mods (meta 2)
+
+- [ ] Voltar o código guardado na 1.45: `src/forge/forge_textures`,
+      `src/ps4_forge_net` (download HTTPS), `tools/forge_catalogs.py`,
+      `SetTextureReplacements` do backend.
+- [ ] Pack HD do jogo inteiro (HenrikoMagnifico) além do Vanilla UI/HUD:
+      memória (o pack de UI já tinha 451 MB zipado), formato comprimido
+      para a GPU do PS4, tempo de carga.
+- [ ] Mods de tradução: overlay de RomFS (`--romfs-overlay`) e fontes; que
+      formatos/tradutores suportar **(decidir)**.
+- [ ] Vanilla+ (Link Remodel, `.rar` via libarchive).
+- [ ] Instalação: baixar no console ou copiar por FTP para
+      `/data/triaevum/mods/`; menu para ligar/desligar e ordenar mods.
+- [ ] Mods que mudam o código do jogo não entram (o AOT está no eboot);
+      deixar isso claro no README.
+
+## 7. Savestates (meta 3)
+
+- [ ] Ver o que o runtime já tem (o backend trata o load de savestate no
+      `ResetPicaState`) e expor no menu: salvar/carregar, slots.
+- [ ] Gravar em `/data/triaevum/savestates/` com versão do build; recusar
+      savestate de outra versão com aviso.
+- [ ] Testar com os workers ligados (GSP, DSP, plan helpers): o estado
+      precisa ser lido com eles drenados.
+
+## 8. Build de release
 
 - [ ] Esquema de versão **(decidir)**: builds internas 1.xx; a estável como
       `v1.0.0` (ou outra) com tag no git.
@@ -85,7 +130,7 @@ Legenda: `[ ]` aberto, `[x]` feito, **(decidir)** = depende do Daniel.
 - [ ] Modelo de issue para bug report (versão, firmware, revisão da ROM,
       `/data/triaevum_boot.log`, `/data/triaevum_hang.log`).
 
-## 6. Licenças e conteúdo
+## 9. Licenças e conteúdo
 
 - [ ] O `.pkg` não leva ROM, `code.bin`, RomFS, assets extraídos nem
       chaves; só a lógica traduzida (contrato de release pré-compilada do
@@ -99,8 +144,4 @@ Legenda: `[ ]` aberto, `[x]` feito, **(decidir)** = depende do Daniel.
 
 ## Depois da estável
 
-- Pack de texturas HD do jogo inteiro (HenrikoMagnifico) e suporte a mods;
-  o código da 1.37–1.44 continua no repositório (`forge_textures`,
-  `ps4_forge_net`, `SetTextureReplacements`).
-- Vanilla+ (Link Remodel, `.rar` via libarchive).
 - Gravação Vulkan paralela na `render`.
