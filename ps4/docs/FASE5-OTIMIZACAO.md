@@ -1206,3 +1206,27 @@ Sessão de 310 s (62 linhas `game:`), Market nas escalas 6 e 3.
   Na janela pesada a `render` fica ~65% ocupada e a thread do jogo ~80%:
   sem a GPU no caminho, o limite deixou de ser a `render` e voltou a ser a
   thread do jogo (10,8 ms por quadro do jogo a 294 draws).
+
+## 1.75 — frames em voo (A/B) e esperas da fila de render
+
+Nas janelas pesadas do Market (1.74, 274–294 draws, 43–47 fps) o quadro do
+host (~22 ms) é guest 13–15 ms + `present` 3,7–4,3 ms + ~1,5 ms do resto. O
+`present` é quase todo a thread do jogo parada em
+`NativeRenderCommandStream::Enqueue`: com um quadro em voo, o quadro N só
+entra depois que a `render` termina o N-1, e um quadro mais lento dela segura
+o jogo mesmo com a `render` ~65% ocupada na média.
+
+- `/data/triaevum/frames_in_flight_2`: dois quadros em voo (o jogo pode
+  adiantar um quadro a mais; um quadro a mais de latência de input). Sem o
+  arquivo, um, como antes. Os comandos já levam cópias do que usam (contrato
+  da fila), então a profundidade não cria estado compartilhado novo.
+- As quatro esperas da fila (trabalho do worker, quadros em voo, `Drain`,
+  `WaitForFramesInFlight`) eram `wait` sem timeout num cv, o padrão que perde
+  notificações no console (1.57). No PS4 conferem a condição a cada 1 ms.
+- Log: `render stream: N frames in flight, M waits recovered by their
+  timeout` a cada 5 s, e uma linha no boot.
+- Teste da fila no PC (`oot3d_native_render_command_stream_tests.cpp`, novo
+  caso para `SetMaxFramesInFlight`): ok, também com `-D__ORBIS__` (stub do
+  `gfx_orbis.h`) sob TSan e ASan/UBSan.
+- Medir: Market na mesma rota com e sem o arquivo; comparar `present` e fps
+  no mesmo número de draws.

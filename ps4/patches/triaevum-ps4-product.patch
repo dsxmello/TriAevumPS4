@@ -3724,7 +3724,7 @@ index d876a6dd..e2b0774a 100644
  
  void RequireRunnableGuest(
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
-index 01026912..1714a870 100644
+index 01026912..f9771c3d 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_frame.cpp
 @@ -4,10 +4,234 @@
@@ -3976,7 +3976,7 @@ index 01026912..1714a870 100644
    static const bool inputAdmission =
        inputAdmissionMode == nullptr || std::string_view(inputAdmissionMode) != "0";
    static const bool lateInputSample =
-@@ -637,6 +867,183 @@ bool NativeA32WindowSession::RunFrame() {
+@@ -637,6 +867,193 @@ bool NativeA32WindowSession::RunFrame() {
    cpuPresent.Stop();
    ++presentationFrameCount;
    ++runFrameCount;
@@ -4131,6 +4131,16 @@ index 01026912..1714a870 100644
 +      }
 +      std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
 +                   TakeBlockEntryHookCounts(seconds).c_str());
++      {
++        static uint64_t windowRecovered = 0U;
++        const uint64_t recovered = renderStream.WaitsRecoveredByTimeout();
++        std::fprintf(stderr,
++                     "[triaevum] render stream: %zu frames in flight, %llu waits recovered by"
++                     " their timeout\n",
++                     renderStream.MaxFramesInFlight(),
++                     static_cast<unsigned long long>(recovered - windowRecovered));
++        windowRecovered = recovered;
++      }
 +      if (gPicaPlanAhead != nullptr) {
 +        const auto counts = gPicaPlanAhead->TakeCounts();
 +        std::fprintf(stderr, "[triaevum] plan helpers: %.0f plans/s ahead, %.0f by the game thread\n",
@@ -4160,7 +4170,7 @@ index 01026912..1714a870 100644
  #if defined(__SWITCH__)
    gSwitchRuntimeHostFrames = runFrameCount;
    gSwitchRuntimeGuestFrames = frameCount;
-@@ -1136,6 +1543,9 @@ bool NativeA32WindowSession::UpdateGuestServicesForRefresh(
+@@ -1136,6 +1553,9 @@ bool NativeA32WindowSession::UpdateGuestServicesForRefresh(
        process, hostServices, processResult, nextVblankTick,
        launch.WholeAotBlockBudget);
    const double clockSeconds = SecondsSince(clockStart);
@@ -4170,7 +4180,7 @@ index 01026912..1714a870 100644
    phaseTiming.GuestClockSeconds += clockSeconds;
    phaseTiming.GuestSeconds += clockSeconds;
    if (clockResolution.OvershootTicks != 0U) {
-@@ -1444,6 +1854,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1444,6 +1864,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
                 lastSubmittedDrawId) {
        submitDisplayTransfer(displayTransfers[displayTransferIndex++]);
      }
@@ -4197,7 +4207,7 @@ index 01026912..1714a870 100644
      for (auto &draw : draws) {
        while (memoryFillIndex < memoryFills.size() &&
               memoryFills[memoryFillIndex].BeforeDrawSubmissionId <=
-@@ -1464,14 +1894,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
+@@ -1464,14 +1904,26 @@ void NativeA32WindowSession::RunGuestRefresh() {
            suppressTopScreenFrontendBackdrop &&
            targetsFrontendBackdrop &&
            (usesCommonBackground || isOpaqueTargetInitialization);
@@ -4274,7 +4284,7 @@ index b6cfceec..2996c568 100644
  
  } // namespace Oot3dA32Window
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
-index 81150d82..72ba86fa 100644
+index 81150d82..6c36b70f 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_a32_window_setup.cpp
 @@ -1,5 +1,9 @@
@@ -4405,7 +4415,25 @@ index 81150d82..72ba86fa 100644
    context = Ship::Context::GetRawInstance();
    audio = context != nullptr ? context->GetAudio() : nullptr;
    audioPlayer = audio != nullptr ? audio->GetAudioPlayer() : nullptr;
-@@ -1373,6 +1444,11 @@ void NativeA32WindowSession::Setup() {
+@@ -1355,6 +1426,17 @@ void NativeA32WindowSession::Setup() {
+     rendererTiming = &workerPhaseTiming;
+     renderStream.SetMode(
+         Oot3dNativeGame::NativeRenderCommandStream::Mode::Worker);
++#if defined(__ORBIS__)
++    // PS4 1.75 A/B: with /data/triaevum/frames_in_flight_2 the game thread
++    // may run one more frame ahead of the render thread (one frame more of
++    // input latency) instead of waiting on a slower render frame.
++    if (FILE *flag = std::fopen("/data/triaevum/frames_in_flight_2", "rb")) {
++      std::fclose(flag);
++      renderStream.SetMaxFramesInFlight(2U);
++    }
++    std::fprintf(stderr, "[triaevum] render stream: %zu frames in flight\n",
++                 renderStream.MaxFramesInFlight());
++#endif
+     // The ImGui overlay (and the display composition it triggers) renders
+     // in renderer order, from a copy of each frame's draw data.
+     if (fast3dGui != nullptr) {
+@@ -1373,6 +1455,11 @@ void NativeA32WindowSession::Setup() {
  #endif
  }
  
@@ -6491,37 +6519,94 @@ index 3f387455..39fd44f5 100644
      [[nodiscard]]
  
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
-index 29e449f5..1ea336bf 100644
+index 29e449f5..558391cc 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
 +++ b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.cpp
-@@ -1,3 +1,6 @@
+@@ -1,5 +1,9 @@
 +#if defined(__ORBIS__)
 +#include "fast/backends/gfx_orbis.h"
 +#endif
  #include "oot3d_native_render_command_stream.h"
  
++#include <chrono>
  #include <stdexcept>
-@@ -71,6 +74,9 @@ void NativeRenderCommandStream::Enqueue(Command command, bool endsFrame,
+ #include <utility>
+ 
+@@ -27,6 +31,24 @@ NativeRenderCommandStream::NativeRenderCommandStream(Mode mode,
+     : mMode(mode),
+       mMaxFramesInFlight(maxFramesInFlight == 0U ? 1U : maxFramesInFlight) {}
+ 
++// On the PS4 condition-variable notifications get lost (the sampler's signals
++// interrupt the waits, 1.57), so every wait there rechecks its condition each
++// millisecond: a lost notification costs 1 ms instead of a stalled loop.
++template <typename Ready>
++void NativeRenderCommandStream::Wait(std::condition_variable& condition,
++                                     std::unique_lock<std::mutex>& lock, Ready ready) {
++#if defined(__ORBIS__)
++    while (!ready()) {
++        if (condition.wait_for(lock, std::chrono::milliseconds(1)) == std::cv_status::timeout &&
++            ready()) {
++            ++mWaitsRecovered;
++        }
++    }
++#else
++    condition.wait(lock, ready);
++#endif
++}
++
+ NativeRenderCommandStream::~NativeRenderCommandStream() {
+     StopWorker();
+ }
+@@ -71,7 +93,10 @@ void NativeRenderCommandStream::Enqueue(Command command, bool endsFrame,
      std::unique_lock lock(mMutex);
      RethrowPendingFailureLocked(lock);
      if (endsFrame) {
+-        mProgress.wait(lock, [&] {
 +#if defined(__ORBIS__)
 +        Fast::OrbisWaitScope wait("the render worker (frames in flight)");
 +#endif
-         mProgress.wait(lock, [&] {
++        Wait(mProgress, lock, [&] {
              return mFailure != nullptr || mFramesQueued < mMaxFramesInFlight;
          });
-@@ -96,6 +102,9 @@ void NativeRenderCommandStream::Run(Command command) {
+         RethrowPendingFailureLocked(lock);
+@@ -96,7 +121,10 @@ void NativeRenderCommandStream::Run(Command command) {
  void NativeRenderCommandStream::Drain() {
      if (mMode == Mode::Inline || !mWorker.joinable()) return;
      std::unique_lock lock(mMutex);
+-    mProgress.wait(lock, [&] {
 +#if defined(__ORBIS__)
 +    Fast::OrbisWaitScope wait("the render worker (drain)");
 +#endif
-     mProgress.wait(lock, [&] {
++    Wait(mProgress, lock, [&] {
          return mFailure != nullptr || (mQueue.empty() && !mBusy);
      });
-@@ -140,6 +149,9 @@ void NativeRenderCommandStream::StopWorker() {
+     RethrowPendingFailureLocked(lock);
+@@ -105,12 +133,23 @@ void NativeRenderCommandStream::Drain() {
+ void NativeRenderCommandStream::WaitForFramesInFlight(size_t frames) {
+     if (mMode == Mode::Inline || !mWorker.joinable()) return;
+     std::unique_lock lock(mMutex);
+-    mProgress.wait(lock, [&] {
++    Wait(mProgress, lock, [&] {
+         return mFailure != nullptr || mFramesQueued <= frames;
+     });
+     RethrowPendingFailureLocked(lock);
+ }
+ 
++void NativeRenderCommandStream::SetMaxFramesInFlight(size_t frames) {
++    Drain();
++    std::lock_guard lock(mMutex);
++    mMaxFramesInFlight = frames == 0U ? 1U : frames;
++}
++
++uint64_t NativeRenderCommandStream::WaitsRecoveredByTimeout() const noexcept {
++    std::lock_guard lock(mMutex);
++    return mWaitsRecovered;
++}
++
+ void NativeRenderCommandStream::RethrowPendingFailureLocked(
+     std::unique_lock<std::mutex>& lock) {
+     if (mFailure == nullptr) return;
+@@ -140,9 +179,12 @@ void NativeRenderCommandStream::StopWorker() {
  }
  
  void NativeRenderCommandStream::WorkerLoop() {
@@ -6530,7 +6615,92 @@ index 29e449f5..1ea336bf 100644
 +#endif
      std::unique_lock lock(mMutex);
      for (;;) {
-         mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });
+-        mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });
++        Wait(mWork, lock, [&] { return mStop || !mQueue.empty(); });
+         if (mQueue.empty()) return;  // stopping with nothing left to run
+         Entry entry = std::move(mQueue.front());
+         mQueue.pop_front();
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.h b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.h
+index 080be302..500aab3c 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.h
++++ b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream.h
+@@ -58,6 +58,12 @@ class NativeRenderCommandStream final {
+     // Waits until at most `frames` submitted frames have not ended (their
+     // EndsFrame command has not run). Inline: returns at once.
+     void WaitForFramesInFlight(size_t frames);
++    // Drains, then lets up to `frames` frames be pending before Submit waits.
++    void SetMaxFramesInFlight(size_t frames);
++    [[nodiscard]] size_t MaxFramesInFlight() const noexcept { return mMaxFramesInFlight; }
++    // Waits that a 1 ms timeout ended with their condition already met: lost
++    // notifications, or a timeout racing one (PS4 only, see Wait).
++    [[nodiscard]] uint64_t WaitsRecoveredByTimeout() const noexcept;
+ 
+     // True on the worker thread while it executes a command, and on the
+     // submitting thread while an inline command runs.
+@@ -79,6 +85,9 @@ class NativeRenderCommandStream final {
+     void StopWorker();
+     void WorkerLoop();
+     void RethrowPendingFailureLocked(std::unique_lock<std::mutex>& lock);
++    template <typename Ready>
++    void Wait(std::condition_variable& condition, std::unique_lock<std::mutex>& lock,
++              Ready ready);
+ 
+     Mode mMode;
+     size_t mMaxFramesInFlight;
+@@ -93,6 +102,7 @@ class NativeRenderCommandStream final {
+     std::exception_ptr mFailure;
+     uint64_t mExecuted = 0U;
+     uint64_t mSubmitted = 0U;
++    uint64_t mWaitsRecovered = 0U;
+ };
+ 
+ } // namespace Oot3dNativeGame
+diff --git a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream_tests.cpp b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream_tests.cpp
+index 7d478cdc..339d0028 100644
+--- a/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream_tests.cpp
++++ b/tools/oot3d/native_game_runtime/oot3d_native_render_command_stream_tests.cpp
+@@ -78,6 +78,33 @@ void TestFramesInFlightBound() {
+     stream.Drain();
+ }
+ 
++// Raised on a running stream (the PS4's frames_in_flight_2), the bound lets a
++// second frame queue behind a busy one and still holds the third.
++void TestSetMaxFramesInFlight() {
++    NativeRenderCommandStream stream(Mode::Worker, 1U);
++    stream.Submit([] {}, true);
++    stream.SetMaxFramesInFlight(2U);
++    Require(stream.MaxFramesInFlight() == 2U, "frames in flight not raised");
++    std::atomic<bool> release{false};
++    std::atomic<int> submitted{0};
++    stream.Submit([&] {
++        while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
++    }, true);
++    std::thread producer([&] {
++        stream.Submit([] {}, true);
++        submitted = 1;
++        stream.Submit([] {}, true);
++        submitted = 2;
++    });
++    std::this_thread::sleep_for(std::chrono::milliseconds(100));
++    Require(submitted.load() == 1,
++            "with two frames in flight the second frame was not accepted, or the third was");
++    release = true;
++    producer.join();
++    Require(submitted.load() == 2, "third frame was never accepted");
++    stream.Drain();
++}
++
+ // Input admission: the producer waits until the previous frame has ended,
+ // while commands that do not end a frame never hold it.
+ void TestWaitForFramesInFlight() {
+@@ -168,6 +195,7 @@ int main() {
+     TestInlineRunsAtSubmission();
+     TestWorkerKeepsProgramOrder();
+     TestFramesInFlightBound();
++    TestSetMaxFramesInFlight();
+     TestWaitForFramesInFlight();
+     TestWorkerFailureIsRethrownOnce();
+     TestModeSwitchDrainsAndDestructorRunsPending();
 diff --git a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h b/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h
 index a9811221..9a408600 100644
 --- a/tools/oot3d/native_game_runtime/oot3d_native_whole_aot_runtime.h

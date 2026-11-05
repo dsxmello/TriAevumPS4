@@ -78,6 +78,33 @@ void TestFramesInFlightBound() {
     stream.Drain();
 }
 
+// Raised on a running stream (the PS4's frames_in_flight_2), the bound lets a
+// second frame queue behind a busy one and still holds the third.
+void TestSetMaxFramesInFlight() {
+    NativeRenderCommandStream stream(Mode::Worker, 1U);
+    stream.Submit([] {}, true);
+    stream.SetMaxFramesInFlight(2U);
+    Require(stream.MaxFramesInFlight() == 2U, "frames in flight not raised");
+    std::atomic<bool> release{false};
+    std::atomic<int> submitted{0};
+    stream.Submit([&] {
+        while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }, true);
+    std::thread producer([&] {
+        stream.Submit([] {}, true);
+        submitted = 1;
+        stream.Submit([] {}, true);
+        submitted = 2;
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    Require(submitted.load() == 1,
+            "with two frames in flight the second frame was not accepted, or the third was");
+    release = true;
+    producer.join();
+    Require(submitted.load() == 2, "third frame was never accepted");
+    stream.Drain();
+}
+
 // Input admission: the producer waits until the previous frame has ended,
 // while commands that do not end a frame never hold it.
 void TestWaitForFramesInFlight() {
@@ -168,6 +195,7 @@ int main() {
     TestInlineRunsAtSubmission();
     TestWorkerKeepsProgramOrder();
     TestFramesInFlightBound();
+    TestSetMaxFramesInFlight();
     TestWaitForFramesInFlight();
     TestWorkerFailureIsRethrownOnce();
     TestModeSwitchDrainsAndDestructorRunsPending();

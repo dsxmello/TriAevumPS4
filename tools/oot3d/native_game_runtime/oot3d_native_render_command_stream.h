@@ -58,6 +58,12 @@ class NativeRenderCommandStream final {
     // Waits until at most `frames` submitted frames have not ended (their
     // EndsFrame command has not run). Inline: returns at once.
     void WaitForFramesInFlight(size_t frames);
+    // Drains, then lets up to `frames` frames be pending before Submit waits.
+    void SetMaxFramesInFlight(size_t frames);
+    [[nodiscard]] size_t MaxFramesInFlight() const noexcept { return mMaxFramesInFlight; }
+    // Waits that a 1 ms timeout ended with their condition already met: lost
+    // notifications, or a timeout racing one (PS4 only, see Wait).
+    [[nodiscard]] uint64_t WaitsRecoveredByTimeout() const noexcept;
 
     // True on the worker thread while it executes a command, and on the
     // submitting thread while an inline command runs.
@@ -79,6 +85,9 @@ class NativeRenderCommandStream final {
     void StopWorker();
     void WorkerLoop();
     void RethrowPendingFailureLocked(std::unique_lock<std::mutex>& lock);
+    template <typename Ready>
+    void Wait(std::condition_variable& condition, std::unique_lock<std::mutex>& lock,
+              Ready ready);
 
     Mode mMode;
     size_t mMaxFramesInFlight;
@@ -93,6 +102,7 @@ class NativeRenderCommandStream final {
     std::exception_ptr mFailure;
     uint64_t mExecuted = 0U;
     uint64_t mSubmitted = 0U;
+    uint64_t mWaitsRecovered = 0U;
 };
 
 } // namespace Oot3dNativeGame

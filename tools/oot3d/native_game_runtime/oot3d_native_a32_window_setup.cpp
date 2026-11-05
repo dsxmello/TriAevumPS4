@@ -1426,6 +1426,17 @@ void NativeA32WindowSession::Setup() {
     rendererTiming = &workerPhaseTiming;
     renderStream.SetMode(
         Oot3dNativeGame::NativeRenderCommandStream::Mode::Worker);
+#if defined(__ORBIS__)
+    // PS4 1.75 A/B: with /data/triaevum/frames_in_flight_2 the game thread
+    // may run one more frame ahead of the render thread (one frame more of
+    // input latency) instead of waiting on a slower render frame.
+    if (FILE *flag = std::fopen("/data/triaevum/frames_in_flight_2", "rb")) {
+      std::fclose(flag);
+      renderStream.SetMaxFramesInFlight(2U);
+    }
+    std::fprintf(stderr, "[triaevum] render stream: %zu frames in flight\n",
+                 renderStream.MaxFramesInFlight());
+#endif
     // The ImGui overlay (and the display composition it triggers) renders
     // in renderer order, from a copy of each frame's draw data.
     if (fast3dGui != nullptr) {

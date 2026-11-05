@@ -1018,6 +1018,16 @@ bool NativeA32WindowSession::RunFrame() {
       }
       std::fprintf(stderr, "[triaevum] block-entry hooks: %s\n",
                    TakeBlockEntryHookCounts(seconds).c_str());
+      {
+        static uint64_t windowRecovered = 0U;
+        const uint64_t recovered = renderStream.WaitsRecoveredByTimeout();
+        std::fprintf(stderr,
+                     "[triaevum] render stream: %zu frames in flight, %llu waits recovered by"
+                     " their timeout\n",
+                     renderStream.MaxFramesInFlight(),
+                     static_cast<unsigned long long>(recovered - windowRecovered));
+        windowRecovered = recovered;
+      }
       if (gPicaPlanAhead != nullptr) {
         const auto counts = gPicaPlanAhead->TakeCounts();
         std::fprintf(stderr, "[triaevum] plan helpers: %.0f plans/s ahead, %.0f by the game thread\n",

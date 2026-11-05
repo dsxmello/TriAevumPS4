@@ -3,6 +3,7 @@
 #endif
 #include "oot3d_native_render_command_stream.h"
 
+#include <chrono>
 #include <stdexcept>
 #include <utility>
 
@@ -29,6 +30,24 @@ NativeRenderCommandStream::NativeRenderCommandStream(Mode mode,
                                                      size_t maxFramesInFlight)
     : mMode(mode),
       mMaxFramesInFlight(maxFramesInFlight == 0U ? 1U : maxFramesInFlight) {}
+
+// On the PS4 condition-variable notifications get lost (the sampler's signals
+// interrupt the waits, 1.57), so every wait there rechecks its condition each
+// millisecond: a lost notification costs 1 ms instead of a stalled loop.
+template <typename Ready>
+void NativeRenderCommandStream::Wait(std::condition_variable& condition,
+                                     std::unique_lock<std::mutex>& lock, Ready ready) {
+#if defined(__ORBIS__)
+    while (!ready()) {
+        if (condition.wait_for(lock, std::chrono::milliseconds(1)) == std::cv_status::timeout &&
+            ready()) {
+            ++mWaitsRecovered;
+        }
+    }
+#else
+    condition.wait(lock, ready);
+#endif
+}
 
 NativeRenderCommandStream::~NativeRenderCommandStream() {
     StopWorker();
@@ -77,7 +96,7 @@ void NativeRenderCommandStream::Enqueue(Command command, bool endsFrame,
 #if defined(__ORBIS__)
         Fast::OrbisWaitScope wait("the render worker (frames in flight)");
 #endif
-        mProgress.wait(lock, [&] {
+        Wait(mProgress, lock, [&] {
             return mFailure != nullptr || mFramesQueued < mMaxFramesInFlight;
         });
         RethrowPendingFailureLocked(lock);
@@ -105,7 +124,7 @@ void NativeRenderCommandStream::Drain() {
 #if defined(__ORBIS__)
     Fast::OrbisWaitScope wait("the render worker (drain)");
 #endif
-    mProgress.wait(lock, [&] {
+    Wait(mProgress, lock, [&] {
         return mFailure != nullptr || (mQueue.empty() && !mBusy);
     });
     RethrowPendingFailureLocked(lock);
@@ -114,10 +133,21 @@ void NativeRenderCommandStream::Drain() {
 void NativeRenderCommandStream::WaitForFramesInFlight(size_t frames) {
     if (mMode == Mode::Inline || !mWorker.joinable()) return;
     std::unique_lock lock(mMutex);
-    mProgress.wait(lock, [&] {
+    Wait(mProgress, lock, [&] {
         return mFailure != nullptr || mFramesQueued <= frames;
     });
     RethrowPendingFailureLocked(lock);
+}
+
+void NativeRenderCommandStream::SetMaxFramesInFlight(size_t frames) {
+    Drain();
+    std::lock_guard lock(mMutex);
+    mMaxFramesInFlight = frames == 0U ? 1U : frames;
+}
+
+uint64_t NativeRenderCommandStream::WaitsRecoveredByTimeout() const noexcept {
+    std::lock_guard lock(mMutex);
+    return mWaitsRecovered;
 }
 
 void NativeRenderCommandStream::RethrowPendingFailureLocked(
@@ -154,7 +184,7 @@ void NativeRenderCommandStream::WorkerLoop() {
 #endif
     std::unique_lock lock(mMutex);
     for (;;) {
-        mWork.wait(lock, [&] { return mStop || !mQueue.empty(); });
+        Wait(mWork, lock, [&] { return mStop || !mQueue.empty(); });
         if (mQueue.empty()) return;  // stopping with nothing left to run
         Entry entry = std::move(mQueue.front());
         mQueue.pop_front();
