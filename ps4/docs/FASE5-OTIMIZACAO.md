@@ -1345,3 +1345,12 @@ cache nem de ITLB. O `.text` do produto tem 134 MB.
   (`NativeTopScreenStorageSamplingX`). `/data/triaevum/top_aa_full` (ou
   `TRIAEVUM_TOP_AA_FULL=1`) volta ao 2x para comparar.
 - Hosttest no PC nos dois modos: PASS (escala 2: topo 480x853 contra 960x853).
+- Medido na 1.79 (2026-11-05, escala 6): GPU por quadro no Market 16,7 ->
+  ~8,0–8,9 ms (topo 11,1 -> ~5,9, baixo 3,0 -> 0,2, blits 1,3 -> 0,8),
+  ocupação 44–50%. Hyrule ~6,5 ms, Kokiri ~7,9. O Daniel: "melhorou muito";
+  imagem sem queixa. Ainda cai ao andar no Market (286–302 draws, 49–55
+  fps): ali o guest sobe para 12–14,7 ms por quadro do host e o `present`
+  fica em 3,8–4,7 ms (a thread do jogo esperando a `render`, que está ~67%
+  ocupada); a GPU sobra. Ou seja, o limite voltou à CPU: thread do jogo
+  (otimização do acesso à memória) e a espera de 1 quadro em voo (A/B da
+  1.75, `frames_in_flight_2`, criado no console para a próxima sessão).
