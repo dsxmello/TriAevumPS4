@@ -1251,3 +1251,14 @@ cache nem de ITLB. O `.text` do produto tem 134 MB.
 - Medir: mesmas rotas paradas (Kokiri na porta da casa do Link, Hyrule, e
   o Market pesado a 720p, onde a thread do jogo é o limite); comparar a
   CPU por quadro do jogo nos mesmos draws contra a 1.75.
+- Medido (2026-11-04, sessão toda na escala 3, logs ligados, sem
+  `triaevum_hang.log`): quase tudo a 60 fps limitado pelo vsync, então a
+  comparação é a CPU por quadro do jogo no mesmo número de draws.
+  Hyrule (81) 142–148 draws: 7,7–8,2 ms (1.72: 7,6–7,8; 1.73: 7,8–8,0).
+  Kokiri (85) ~130 draws: 8,4–8,6 ms. Market (32) 206–257 draws: 8,9–10,3
+  ms, sempre 59–60 fps (1.74: 230–257 draws também a 60). Cena 77: 397
+  draws a 43,6 fps com 12,2 ms por quadro do jogo (1.73: 344 draws a 36 fps
+  com 13,7 ms; ponto diferente da cena, não dá para comparar direto).
+- Conclusão: sem ganho mensurável no que dá para comparar; a mudança fica
+  (não custa nada). O Market não passou de ~257 draws nesta sessão, então o
+  trecho onde a thread do jogo é o limite (290+ draws) não foi testado.
