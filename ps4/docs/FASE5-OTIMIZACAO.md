@@ -1262,3 +1262,30 @@ cache nem de ITLB. O `.text` do produto tem 134 MB.
 - Conclusão: sem ganho mensurável no que dá para comparar; a mudança fica
   (não custa nada). O Market não passou de ~257 draws nesta sessão, então o
   trecho onde a thread do jogo é o limite (290+ draws) não foi testado.
+
+### Perfil da thread do jogo na 1.76 (Market 235+ draws e cena 77, escala 3)
+
+- `main`: código do jogo (AOT) ~46% em cauda longa (a maior função tem ~2%),
+  kernel ~27% (23% num endereço só: a espera do render/flip), acesso à
+  memória do guest fora de linha 5%, memcpy/memmove 3,5%, ajudantes VFP
+  chamados como função 2,3%, ObserveBlockEntry 1,7–2,5%,
+  ComputeOot3dPicaVisualDrawIdentity 1,4%, widescreen 1,3%, malloc 1,3%.
+- Dentro da função mais quente (`MeshCommandPacket_Submit_00466E2C`), cada
+  acesso do guest é uma cadeia de loads dependentes: objeto de memória do
+  frame -> `mFastPages` (+0x38) -> entrada da página -> dado, com teste de
+  nulo e de fim de página, ~10 instruções. Depois de cada store do guest
+  (por `uint8_t*`, que pode apontar para qualquer coisa) o compilador
+  recarrega o objeto de memória, a tabela de páginas e os registradores do
+  guest. Cada store ainda faz `++mRangeGeneration` (load, inc, store) e
+  grava a geração na entrada.
+- Contagem estática nos 9,4 MB quentes: 2,42 M instruções, 37,9 k acessos
+  pelo caminho rápido, 42,5 k recargas de `mFastPages`, 33,4 k `incq`,
+  8,9 k bytes de flag gravados (`set*` em 0x3c–0x3f). As chamadas para
+  `ReadFastChecked`/`WriteFastChecked` são só o caminho lento (fim de
+  página/página protegida).
+- É exatamente o padrão que a palestra condena (loads em cadeia, frontend de
+  2 instruções/ciclo). Estimativa: ~19% das instruções do AOT quente são
+  overhead de acesso; guardar a tabela de páginas num local do bloco e tirar
+  o RMW da geração das escritas cortaria ~1/3 disso, ~0,3–0,8 ms por quadro
+  do jogo. Mexe no código gerado e no header da memória: invalida o perfil
+  PGO (nova COLETA).
