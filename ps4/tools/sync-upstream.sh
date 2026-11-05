@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Merges upstream TriAevum (coccofresco/TriAevum main) into this PS4 fork.
-# Run from a clone of the fork; it stops before committing when a real
+# Merges upstream TriAevum (coccofresco/TriAevum main) into this PS4 repository.
+# Run from a clone of this repository; it stops before committing when a real
 # conflict needs a hand. Paths listed in ps4/sync/removed-paths.txt are
 # deleted again, so upstream changes to other platforms never conflict.
 #   ps4/tools/sync-upstream.sh
@@ -23,5 +23,5 @@ if [ -n "$left" ]; then
     echo "$left" >&2
     exit 1
 fi
-git commit -q -m "Merge upstream TriAevum ($behind commits) into the PS4 fork"
+git commit -q -m "Merge upstream TriAevum ($behind commits) into TriAevum PS4"
 echo "merged; rebuild the closure (docs/FASE3-PRODUTO.md) and the product before pushing"

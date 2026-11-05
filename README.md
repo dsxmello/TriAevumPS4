@@ -5,7 +5,8 @@ native AOT recompilation of *The Legend of Zelda: Ocarina of Time 3D*. The game
 code runs natively on the console's CPU and draws through Vulkan (Mesa RADV on
 the PS4's GNM driver), with TriAevum's single-screen interface.
 
-This repository is a fork that carries **only the PS4 port**: the TriAevum
+This repository is derived from upstream TriAevum (full history kept) and
+carries **only the PS4 port**: the TriAevum
 runtime sources the PS4 build compiles, the title translator, and the port
 itself in [`ps4/`](ps4/). The desktop packaging, Android and Switch material of
 upstream are not kept here; follow upstream for those.
@@ -60,12 +61,12 @@ The release package contains the translated title logic, as upstream's
 the desktop: never the ROM, `code.bin`, RomFS, extracted assets or keys.
 
 Keeping up with upstream: `ps4/tools/sync-upstream.sh` merges
-coccofresco/TriAevum into this fork and drops the paths listed in
+coccofresco/TriAevum into this repository and drops the paths listed in
 [`ps4/sync/removed-paths.txt`](ps4/sync/removed-paths.txt) again.
 
 ## Credits
 
-All of TriAevum is the work of its upstream author and contributors; this fork
+All of TriAevum is the work of its upstream author and contributors; this repository
 only adds the console port. Please read upstream's
 [credits](https://github.com/coccofresco/TriAevum#credit-where-it-belongs):
 **TopScreen / SingleScreen** by rlgcarrot, **OoT3D Vanilla UI/HUD** by

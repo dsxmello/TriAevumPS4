@@ -17,7 +17,7 @@ próprio usuário. Também ficam fora o que é baixado ou compilado (`sdk/`,
 reconstruída a partir do upstream + `patches/dolphinps4-ps4-runtime.patch`).
 
 No GitHub este diretório é a pasta `ps4/` do repositório
-[dsxmello/TriAevumPS4](https://github.com/dsxmello/TriAevumPS4), um fork do
+[dsxmello/TriAevumPS4](https://github.com/dsxmello/TriAevumPS4), derivado do
 TriAevum só com o port de PS4; as mudanças no TriAevum já estão aplicadas na
 árvore dele. Os scripts esperam o TriAevum ao lado, em `../TriAevum`, e o C++
 gerado do usuário em `../title-content/aot-cpp`:
@@ -34,7 +34,7 @@ O mesmo conjunto de mudanças fica em `patches/triaevum-ps4-product.patch`
 com PGO).
 
 Sincronizar com o upstream (coccofresco/TriAevum): `tools/sync-upstream.sh`
-num clone do fork (refaz o merge e apaga de novo o que está em
+num clone deste repositório (refaz o merge e apaga de novo o que está em
 `sync/removed-paths.txt`), depois `tools/product/regen-closure.sh` (lista de
 fontes do produto a partir do CMake do TriAevum) e `tools/build-product.sh`.
 
