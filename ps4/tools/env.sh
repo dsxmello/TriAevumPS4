@@ -31,5 +31,5 @@ export PATH="$PS4_PORT_ROOT/tools/host-bin:$PATH"
 export LD_LIBRARY_PATH="$PS4_PORT_ROOT/host-compat${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # Console (GoldHEN FTP) for upload steps; the operator sets these when testing.
-export PS4_HOST="${PS4_HOST:-192.168.0.15}"
+export PS4_HOST="${PS4_HOST:-192.168.0.24}"
 export PS4_FTP_PORT="${PS4_FTP_PORT:-2121}"
